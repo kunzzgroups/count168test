@@ -26,7 +26,15 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
         ? "UPPER(TRIM(COALESCE(p.process_id, dc.process_code, '')))"
         : "UPPER(TRIM(COALESCE(p.process_id, '')))";
     $payrollCodes = dcSqlQuotedGroupPayrollProcessCodes();
-    $scopeProcessFilter = " AND {$processCodeExpr} IN ({$payrollCodes}) ";
+    // Align with capture_maintenance: pure-group rows may have process_id NULL + process_code only.
+    $isDualGroup = !empty($captureScopeCtx['is_group_scope']) && !empty($captureScopeCtx['dual_tenant']);
+    if ($isDualGroup) {
+        $scopeProcessFilter = $hasProcessCodeCol
+            ? " AND (dc.process_id IS NULL OR {$processCodeExpr} IN ({$payrollCodes})) "
+            : " AND (dc.process_id IS NULL OR {$processCodeExpr} IN ({$payrollCodes})) ";
+    } else {
+        $scopeProcessFilter = " AND {$processCodeExpr} IN ({$payrollCodes}) ";
+    }
 
     $companyFilterSql = '';
     $companyFilterParams = [];
@@ -35,6 +43,12 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
         $companyFilterSql = ' AND p.company_id = ? ';
         $companyFilterParams[] = $processCompanyId;
     }
+
+    // Group payroll list must not apply subsidiary Games process_permissions
+    // (e.g. partnership JK@C168 only has SALARY — would hide PROFIT/COMMISSION/BONUS).
+    $isGroupLedger = !empty($captureScopeCtx['is_group_scope']);
+    $effectivePermissionCondition = $isGroupLedger ? '' : $permissionCondition;
+    $effectivePermissionParams = $isGroupLedger ? [] : $permissionProcessIds;
 
     $stmt = $pdo->prepare("
         SELECT
@@ -57,7 +71,7 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
           AND DATE(dc.capture_date) = ?
           {$companyFilterSql}
         {$scopeProcessFilter}
-        {$permissionCondition}
+        {$effectivePermissionCondition}
         ORDER BY dc.created_at ASC, dc.id ASC
     ");
 
@@ -65,7 +79,7 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
         dcCaptureLedgerBindParams($ledgerDc),
         [$captureDate],
         $companyFilterParams,
-        $permissionProcessIds
+        $effectivePermissionParams
     );
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
