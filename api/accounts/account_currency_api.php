@@ -258,6 +258,29 @@ try {
                 exit;
             }
             $currencies = dbGetAccountOwnedCurrenciesResolved($pdo, $account_id, $currencyCtx);
+            // Group ledger: older accounts may lack account_currency rows for scope_type=group.
+            // Expose scope currencies (is_linked=false) so Edit Formula Currency is never empty.
+            if (
+                empty($currencies)
+                && ($currencyCtx['mode'] ?? '') === 'group'
+            ) {
+                $scopeRows = dbGetScopeCurrencies($pdo, $currencyCtx);
+                $currencies = array_map(static function ($c) use ($account_id) {
+                    return [
+                        'id' => null,
+                        'account_id' => $account_id,
+                        'currency_id' => (int) ($c['id'] ?? $c['currency_id'] ?? 0),
+                        'currency_code' => strtoupper(trim((string) ($c['code'] ?? $c['currency_code'] ?? ''))),
+                        'is_linked' => false,
+                    ];
+                }, is_array($scopeRows) ? $scopeRows : []);
+                $currencies = array_values(array_filter(
+                    $currencies,
+                    static function ($r) {
+                        return !empty($r['currency_id']) && $r['currency_code'] !== '';
+                    }
+                ));
+            }
             jsonResponse(true, '', $currencies);
             exit;
         }

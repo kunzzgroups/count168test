@@ -12,9 +12,29 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
     array $permissionProcessIds
 ): array {
     $ledgerDc = dcSubmittedLedgerFilter('dc', 'data_captures');
-    // Bank/group payroll lists are driven by each capture, and must not include
-    // unrelated Games processes from the same company/date.
-    $scopeProcessFilter = dcSqlGroupProcessFilter('p');
+    // Dual-tenant group rows are isolated by scope_type/scope_id. process_id may be NULL
+    // (pure-group process_code path) or live on a non-anchor company_id — do not INNER JOIN
+    // + p.company_id = anchor, or Submitted Processes stays empty after a successful submit.
+    $hasProcessCodeCol = false;
+    try {
+        $colStmt = $pdo->query("SHOW COLUMNS FROM data_captures LIKE 'process_code'");
+        $hasProcessCodeCol = $colStmt && $colStmt->rowCount() > 0;
+    } catch (Throwable $e) {
+        $hasProcessCodeCol = false;
+    }
+    $processCodeExpr = $hasProcessCodeCol
+        ? "UPPER(TRIM(COALESCE(p.process_id, dc.process_code, '')))"
+        : "UPPER(TRIM(COALESCE(p.process_id, '')))";
+    $payrollCodes = dcSqlQuotedGroupPayrollProcessCodes();
+    $scopeProcessFilter = " AND {$processCodeExpr} IN ({$payrollCodes}) ";
+
+    $companyFilterSql = '';
+    $companyFilterParams = [];
+    // Legacy (no dual-tenant columns): keep anchor company guard on process rows.
+    if ($processCompanyId > 0 && empty($captureScopeCtx['dual_tenant'])) {
+        $companyFilterSql = ' AND p.company_id = ? ';
+        $companyFilterParams[] = $processCompanyId;
+    }
 
     $stmt = $pdo->prepare("
         SELECT
@@ -24,18 +44,18 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
             dc.capture_date,
             dc.created_at,
             dc.user_type,
-            p.process_id AS process_code,
+            {$processCodeExpr} AS process_code,
             d.name AS description_name,
             COALESCE(u.login_id, o.owner_code) AS submitted_by
         FROM data_captures dc
-        JOIN process p ON dc.process_id = p.id
+        LEFT JOIN process p ON dc.process_id = p.id
         LEFT JOIN description d ON p.description_id = d.id
         LEFT JOIN user u ON dc.created_by = u.id AND dc.user_type = 'user'
         LEFT JOIN owner o ON dc.created_by = o.id AND dc.user_type = 'owner'
         WHERE 1=1
           {$ledgerDc['sql']}
           AND DATE(dc.capture_date) = ?
-          AND p.company_id = ?
+          {$companyFilterSql}
         {$scopeProcessFilter}
         {$permissionCondition}
         ORDER BY dc.created_at ASC, dc.id ASC
@@ -43,7 +63,8 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
 
     $params = array_merge(
         dcCaptureLedgerBindParams($ledgerDc),
-        [$captureDate, $processCompanyId],
+        [$captureDate],
+        $companyFilterParams,
         $permissionProcessIds
     );
     $stmt->execute($params);
@@ -65,25 +86,38 @@ function dcGetSubmissionsByCaptureDate(int $user_id): void
         $ledgerSp = dcSubmittedLedgerFilter('sp', 'submitted_processes');
         $ledgerDc = dcSubmittedLedgerFilter('dc', 'data_captures');
 
-        if (!$currentCompanyId) {
-            $isPureGroupScope = !empty($capture_scope_ctx['is_group_scope'])
-                && (
-                    (int) ($capture_scope_ctx['group_scope_id'] ?? 0) > 0
-                    || (int) ($capture_scope_ctx['scope_id'] ?? 0) > 0
-                    || !empty($capture_scope_ctx['pure_group_tenant'])
-                );
-            if ($isPureGroupScope) {
-                // Empty group: fixed payroll codes only — no process.company_id rows to join yet.
-                echo json_encode(['success' => true, 'data' => []]);
-                return;
-            }
-            echo json_encode(['success' => false, 'error' => 'User company_id not found']);
-            return;
-        }
-
         $capture_date = $_GET['capture_date'] ?? date('Y-m-d');
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $capture_date)) {
             echo json_encode(['success' => false, 'error' => 'Invalid date format']);
+            return;
+        }
+
+        $isPureGroupScope = !empty($capture_scope_ctx['is_group_scope'])
+            && (
+                (int) ($capture_scope_ctx['group_scope_id'] ?? 0) > 0
+                || (int) ($capture_scope_ctx['scope_id'] ?? 0) > 0
+                || !empty($capture_scope_ctx['pure_group_tenant'])
+            );
+
+        if (!$currentCompanyId) {
+            if ($isPureGroupScope) {
+                // Pure / empty group: list from data_captures by scope_type=group (no company anchor).
+                $submissions = dcFetchGroupPayrollSubmissionsByCaptureDate(
+                    $pdo,
+                    is_array($capture_scope_ctx) ? $capture_scope_ctx : [],
+                    (int) $processCompanyId,
+                    $capture_date,
+                    '',
+                    []
+                );
+                echo json_encode([
+                    'success' => true,
+                    'data' => $submissions,
+                    'capture_date' => $capture_date,
+                ]);
+                return;
+            }
+            echo json_encode(['success' => false, 'error' => 'User company_id not found']);
             return;
         }
 
@@ -391,7 +425,19 @@ function dcSaveSubmission(int $user_id): void
         }
 
         require_once __DIR__ . '/../includes/realtime.php';
-        realtime_publish_companies([(int) $company_id], 'datacapture', 'save_submission');
+        if (!empty($capture_scope_group) && is_array($capture_scope_ctx)) {
+            realtime_publish_scope([
+                'mode' => 'group',
+                'company_id' => (int) ($capture_scope_ctx['company_id'] ?? $company_id),
+                'group_scope_id' => (int) (
+                    $capture_scope_ctx['group_scope_id']
+                    ?? $capture_scope_ctx['scope_id']
+                    ?? 0
+                ),
+            ], 'datacapture', 'save_submission');
+        } elseif ((int) $company_id > 0) {
+            realtime_publish_companies([(int) $company_id], 'datacapture', 'save_submission');
+        }
 
         echo json_encode([
             'success' => true,

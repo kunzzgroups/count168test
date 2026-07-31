@@ -1008,7 +1008,28 @@ function dcSummaryApiHandleSubmit(): void
                 $pdo->commit();
 
                 require_once __DIR__ . '/../includes/realtime.php';
-                realtime_publish_companies([$companyId], 'datacapture', 'summary_submit');
+                require_once __DIR__ . '/../includes/ledger_realtime.php';
+                // Group ledger clients subscribe to tx:g:{groups.id}; company-only publish never reaches them.
+                if (!empty($capture_scope_group) && is_array($capture_scope_ctx)) {
+                    $listScope = [
+                        'mode' => 'group',
+                        'company_id' => (int) ($capture_scope_ctx['company_id'] ?? $companyId),
+                        'group_scope_id' => (int) (
+                            $capture_scope_ctx['group_scope_id']
+                            ?? $capture_scope_ctx['scope_id']
+                            ?? 0
+                        ),
+                    ];
+                    realtime_publish_scope($listScope, 'datacapture', 'summary_submit');
+                    tx_ledger_realtime_publish_scope($listScope, 'summary_submit');
+                } elseif ($companyId > 0) {
+                    realtime_publish_companies([$companyId], 'datacapture', 'summary_submit');
+                    tx_ledger_realtime_publish_scope([
+                        'mode' => 'company',
+                        'company_id' => (int) $companyId,
+                        'group_scope_id' => 0,
+                    ], 'summary_submit');
+                }
 
                 // Company scope: write submitted_processes in same request as data_captures (avoids second POST + scope drift).
                 if (!$isBatchAppend && $userId) {
