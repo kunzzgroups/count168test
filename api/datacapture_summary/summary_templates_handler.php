@@ -441,6 +441,22 @@ function dcSummaryApiHandleFetchTemplates(): void
                 }
             }
 
+            // Empty / pure group ledger: process table rows need a company_id anchor.
+            // When there is none, Summary still works with processCode (same as submit path).
+            // Return empty templates instead of failing the whole Summary page.
+            if (($processId === null || $processId <= 0)
+                && !empty($capture_scope_group)
+                && $processCode !== ''
+                && $processCompanyId <= 0
+            ) {
+                echo json_encode([
+                    'success' => true,
+                    'templates' => new stdClass(),
+                    'subsByParent' => new stdClass(),
+                ]);
+                exit;
+            }
+
             if ($processId === null || $processId <= 0) {
                 throw new Exception('Process ID is required');
             }

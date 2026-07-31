@@ -71,13 +71,20 @@ try {
         throw new Exception($e->getMessage());
     }
     $company_id = (int) ($accountCtx['company_id'] ?? 0);
-    if ($company_id <= 0) {
+    $groupPk = (int) ($accountCtx['group_pk'] ?? 0);
+    $isGroupScope = (($accountCtx['mode'] ?? '') === 'group');
+    $isPureGroup = $isGroupScope && $groupPk > 0;
+    // Empty group / dual-tenant group ledger: company_id may be 0; scope_id carries the ledger.
+    if ($company_id <= 0 && !$isPureGroup) {
         throw new Exception('用户未登录或缺少公司信息');
     }
-    $isGroupScope = (($accountCtx['mode'] ?? '') === 'group');
     $groupCode = (string) ($accountCtx['group_code'] ?? '');
-    if ($groupCode !== '' && gc_is_group_login()) {
+    if ($company_id > 0 && $groupCode !== '' && gc_is_group_login()) {
         gc_assert_company_id_allowed_for_login_scope($pdo, $company_id, $groupCode);
+    } elseif ($isPureGroup && $groupCode !== '') {
+        if (!gc_session_can_access_group_ledger($pdo, $groupCode)) {
+            throw new Exception('无权限访问该集团');
+        }
     }
 
     $id = (int) $_POST['id'];
@@ -246,7 +253,8 @@ try {
         }
     }
 
-    if (isset($_POST['linked_account_ids'])) {
+    // Account links are company-scoped; skip when updating a pure group ledger (no anchor company).
+    if (isset($_POST['linked_account_ids']) && $company_id > 0) {
         $has_account_link_table = false;
         try {
             $has_account_link_table = $pdo->query("SHOW TABLES LIKE 'account_link'")->rowCount() > 0;
@@ -305,7 +313,15 @@ try {
     }
 
     require_once __DIR__ . '/../includes/realtime.php';
-    realtime_publish_companies([$company_id], 'accounts', 'update');
+    if ($isPureGroup && $groupPk > 0) {
+        realtime_publish_scope([
+            'mode' => 'group',
+            'group_scope_id' => $groupPk,
+            'company_id' => $company_id,
+        ], 'accounts', 'update');
+    } elseif ($company_id > 0) {
+        realtime_publish_companies([$company_id], 'accounts', 'update');
+    }
 
     jsonResponse(true, 'Account updated successfully', null);
 } catch (Exception $e) {

@@ -169,23 +169,44 @@ export async function populateSummaryRowsPure({
   }
 
   const templateProcessId = effectiveProcessId ?? processId;
-  const fetchTemplates =
-    typeof loadTemplates === "function"
-      ? () =>
-          loadTemplates({
-            processId: templateProcessId,
-            processCode: code,
-          })
-      : () =>
-          fetchSummaryTemplates({
-            captureScope,
-            companyId,
-            idProducts,
-            processId: templateProcessId,
-            processCode: code,
-            captureId,
-          });
-  const { templates, subsByParent } = await fetchTemplates();
+  // Pure/empty group may have processCode only (no process table row). Skip templates
+  // rather than surfacing "Process ID is required" on Summary submit/refresh.
+  const numericTemplateProcessId =
+    templateProcessId != null && Number(templateProcessId) > 0
+      ? Number(templateProcessId)
+      : null;
+  if (numericTemplateProcessId == null && !code) {
+    return rows;
+  }
+
+  let templates = {};
+  let subsByParent = null;
+  try {
+    const fetchTemplates =
+      typeof loadTemplates === "function"
+        ? () =>
+            loadTemplates({
+              processId: numericTemplateProcessId,
+              processCode: code,
+            })
+        : () =>
+            fetchSummaryTemplates({
+              captureScope,
+              companyId,
+              idProducts,
+              processId: numericTemplateProcessId,
+              processCode: code,
+              captureId,
+            });
+    const loaded = await fetchTemplates();
+    templates = loaded?.templates && typeof loaded.templates === "object" ? loaded.templates : {};
+    subsByParent = loaded?.subsByParent ?? null;
+  } catch {
+    if (numericTemplateProcessId == null && code) {
+      return rows;
+    }
+    throw new Error("Failed to load templates");
+  }
 
   const suppressed = freshFromCapture ? new Set() : loadSuppressedRowKeys();
   const appliedMainKeys = new Set();
