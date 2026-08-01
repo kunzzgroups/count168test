@@ -216,6 +216,8 @@ function DataCaptureSummaryPureInner() {
 
     processId: capture.processId,
 
+    processCode: capture.processCode,
+
     tableData: capture.transformedTableData,
 
     rows,

@@ -121,6 +121,7 @@ export function useSummaryEditFormulaPure({
   captureScope,
   companyId,
   processId,
+  processCode,
   tableData,
   rows,
   replaceRows,
@@ -393,6 +394,7 @@ export function useSummaryEditFormulaPure({
             captureScope,
             companyId,
             processId,
+            processCode,
           });
           if (!tpl.success) {
             pushSummaryNotification(
@@ -418,7 +420,7 @@ export function useSummaryEditFormulaPure({
           if (targetRow.productType === "sub" || applied.action === "insertSub") {
             const parentId = targetRow.parentIdProduct || anchor.idProduct;
             await syncSubOrderTemplates(nextRows, parentId, (row) =>
-              saveSummaryTemplatePure(row, { captureScope, companyId, processId })
+              saveSummaryTemplatePure(row, { captureScope, companyId, processId, processCode })
             );
           }
         } catch (e) {
@@ -447,6 +449,7 @@ export function useSummaryEditFormulaPure({
     captureScope,
     companyId,
     processId,
+    processCode,
     closeEditFormula,
     t,
   ]);

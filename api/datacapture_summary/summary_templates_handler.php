@@ -36,16 +36,10 @@ function dcSummaryApiHandleSaveTemplate(): void
                     !empty($row['currency_id']) ? (int) $row['currency_id'] : null
                 );
             } elseif (!empty($capture_scope_group)) {
-                // Group Summary save sometimes omits process_id — default ensure SALARY so
-                // Formula Maintenance can join/list the template.
-                $resolvedTemplateProcessId = dcEnsureProcessIdByCode(
-                    $pdo,
-                    (int) $company_id,
-                    'SALARY',
-                    true,
-                    $groupIdForAccess,
-                    !empty($row['currency_id']) ? (int) $row['currency_id'] : null
-                );
+                // Group Summary save must know which process (SALARY/COMMISSION/BONUS/PROFIT) the
+                // row belongs to — silently defaulting to SALARY here previously mis-filed
+                // COMMISSION/PROFIT formulas under the SALARY process (see Formula Maintenance bug).
+                throw new Exception('Missing process_id/process_code for group scope template save');
             }
 
             // Prepare template payload

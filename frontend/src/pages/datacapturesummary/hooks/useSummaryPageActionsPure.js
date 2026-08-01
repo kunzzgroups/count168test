@@ -355,7 +355,7 @@ export function useSummaryPageActionsPure({
       );
       for (const parent of parentsToSync) {
         await syncSubOrderTemplates(nextRows, parent, (row) =>
-          saveSummaryTemplatePure(row, { captureScope, companyId, processId })
+          saveSummaryTemplatePure(row, { captureScope, companyId, processId, processCode })
         );
       }
 
