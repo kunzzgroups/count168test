@@ -4892,14 +4892,24 @@ body.process-page.process-page--show-all:not(.process-page--bank) .pagination-co
     padding: var(--table-header-height);
 }
 
-.process-page:not(.process-page--bank) .games-process-table-header .header-item.header-item--with-sort-icon {
+/* 可排序表头对齐 Account List（.account-header-sortable）：flex + gap 5px + 默认行高 */
+.process-page:not(.process-page--bank) .games-process-table-header .header-item.header-item--with-sort-icon,
+.process-page:not(.process-page--bank) .games-process-table-header .header-item.header-sortable {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 5px;
+    padding: 0;
     overflow: visible;
+    line-height: normal;
 }
 
 .process-page:not(.process-page--bank) .games-process-table-header .header-item.header-item--with-sort-icon .header-item__label {
     overflow: visible;
     text-overflow: clip;
     flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .process-page:not(.process-page--bank) .games-process-row {
