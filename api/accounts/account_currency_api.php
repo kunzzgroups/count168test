@@ -339,7 +339,9 @@ try {
                     jsonResponse(false, '无法识别会话', null, 403);
                     exit;
                 }
-                $allowed = member_linked_member_closure_ids($pdo, $loginId, $permCompanyId);
+                $allowed = (($currencyCtx['mode'] ?? '') === 'group')
+                    ? member_linked_member_closure_ids_in_scope($pdo, $loginId, $currencyCtx)
+                    : member_linked_member_closure_ids($pdo, $loginId, $permCompanyId);
                 $allowedMap = [];
                 foreach ($allowed as $x) {
                     $allowedMap[(int) $x] = true;

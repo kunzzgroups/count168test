@@ -99,3 +99,76 @@ if (!function_exists('member_linked_member_closure_ids')) {
         return array_map('intval', array_keys($visited));
     }
 }
+
+/**
+ * Same closure traversal as member_linked_member_closure_ids(), but scope-aware:
+ * empty-group members' account_link rows live on scope_type='group'/scope_id, not
+ * the misleading subsidiary company_id a group member's session may carry.
+ *
+ * @param array{mode: 'group'|'company', group_pk: int, company_id: int} $ctx
+ */
+if (!function_exists('member_linked_member_closure_ids_in_scope')) {
+    function member_linked_member_closure_ids_in_scope(PDO $pdo, int $account_id, array $ctx): array
+    {
+        $account_id = (int) $account_id;
+        if ($account_id <= 0) {
+            return [];
+        }
+        $isGroup = ($ctx['mode'] ?? '') === 'group';
+        $groupPk = (int) ($ctx['group_pk'] ?? 0);
+        $companyId = (int) ($ctx['company_id'] ?? 0);
+        if ($isGroup && $groupPk <= 0) {
+            return [];
+        }
+        if (!$isGroup && $companyId <= 0) {
+            return [];
+        }
+        $hasScopeCols = $isGroup
+            && function_exists('tenant_table_has_scope_columns')
+            && tenant_table_has_scope_columns($pdo, 'account_link');
+        $scopeSql = $hasScopeCols ? 'scope_type = ? AND scope_id = ?' : 'company_id = ?';
+        $scopeBind = $hasScopeCols ? ['group', $groupPk] : [$companyId];
+
+        $visited = [];
+        $queue = [$account_id];
+
+        while (!empty($queue)) {
+            $current_id = (int) array_shift($queue);
+            if (isset($visited[$current_id])) {
+                continue;
+            }
+            $visited[$current_id] = true;
+
+            $stmt = $pdo->prepare("
+                SELECT account_id_2 AS linked_id, link_type, source_account_id
+                FROM account_link WHERE account_id_1 = ? AND {$scopeSql}
+                AND (link_type = 'bidirectional' OR (link_type = 'unidirectional' AND source_account_id = ?))
+                UNION
+                SELECT account_id_1 AS linked_id, link_type, source_account_id
+                FROM account_link WHERE account_id_2 = ? AND {$scopeSql}
+                AND (link_type = 'bidirectional' OR (link_type = 'unidirectional' AND source_account_id = ?))
+            ");
+            $stmt->execute(array_merge(
+                [$current_id],
+                $scopeBind,
+                [$current_id],
+                [$current_id],
+                $scopeBind,
+                [$current_id]
+            ));
+            $linked_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($linked_data as $row) {
+                $linked_id = (int) ($row['linked_id'] ?? 0);
+                if (!isset($visited[$linked_id])) {
+                    $visited[$linked_id] = true;
+                    if (($row['link_type'] ?? '') === 'bidirectional') {
+                        $queue[] = $linked_id;
+                    }
+                }
+            }
+        }
+
+        return array_map('intval', array_keys($visited));
+    }
+}

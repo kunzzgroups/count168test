@@ -227,14 +227,18 @@ function pdfRemarkText(row) {
 }
 
 /** Account currencies for export modal (member report scope). */
-export async function fetchPaymentHistoryExportCurrencies(accountId, companyId, signal) {
+export async function fetchPaymentHistoryExportCurrencies(accountId, companyId, groupId, signal) {
   const id = Number(accountId) || 0;
   const cid = Number(companyId) || 0;
-  if (!id || !cid) return [];
+  const gid = String(groupId || "").trim().toUpperCase();
+  if (!id || (!cid && !gid)) return [];
+  const params = new URLSearchParams({
+    action: "get_account_currencies",
+    account_id: String(id),
+    ...(gid ? { group_id: gid } : { company_id: String(cid) }),
+  });
   const res = await fetch(
-    buildApiUrl(
-      `api/accounts/account_currency_api.php?action=get_account_currencies&account_id=${id}&company_id=${cid}`,
-    ),
+    buildApiUrl(`api/accounts/account_currency_api.php?${params}`),
     { credentials: "include", cache: "no-store", signal },
   );
   const json = await parseJsonResponse(await res.text());
@@ -254,17 +258,18 @@ export async function fetchPaymentHistoryExportCurrencies(accountId, companyId, 
  * (PAYMENT → Payment Settlement, CLAIM → Claim Settlement, RATE → Currency Exchange,
  * CONTRA → Contra Account) even when an agent/admin triggers the export.
  */
-export async function fetchMemberReportHistory({ accountId, companyId, dateFrom, dateTo, currency, signal }) {
+export async function fetchMemberReportHistory({ accountId, companyId, groupId, dateFrom, dateTo, currency, signal }) {
   const id = Number(accountId) || 0;
   const cid = Number(companyId) || 0;
-  if (!id || !cid) {
+  const gid = String(groupId || "").trim().toUpperCase();
+  if (!id || (!cid && !gid)) {
     throw new Error("Account or company is missing");
   }
   const params = new URLSearchParams({
     account_id: String(id),
     date_from: String(dateFrom),
     date_to: String(dateTo),
-    company_id: String(cid),
+    ...(gid ? { group_id: gid } : { company_id: String(cid) }),
     currency: String(currency || "")
       .trim()
       .toUpperCase(),

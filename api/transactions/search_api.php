@@ -1143,11 +1143,17 @@ try {
         $search_dcd_process_filter = dcSqlGroupProcessFilter('p');
     }
 
-    // Member：target_account_id 仅可为当前会话账号在同公司的关联闭包内 id，防止越权查询他人余额
+    // Member：target_account_id 仅可为当前会话账号在同公司/集团账本的关联闭包内 id，防止越权查询他人余额
     if ($isMemberUser && !empty($target_account_ids)) {
         $pivotId = member_session_canonical_account_id();
         if ($pivotId > 0) {
-            $allowed = member_linked_member_closure_ids($pdo, $pivotId, (int) $search_perm_company_id);
+            $allowed = (($search_list_scope['mode'] ?? '') === 'group')
+                ? member_linked_member_closure_ids_in_scope($pdo, $pivotId, [
+                    'mode' => 'group',
+                    'group_pk' => (int) ($search_list_scope['group_scope_id'] ?? 0),
+                    'company_id' => 0,
+                ])
+                : member_linked_member_closure_ids($pdo, $pivotId, (int) $search_perm_company_id);
             $allowedMap = [];
             foreach ($allowed as $cid) {
                 $allowedMap[(int) $cid] = true;

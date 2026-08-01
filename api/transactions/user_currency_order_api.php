@@ -97,6 +97,32 @@ function currency_order_decode_to_company_map(?string $json, ?array &$legacyFlat
 }
 
 /**
+ * True only when the caller explicitly passed group_id/view_group (not the
+ * gc_is_group_login() session fallback) — used to stop the company_id
+ * resolution from falling back to $_SESSION['company_id'], which for group
+ * members can be an unrelated subsidiary anchor rather than the ledger the
+ * account actually lives on.
+ */
+function currency_order_has_explicit_group_param(?array $body = null): bool
+{
+    if (is_array($body)) {
+        if (isset($body['view_group']) && trim((string) $body['view_group']) !== '') {
+            return true;
+        }
+        if (isset($body['group_id']) && trim((string) $body['group_id']) !== '') {
+            return true;
+        }
+    }
+    if (isset($_GET['view_group']) && trim((string) $_GET['view_group']) !== '') {
+        return true;
+    }
+    if (isset($_GET['group_id']) && trim((string) $_GET['group_id']) !== '') {
+        return true;
+    }
+    return false;
+}
+
+/**
  * Resolve view_group for company access checks (GET query or group login).
  */
 function currency_order_view_group(?array $body = null): ?string
@@ -168,7 +194,9 @@ try {
     $method = $_SERVER['REQUEST_METHOD'] ?? '';
 
     if ($method === 'GET') {
-        $companyId = isset($_GET['company_id']) ? (int) $_GET['company_id'] : (int) ($_SESSION['company_id'] ?? 0);
+        $companyId = isset($_GET['company_id'])
+            ? (int) $_GET['company_id']
+            : (currency_order_has_explicit_group_param() ? 0 : (int) ($_SESSION['company_id'] ?? 0));
         $groupCode = currency_order_view_group();
         try {
             $resolved = currency_order_resolve_map_key($pdo, $companyId, $groupCode);
@@ -211,7 +239,7 @@ try {
         }
 
         $companyId = isset($body['company_id']) ? (int) $body['company_id'] : 0;
-        if ($companyId <= 0) {
+        if ($companyId <= 0 && !currency_order_has_explicit_group_param($body)) {
             $companyId = (int) ($_SESSION['company_id'] ?? 0);
         }
         $groupCode = currency_order_view_group($body);

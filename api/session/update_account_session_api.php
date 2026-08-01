@@ -22,6 +22,12 @@ require_once __DIR__ . '/../../includes/session_check.php';
 
 require_once __DIR__ . '/../includes/member_linked_closure.php';
 
+require_once __DIR__ . '/../../includes/group_company_access.php';
+
+require_once __DIR__ . '/../../includes/group_scope_resolve.php';
+
+require_once __DIR__ . '/../../includes/tenant_scope.php';
+
 
 
 header('Content-Type: application/json');
@@ -68,7 +74,37 @@ function hasAccountLinkTable(PDO $pdo) {
 
 
 
-function getAccountByCompany(PDO $pdo, $account_id, $company_id) {
+/**
+ * Empty-group members (no company anchor): the login/switch flow resolves
+ * $_SESSION['company_id'] to an arbitrary linked subsidiary, which does not
+ * hold the account's real (scope_type='group') account_company/account_link
+ * rows. Prefer group-ledger scope whenever this session logged in via a
+ * group code, so lookups match the ledger the account actually lives on.
+ *
+ * @return array{mode: 'group'|'company', group_pk: int, company_id: int}
+ */
+function resolveMemberScopeContext(PDO $pdo): array
+{
+    if (function_exists('gc_is_group_login') && gc_is_group_login()) {
+        $ident = function_exists('gc_session_login_identifier') ? gc_session_login_identifier() : null;
+        $groupPk = $ident ? (int) gc_resolve_group_pk_by_code($pdo, $ident) : 0;
+        if ($groupPk > 0) {
+            return ['mode' => 'group', 'group_pk' => $groupPk, 'company_id' => 0];
+        }
+    }
+
+    return ['mode' => 'company', 'group_pk' => 0, 'company_id' => (int) ($_SESSION['company_id'] ?? 0)];
+}
+
+function getAccountInScope(PDO $pdo, $account_id, array $ctx) {
+    if (($ctx['mode'] ?? '') === 'group') {
+        if (!in_array((int) $account_id, tenant_collect_group_account_ids($pdo, (int) $ctx['group_pk']), true)) {
+            return null;
+        }
+        $stmt = $pdo->prepare("SELECT id, account_id, name, status FROM account WHERE id = ? AND status = 'active'");
+        $stmt->execute([$account_id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
 
     $stmt = $pdo->prepare("
 
@@ -82,7 +118,7 @@ function getAccountByCompany(PDO $pdo, $account_id, $company_id) {
 
     ");
 
-    $stmt->execute([$account_id, $company_id]);
+    $stmt->execute([$account_id, (int) $ctx['company_id']]);
 
     return $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -90,7 +126,11 @@ function getAccountByCompany(PDO $pdo, $account_id, $company_id) {
 
 
 
-function getLinkedAccountIds(PDO $pdo, $start_account_id, $company_id) {
+function getLinkedAccountIdsInScope(PDO $pdo, $start_account_id, array $ctx) {
+
+    $isGroup = ($ctx['mode'] ?? '') === 'group' && tenant_table_has_scope_columns($pdo, 'account_link');
+    $bind = $isGroup ? [(string) 'group', (int) $ctx['group_pk']] : [(int) $ctx['company_id']];
+    $scopeSql = $isGroup ? 'scope_type = ? AND scope_id = ?' : 'company_id = ?';
 
     $linked = [];
 
@@ -110,15 +150,15 @@ function getLinkedAccountIds(PDO $pdo, $start_account_id, $company_id) {
 
         $stmt = $pdo->prepare("
 
-            SELECT account_id_2 AS linked_id FROM account_link WHERE account_id_1 = ? AND company_id = ?
+            SELECT account_id_2 AS linked_id FROM account_link WHERE account_id_1 = ? AND {$scopeSql}
 
             UNION
 
-            SELECT account_id_1 AS linked_id FROM account_link WHERE account_id_2 = ? AND company_id = ?
+            SELECT account_id_1 AS linked_id FROM account_link WHERE account_id_2 = ? AND {$scopeSql}
 
         ");
 
-        $stmt->execute([$current_id, $company_id, $current_id, $company_id]);
+        $stmt->execute(array_merge([$current_id], $bind, [$current_id], $bind));
 
         foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $linked_id) {
 
@@ -198,9 +238,9 @@ try {
 
 
 
-    $current_company_id = $_SESSION['company_id'] ?? null;
+    $scopeCtx = resolveMemberScopeContext($pdo);
 
-    if (!$current_company_id) {
+    if ($scopeCtx['mode'] !== 'group' && !$scopeCtx['company_id']) {
 
         jsonResponse(false, '缺少公司信息', null, 400);
 
@@ -220,7 +260,7 @@ try {
 
 
 
-    $login_row = getAccountByCompany($pdo, $login_account_id, $current_company_id);
+    $login_row = getAccountInScope($pdo, $login_account_id, $scopeCtx);
 
     if (!$login_row) {
 
@@ -244,7 +284,7 @@ try {
 
 
 
-    $target_account = getAccountByCompany($pdo, $requested_account_id, $current_company_id);
+    $target_account = getAccountInScope($pdo, $requested_account_id, $scopeCtx);
 
     if (!$target_account) {
 
@@ -286,7 +326,7 @@ try {
 
 
 
-    $linked_account_ids = getLinkedAccountIds($pdo, $login_account_id, $current_company_id);
+    $linked_account_ids = getLinkedAccountIdsInScope($pdo, $login_account_id, $scopeCtx);
 
     if (!in_array($requested_account_id, $linked_account_ids)) {
 
@@ -316,7 +356,7 @@ try {
 
         ? $login_row
 
-        : getAccountByCompany($pdo, $view_after_id, $current_company_id);
+        : getAccountInScope($pdo, $view_after_id, $scopeCtx);
 
     $view_code = $view_row ? (string) ($view_row['account_id'] ?? '') : '';
 
