@@ -8867,8 +8867,18 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     (c) => {
       setLoadError("");
       const id = parseInt(c.id, 10);
+      // Prefer coalesced/display group_id (partner remap e.g. native JJ → KK).
+      // Native-only here jumps Group pill off the viewer's group and empties sibling companies.
+      const displayGid = normalizeCompanyGroupId(c);
       const nativeGid = normalizeNativeCompanyGroupId(c);
-      const gid = nativeGid ? String(nativeGid).toUpperCase() : null;
+      const sel =
+        selectedGroup && !groupsAllMode ? String(selectedGroup).trim().toUpperCase() : "";
+      let gid = displayGid || nativeGid || null;
+      if (gid) gid = String(gid).trim().toUpperCase();
+      // Stay on the Group pill the user is already viewing when this company is shown under it.
+      if (sel && (displayGid === sel || gid === sel)) {
+        gid = sel;
+      }
       const isActive =
         !groupAllMode &&
         !(mergedSubsetIds && mergedSubsetIds.length > 1) &&
