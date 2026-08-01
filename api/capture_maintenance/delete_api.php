@@ -357,11 +357,19 @@ try {
     // Also publish group channel (tx:g:{id}) so Group ledger clients are not stuck on poll.
     require_once __DIR__ . '/../includes/realtime.php';
     require_once __DIR__ . '/../includes/ledger_realtime.php';
+    $groupScopeId = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+    if ($capture_scope_group && $groupScopeId <= 0) {
+        error_log('capture_maintenance/delete: group mode missing group_scope_id; falling back to company channel');
+    }
     $listScope = [
-        'mode' => $capture_scope_group ? 'group' : 'company',
+        'mode' => ($capture_scope_group && $groupScopeId > 0) ? 'group' : 'company',
         'company_id' => (int) $company_id,
-        'group_scope_id' => (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0),
+        'group_scope_id' => $groupScopeId,
     ];
+    if (realtime_channels_from_scope($listScope) === []) {
+        error_log('capture_maintenance/delete: empty realtime channels company_id=' . (int) $company_id
+            . ' group_scope_id=' . $groupScopeId);
+    }
     realtime_publish_scope($listScope, 'maintenance', 'capture_delete');
     realtime_publish_scope($listScope, 'datacapture', 'capture_delete');
     tx_ledger_realtime_publish_scope($listScope, 'capture_delete', [

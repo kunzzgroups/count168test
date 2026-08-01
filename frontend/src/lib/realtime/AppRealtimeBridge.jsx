@@ -104,6 +104,7 @@ export default function AppRealtimeBridge() {
   useEffect(() => {
     return onRealtimeInvalidate("*", (detail) => {
       const domain = String(detail.domain || "");
+      const source = String(detail.source || "");
 
       if (domain === REALTIME_DOMAINS.LEDGER || detail.type === "ledger_changed") {
         clearAllAutoRenewListCache();
@@ -145,6 +146,13 @@ export default function AppRealtimeBridge() {
         void queryClient.invalidateQueries({
           predicate: (q) => q.queryKey?.[0] === "summary",
         });
+        // Capture writes also change TX balances — belt if ledger publish is missed.
+        if (source === "capture_delete" || source === "capture_update") {
+          clearAllAutoRenewListCache();
+          notifyTransactionListInvalidated(`realtime_${source}`);
+          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.searchRoot() });
+          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.contraInboxRoot() });
+        }
         return;
       }
 
@@ -158,8 +166,17 @@ export default function AppRealtimeBridge() {
         return;
       }
 
-      // Maintenance / announcements / domain / app:
-      // pages listen via useRealtimeDomain or full refresh hooks.
+      if (domain === REALTIME_DOMAINS.MAINTENANCE) {
+        if (source === "capture_delete" || source === "capture_update") {
+          clearAllAutoRenewListCache();
+          notifyTransactionListInvalidated(`realtime_${source}`);
+          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.searchRoot() });
+          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.contraInboxRoot() });
+        }
+        return;
+      }
+
+      // Announcements / domain / app: pages listen via useRealtimeDomain.
     });
   }, [queryClient]);
 
