@@ -112,8 +112,15 @@ try {
         updateProcessedAmounts($pdo, $records, $total_amount);
         $pdo->commit();
         require_once __DIR__ . '/../includes/realtime.php';
-        realtime_publish_companies([(int) $company_id], 'maintenance', 'capture_update');
-        realtime_publish_companies([(int) $company_id], 'datacapture', 'capture_update');
+        require_once __DIR__ . '/../includes/ledger_realtime.php';
+        $listScope = [
+            'mode' => 'company',
+            'company_id' => (int) $company_id,
+            'group_scope_id' => 0,
+        ];
+        realtime_publish_scope($listScope, 'maintenance', 'capture_update');
+        realtime_publish_scope($listScope, 'datacapture', 'capture_update');
+        tx_ledger_realtime_publish_scope($listScope, 'capture_update');
         jsonResponse(true, '数据更新成功', null);
     } catch (Exception $e) {
         $pdo->rollBack();

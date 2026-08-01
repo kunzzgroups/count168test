@@ -353,9 +353,20 @@ try {
 
     $pdo->commit();
 
+    // Align with payment_maintenance: TX Payment only refreshes on ledger_changed.
+    // Also publish group channel (tx:g:{id}) so Group ledger clients are not stuck on poll.
     require_once __DIR__ . '/../includes/realtime.php';
-    realtime_publish_companies([(int) $company_id], 'maintenance', 'capture_delete');
-    realtime_publish_companies([(int) $company_id], 'datacapture', 'capture_delete');
+    require_once __DIR__ . '/../includes/ledger_realtime.php';
+    $listScope = [
+        'mode' => $capture_scope_group ? 'group' : 'company',
+        'company_id' => (int) $company_id,
+        'group_scope_id' => (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0),
+    ];
+    realtime_publish_scope($listScope, 'maintenance', 'capture_delete');
+    realtime_publish_scope($listScope, 'datacapture', 'capture_delete');
+    tx_ledger_realtime_publish_scope($listScope, 'capture_delete', [
+        'deleted' => (int) $totalDeleted,
+    ]);
 
     jsonResponse(true, "已删除 {$totalDeleted} 条明细记录", ['deleted' => $totalDeleted]);
 } catch (PDOException $e) {

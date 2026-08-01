@@ -50,6 +50,7 @@ import {
 import { companyPermsAllowDataCaptureMaintenance } from "../shared/maintenanceCompanyApi.js";
 import { useRealtimeDomain } from "../../../lib/realtime/useRealtimeDomain.js";
 import { REALTIME_DOMAINS } from "../../../lib/realtime/realtimeEvents.js";
+import { notifyTransactionListInvalidated } from "../../transaction/lib/transactionPaymentLogic.js";
 import {
   captureMaintenanceScopeCacheCompanyKey,
   captureMaintenanceScopeCacheKey,
@@ -657,6 +658,7 @@ export default function CaptureMaintenancePage() {
         scope: captureScope,
       });
 
+      notifyTransactionListInvalidated("capture_maintenance_delete");
       notify(t("deleteSuccessful"), "success");
       setConfirmDelete(false);
       setSelectedIds([]);
