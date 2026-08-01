@@ -175,6 +175,7 @@ function DataCapturePageContent() {
   const prevGroupOnlyGroupRef = useRef(null);
   const prevProcessCompanyRef = useRef(undefined);
   const prevScopeKeyRef = useRef(null);
+  const prevGroupOnlyTableRef = useRef(null);
   /** Tracks anchor session sync per group (sidebar flags follow PHP session company). */
   const groupAnchorSessionRef = useRef({ group: null, companyId: null });
 
@@ -368,6 +369,7 @@ function DataCapturePageContent() {
     captureType,
     citibetMode,
     formatGridReady,
+    applyCaptureType,
     handleCaptureTypeChange,
   } = useDataCaptureCaptureType();
 
@@ -800,10 +802,23 @@ function DataCapturePageContent() {
       callDataCaptureRuntime("clearCaptureTable");
       callDataCaptureRuntime("reactFormReset");
       clearSelectedDescriptions();
+      // Company / group scope change: Format (and other types) must not leak —
+      // Group Mode has no Format selector; fresh company session defaults to 1.Text.
+      applyCaptureType("1.Text");
       void callDataCaptureRuntime("refreshSubmittedProcesses");
     }
     prevScopeKeyRef.current = scopeKey || null;
-  }, [captureScope, clearSelectedDescriptions]);
+  }, [captureScope, clearSelectedDescriptions, applyCaptureType]);
+
+  // Entering Group Mode hides the capture-type selector; force 1.Text so Format
+  // paste chrome / handlers cannot remain active from the previous company session.
+  useEffect(() => {
+    const prev = prevGroupOnlyTableRef.current;
+    prevGroupOnlyTableRef.current = groupOnlyTable;
+    if (!groupOnlyTable || prev === true) return;
+    if (getDataCaptureState().isRestoring || shouldRestoreFromUrl()) return;
+    applyCaptureType("1.Text");
+  }, [groupOnlyTable, applyCaptureType]);
 
   const switchCompanySessionAndNavigate = useCallback(async (nextCompanyId) => {
     const id = Number(nextCompanyId);
