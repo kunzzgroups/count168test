@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 
 import {
   companiesForCompanyPicker,
-  companiesNativeInGroupList,
   DASHBOARD_GROUP_FILTER_OPT_OUT_KEY,
   dedupeOwnerCompaniesByCode,
   excludeGroupLabelsFromCompanyPicker,
@@ -126,10 +125,10 @@ export function useGcFilterWithAllModes({
       return filterCompaniesWithDisplayId(companies).filter((c) => !isVirtualGroupLinkCompanyRow(c));
     }
     if (effectiveGroupForCompanies) {
-      return companiesNativeInGroupList(companies, effectiveGroupForCompanies);
+      return companiesForCompanyPicker(companies, effectiveGroupForCompanies, groupIds);
     }
     return filterCompaniesWithDisplayId(companies).filter((c) => !isVirtualGroupLinkCompanyRow(c));
-  }, [companies, effectiveGroupForCompanies, groupsAllMode]);
+  }, [companies, effectiveGroupForCompanies, groupsAllMode, groupIds]);
 
   const mergeCompanyIds = useMemo(() => {
     return resolveMergeCompanyList()

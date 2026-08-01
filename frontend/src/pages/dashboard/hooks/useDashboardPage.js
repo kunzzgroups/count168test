@@ -91,7 +91,7 @@ import {
 import { mapPanelCurrencyRows, sortIds } from "../lib/dashboardEarnings.js";
 import {
   companiesInGroupList,
-  companiesNativeInGroupList,
+  companiesPickerInGroupList,
   companiesForCompanyPicker,
   companyRowIsGroupEntity,
   dedupeOwnerCompaniesByCode,
@@ -2080,7 +2080,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       return apiAccessiblePicker(
         dedupeOwnerCompaniesByCode(
           excludeGroupLabelsFromCompanyPicker(
-            filterCompaniesWithDisplayId(companiesNativeInGroupList(companies, effectiveGroup)),
+            filterCompaniesWithDisplayId(companiesPickerInGroupList(companies, effectiveGroup)),
             groupIds
           ),
           preferredId
@@ -2384,7 +2384,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           companies?.length
         ) {
           const merged = new Set();
-          for (const row of companiesNativeInGroupList(companies, groupKey)) {
+          for (const row of companiesForCompanyPicker(companies, groupKey, groupIds)) {
             const rowCid = parseInt(row.id, 10);
             if (!Number.isFinite(rowCid) || rowCid <= 0) continue;
             const cc = currenciesByCompanyRef.current.get(rowCid);

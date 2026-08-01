@@ -1590,13 +1590,17 @@ export function pickDefaultCompanyForGroup(companies, groupId, options = {}) {
     preferredCompanyId = null,
     preferredCompanyCode = null,
     nativeOnly = false,
+    /** Native subsidiaries + external partner remaps (company pills); excludes virtual link rows. */
+    forPicker = false,
     groupEntityOnly = false,
   } = options;
   const list = groupEntityOnly
     ? companiesGroupEntityList(companies, groupId)
-    : nativeOnly
-      ? companiesNativeInGroupList(companies, groupId)
-      : companiesInGroupList(companies, groupId);
+    : forPicker
+      ? companiesPickerInGroupList(companies, groupId)
+      : nativeOnly
+        ? companiesNativeInGroupList(companies, groupId)
+        : companiesInGroupList(companies, groupId);
   if (!list.length) return null;
 
   const loginCode =
@@ -1681,6 +1685,52 @@ export function companiesNativeInGroupList(companies, gid) {
   });
 }
 
+/** Owner portfolio row linked via company_ownership (is_external=1), not a group_ownership virtual duplicate. */
+export function companyRowIsExternalPartnerMapped(companyRow) {
+  if (!companyRow || isVirtualGroupLinkCompanyRow(companyRow)) return false;
+  const v = companyRow.is_external ?? companyRow.isExternal;
+  return v === true || v === 1 || v === "1";
+}
+
+/**
+ * External partner companies remapped onto display group T
+ * (`COALESCE(partner_group_id, native)` → group_id=T, native_group_id may still be S).
+ * Virtual group-link rows stay excluded (those use link_source_group).
+ */
+export function companiesExternalRemappedInGroupList(companies, gid) {
+  const g = String(gid || "").trim().toUpperCase();
+  if (!g) return [];
+  return filterCompaniesWithDisplayId(companies).filter((c) => {
+    if (!companyRowIsExternalPartnerMapped(c)) return false;
+    if (normalizeCompanyGroupId(c) !== g) return false;
+    // Already counted as native under this group — avoid duplicate work for callers that merge.
+    return normalizeNativeCompanyGroupId(c) !== g;
+  });
+}
+
+/**
+ * Company-pill / Group-All merge list for a group tab: native subsidiaries + external partner remaps.
+ * Still excludes virtual group_ownership link duplicates.
+ */
+export function companiesPickerInGroupList(companies, gid) {
+  if (!gid) {
+    return companiesNativeInGroupList(companies, null);
+  }
+  const g = String(gid).trim().toUpperCase();
+  const seen = new Set();
+  const merged = [];
+  for (const row of [
+    ...companiesNativeInGroupList(companies, g),
+    ...companiesExternalRemappedInGroupList(companies, g),
+  ]) {
+    const id = Number(row?.id);
+    if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    merged.push(row);
+  }
+  return merged;
+}
+
 /**
  * Group entity only (e.g. AP itself) — not subsidiaries such as C168 under group_id AP.
  * Matches company_id === group code, or GROUPONLY placeholder (empty company_id, group_id set).
@@ -1737,8 +1787,8 @@ export function excludeGroupLabelsFromCompanyPicker(companies, groupIds = null) 
 /** Companies shown in the Company row when a GroupID is selected (Dashboard-aligned). */
 export function companiesForCompanyPicker(companies, selectedGroup, groupIds = null) {
   const list = selectedGroup
-    ? companiesNativeInGroupList(companies, selectedGroup)
-    : companiesNativeInGroupList(companies, null);
+    ? companiesPickerInGroupList(companies, selectedGroup)
+    : companiesPickerInGroupList(companies, null);
   return excludeGroupLabelsFromCompanyPicker(list, groupIds);
 }
 
@@ -1758,9 +1808,9 @@ export function pickDefaultSubsidiaryForGroup(companies, groupId, options = {}) 
   const g = String(groupId || "").trim().toUpperCase();
   if (!g) return null;
   const gids = sortedUniqueGroupIds(companies);
-  const pick = pickDefaultCompanyForGroup(companies, g, { ...options, nativeOnly: true });
+  const pick = pickDefaultCompanyForGroup(companies, g, { ...options, forPicker: true });
   if (pick && isSubsidiaryCompanyRow(pick, gids)) return pick;
-  const list = excludeGroupLabelsFromCompanyPicker(companiesNativeInGroupList(companies, g), gids);
+  const list = companiesForCompanyPicker(companies, g, gids);
   return list[0] ?? null;
 }
 
@@ -1881,7 +1931,7 @@ export function allGroupedCompaniesForPicker(companies, groupIds = null) {
   const seen = new Set();
   const merged = [];
   for (const gid of gids) {
-    for (const row of companiesNativeInGroupList(companies, gid)) {
+    for (const row of companiesPickerInGroupList(companies, gid)) {
       const id = Number(row?.id);
       if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
       seen.add(id);

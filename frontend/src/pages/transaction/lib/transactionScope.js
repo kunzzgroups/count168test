@@ -1,5 +1,5 @@
 import {
-  companiesNativeInGroupList,
+  companiesForCompanyPicker,
   companyRowIsGroupEntity,
   filterCompaniesWithDisplayId,
   isDashboardGroupOnlyMode,
@@ -54,7 +54,7 @@ export function resolveTransactionScope(filterSnapshot) {
     if (groupAllMode || (groupsAllMode && groupAllMode)) {
       const list = groupsAllMode
         ? filterCompaniesWithDisplayId(snapCompanies).filter((c) => !isVirtualGroupLinkCompanyRow(c))
-        : companiesNativeInGroupList(snapCompanies, selectedGroup);
+        : companiesForCompanyPicker(snapCompanies, selectedGroup);
       return list.map((c) => Number(c.id)).filter((id) => Number.isFinite(id) && id > 0);
     }
     if (groupsAllMode && !groupAllMode) {
