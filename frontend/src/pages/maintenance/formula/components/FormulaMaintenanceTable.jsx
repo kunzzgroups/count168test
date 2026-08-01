@@ -216,7 +216,6 @@ export default function FormulaMaintenanceTable({
             <MaintenanceEllipsisText
               value={toUpperDisplay(row.formula)}
               className="formula-display formula-display--full"
-              alwaysTooltip
             />
           )}
         </td>

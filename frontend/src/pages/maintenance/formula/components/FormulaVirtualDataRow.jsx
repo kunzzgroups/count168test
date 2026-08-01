@@ -131,7 +131,6 @@ const FormulaVirtualDataRow = memo(function FormulaVirtualDataRow({
           <MaintenanceEllipsisText
             value={row._formula ?? toUpperDisplay(row.formula)}
             className="formula-display formula-display--full"
-            alwaysTooltip
           />
         )}
       </div>
