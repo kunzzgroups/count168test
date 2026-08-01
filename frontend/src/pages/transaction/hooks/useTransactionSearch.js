@@ -1114,6 +1114,7 @@ export function useTransactionSearch({
             typeSearch: true,
             typeAccountIds,
             typeSearchFormType: TYPE_SEARCH_LIST_FORM_TYPE,
+            skipCache: Boolean(forceRefresh),
           });
           if (!result?.success || !result?.data) {
             pushToast(result?.message || result?.error || m.searchFailed, "error");
