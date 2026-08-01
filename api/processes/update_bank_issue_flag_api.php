@@ -94,6 +94,9 @@ try {
         }
     }
 
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([(int) $companyId], 'processes', 'update_bank_issue_flag');
+
     api_success(['issue_flag' => $valueToSave], '状态选项更新成功');
 } catch (Throwable $e) {
     api_error('Failed to update status option: ' . $e->getMessage(), 500);

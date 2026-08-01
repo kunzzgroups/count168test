@@ -521,6 +521,9 @@ try {
         bmp_pruneStaleAccountingResendDailyGuardsForProcess($pdo, $companyId, (int) $pid);
     }
 
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([(int) $companyId], 'processes', 'dismiss_accounting_due');
+
     jsonResponse(true, $inserted === 1 ? '已从待入账列表移除 1 条' : '已从待入账列表移除 ' . $inserted . ' 条', ['dismissed' => $inserted]);
 } catch (Exception $e) {
     http_response_code(400);

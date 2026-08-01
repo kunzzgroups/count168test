@@ -38,6 +38,9 @@ try {
         }
     }
 
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([(int) $companyId], 'processes', 'update_bank_remark');
+
     api_success(['remark' => $remark], 'Remark updated successfully');
 } catch (Throwable $e) {
     api_error($e->getMessage(), 400);

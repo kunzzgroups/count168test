@@ -4371,6 +4371,14 @@ try {
                     $stmt->execute([$permissions_json, strtoupper($company_id)]);
                 }
 
+                require_once __DIR__ . '/../includes/realtime.php';
+                $permPkStmt = $pdo->prepare('SELECT id FROM company WHERE UPPER(TRIM(company_id)) = ? LIMIT 1');
+                $permPkStmt->execute([strtoupper(trim((string) $company_id))]);
+                $permCompanyPk = (int) ($permPkStmt->fetchColumn() ?: 0);
+                if ($permCompanyPk > 0) {
+                    realtime_publish_companies([$permCompanyPk], 'domain', 'update_company_permissions');
+                }
+
                 echo json_encode([
                     'success' => true,
                     'message' => 'Permissions updated successfully',

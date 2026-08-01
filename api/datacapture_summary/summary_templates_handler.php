@@ -133,6 +133,20 @@ function dcSummaryApiHandleSaveTemplate(): void
                 ];
                 syncFormulaToMultiUseProcesses($pdo, $processIdForSync, $syncTemplateData, $company_id);
             }
+
+            require_once __DIR__ . '/../includes/realtime.php';
+            if (!empty($capture_scope_group)) {
+                $listScope = [
+                    'mode' => 'group',
+                    'company_id' => (int) $company_id,
+                    'group_scope_id' => (int) ($capture_scope_ctx['group_scope_id'] ?? $capture_scope_ctx['scope_id'] ?? 0),
+                ];
+                realtime_publish_scope($listScope, 'datacapture', 'save_template');
+                realtime_publish_scope($listScope, 'maintenance', 'formula_update');
+            } elseif ((int) $company_id > 0) {
+                realtime_publish_companies([(int) $company_id], 'datacapture', 'save_template');
+                realtime_publish_companies([(int) $company_id], 'maintenance', 'formula_update');
+            }
         
             echo json_encode([
                 'success' => true,
@@ -305,6 +319,19 @@ function dcSummaryApiHandleDeleteTemplate(): void
                     error_log("Deleted template by key+variant: product_type=$productType, template_key=$templateKey, formula_variant=$formulaVariant");
                 } else {
                     error_log("Deleted template by key: product_type=$productType, template_key=$templateKey");
+                }
+                require_once __DIR__ . '/../includes/realtime.php';
+                if (!empty($capture_scope_group)) {
+                    $listScope = [
+                        'mode' => 'group',
+                        'company_id' => (int) $companyId,
+                        'group_scope_id' => (int) ($capture_scope_ctx['group_scope_id'] ?? $capture_scope_ctx['scope_id'] ?? 0),
+                    ];
+                    realtime_publish_scope($listScope, 'datacapture', 'delete_template');
+                    realtime_publish_scope($listScope, 'maintenance', 'formula_delete');
+                } elseif ((int) $companyId > 0) {
+                    realtime_publish_companies([(int) $companyId], 'datacapture', 'delete_template');
+                    realtime_publish_companies([(int) $companyId], 'maintenance', 'formula_delete');
                 }
                 echo json_encode([
                     'success' => true,

@@ -2997,6 +2997,15 @@ try {
                 
                 // 提交事务
                 $pdo->commit();
+
+                require_once __DIR__ . '/../includes/realtime.php';
+                $publishIds = array_values(array_unique(array_filter(array_map('intval', $scopeCompanyIds))));
+                if ($scopeCompanyId > 0 && !in_array($scopeCompanyId, $publishIds, true)) {
+                    $publishIds[] = $scopeCompanyId;
+                }
+                if ($publishIds !== []) {
+                    realtime_publish_companies($publishIds, 'users', 'delete');
+                }
                 
                 // 构建成功消息
                 $message = 'User deleted successfully';
