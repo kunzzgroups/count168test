@@ -1981,6 +1981,7 @@ function dashboardBuildGroupScopedSummary(
                 $accountIds,
                 [$groupScopeId, $dateFrom, $dateTo],
                 $accountIds,
+                $accountIds,
                 $currencyFilterParams
             );
             $periodStmt->execute($periodParams);
