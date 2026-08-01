@@ -899,6 +899,16 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     pointer-events: none;
 }
 
+/* Have a previous complete paint: hold it visible until next pack (no skeleton flash). */
+.dashboard-data-surface.is-scope-hold {
+    pointer-events: none;
+}
+
+.dashboard-data-surface.is-scope-hold .dashboard-data-surface__live {
+    opacity: 1;
+    transition: none;
+}
+
 .dashboard-scope-skeleton {
     position: absolute;
     inset: 0;

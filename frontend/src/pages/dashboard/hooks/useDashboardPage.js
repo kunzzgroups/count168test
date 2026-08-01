@@ -8080,6 +8080,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
   /** True while live selection moved but painted KPI/chart/pie still show the previous scope. */
   const scopeDataPending =
     Boolean(dashboardScopeKey) && displayScopeKey !== dashboardScopeKey;
+  /**
+   * Scope swap with a previous complete paint: keep that frame visible (no skeleton flash)
+   * until the next KPI+chart+pie pack is ready, then swap once.
+   * Cold start (no displayScopeKey yet) still uses the skeleton overlay.
+   */
+  const holdPreviousScopePaint = scopeDataPending && Boolean(displayScopeKey);
 
   /**
    * Freeze summary inputs + FX to the painted scope during pending.
@@ -9490,6 +9496,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     loading: kpiLoading,
     dashboardViewReady,
     scopeDataPending,
+    holdPreviousScopePaint,
     dashboardData,
     kpi,
     kpiCompareLabel,
