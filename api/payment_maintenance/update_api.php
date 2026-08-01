@@ -111,6 +111,9 @@ try {
 
     updateTransaction($pdo, $transaction_id, $amount, $description, $remark);
 
+    require_once __DIR__ . '/../includes/payment_delete_shared.php';
+    payment_delete_clear_tx_search_cache();
+
     require_once __DIR__ . '/../includes/realtime.php';
     require_once __DIR__ . '/../includes/ledger_realtime.php';
     realtime_publish_scope($listScope, 'maintenance', 'payment_update');

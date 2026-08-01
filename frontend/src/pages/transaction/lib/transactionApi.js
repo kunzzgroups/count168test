@@ -311,6 +311,7 @@ export async function searchTransactions({
   typeAccountIds,
   typeSearchFormType,
   signal,
+  skipCache = false,
 } = {}) {
   const params = new URLSearchParams();
   appendTransactionScope(params, {
@@ -325,6 +326,9 @@ export async function searchTransactions({
   params.set("show_inactive", showInactive ? "1" : "0");
   params.set("show_capture_only", showCaptureOnly ? "1" : "0");
   params.set("hide_zero_balance", hideZeroBalance ? "1" : "0");
+  if (skipCache) {
+    params.set("skip_cache", "1");
+  }
   if (typeSearch) {
     params.set("type_search", "1");
     const ids = Array.isArray(typeAccountIds)

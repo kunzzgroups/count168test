@@ -247,6 +247,9 @@ try {
 
     $pdo->commit();
 
+    require_once __DIR__ . '/../includes/payment_delete_shared.php';
+    payment_delete_clear_tx_search_cache();
+
     require_once __DIR__ . '/../includes/realtime.php';
     require_once __DIR__ . '/../includes/ledger_realtime.php';
     $groupScopeId = 0;

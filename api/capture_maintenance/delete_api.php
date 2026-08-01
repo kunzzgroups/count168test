@@ -353,6 +353,9 @@ try {
 
     $pdo->commit();
 
+    require_once __DIR__ . '/../includes/payment_delete_shared.php';
+    payment_delete_clear_tx_search_cache();
+
     // Align with payment_maintenance: TX Payment only refreshes on ledger_changed.
     // Also publish group channel (tx:g:{id}) so Group ledger clients are not stuck on poll.
     require_once __DIR__ . '/../includes/realtime.php';
