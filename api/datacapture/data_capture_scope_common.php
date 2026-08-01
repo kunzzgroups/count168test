@@ -1348,7 +1348,7 @@ function dcAssertUserCanAccessCompany(PDO $pdo, int $companyId, ?string $viewGro
     $userType = strtolower((string) ($_SESSION['user_type'] ?? ''));
 
     if ($role === 'owner' || $userType === 'owner') {
-        $ownerId = (int) ($_SESSION['owner_id'] ?? $userId);
+        $ownerId = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $userId);
         if (gc_owner_has_company_access($pdo, $companyId, $ownerId)) {
             return;
         }

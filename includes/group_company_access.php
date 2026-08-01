@@ -660,10 +660,16 @@ function gc_assert_api_company_access(PDO $pdo, int $companyId, ?string $viewGro
     $userType = strtolower((string) ($_SESSION['user_type'] ?? ''));
 
     if ($role === 'owner' || $userType === 'owner') {
-        $ownerId = (int) ($_SESSION['owner_id'] ?? $userId);
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM company WHERE id = ? AND owner_id = ?');
-        $stmt->execute([$companyId, $ownerId]);
-        if ((int) $stmt->fetchColumn() > 0) {
+        // real_owner_id survives external-company session swap; includes partnership rows.
+        $ownerId = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $userId);
+        if (gc_owner_has_company_access($pdo, $companyId, $ownerId)) {
+            return;
+        }
+        if (
+            $viewGroup !== null
+            && trim((string) $viewGroup) !== ''
+            && gc_session_can_access_subsidiary_under_view_group($pdo, $companyId, $viewGroup)
+        ) {
             return;
         }
         throw new RuntimeException('无权限访问该公司');
