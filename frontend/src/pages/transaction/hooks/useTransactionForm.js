@@ -20,9 +20,7 @@ import {
   toNumberLike,
   collectSubmitFocusAccountIds,
   computeRateMiddlemanProfit,
-  positivePlatformFeeDeduction,
-  parseMiddlemanRateSigned,
-  isRateMulAdjustedDivisorValid,
+  parseMiddlemanRateInput,
 } from "../lib/transactionSubmitHelpers.js";
 import { submitTransaction, transactionQueryKeys } from "../lib/transactionApi.js";
 import { MoneyDecimal } from "../../../utils/money/moneyDecimal.js";
@@ -258,16 +256,6 @@ export function useTransactionForm({
 
     const clean = (v) => String(v ?? "").replace(/,/g, "").trim();
 
-    let inputAmtDec = MoneyDecimal.toDecimal("0", 0);
-    try {
-      const inputStr = clean(rateMiddlemanInputAmount);
-      if (inputStr) {
-        inputAmtDec = MoneyDecimal.toDecimal(inputStr, 0);
-      }
-    } catch {
-      // ignore
-    }
-
     const parsed = parseRateExpression(rateExchangeRateRaw);
     let rateDec = MoneyDecimal.toDecimal("0", 0);
     if (parsed.valid) {
@@ -278,7 +266,7 @@ export function useTransactionForm({
       }
     }
 
-    // MM profit: PT>0 → Fee+PT；PT<0 → Fee−|PT|；负 Rate-Mul 仅除法 Rate 生效
+    // MM profit: Fee − PT（PT-Fee 恒为正数、恒代表减法）；负 Rate-Mul 仅除法 Rate 生效
     const finalFeeDec = computeRateMiddlemanProfit({
       fromAmount: rateCurrencyFromAmount,
       middlemanRate: rateMiddlemanRate,
@@ -297,8 +285,7 @@ export function useTransactionForm({
     }
     setRateMiddlemanAmount(middleStr);
 
-    // From preview: gross − (Rate-Mul + Service Fee) − positive PT only.
-    // Negative PT: keep form amount (e.g. 300); History Fee +|PT| may make Balance 301.50.
+    // From preview: gross − (Rate-Mul + Service Fee). PT-Fee 不动 From/表单金额，只落 PLATFORM_FEE 行。
     // Calc uses full precision; formatRateAmount is display-only half-up 2.
     const toAmountDeductionDec = computeRateMiddlemanProfit({
       fromAmount: rateCurrencyFromAmount,
@@ -307,7 +294,6 @@ export function useTransactionForm({
       platformFeeAmount: "0",
       exchangeRateRaw: rateExchangeRateRaw,
     });
-    const positivePtDec = positivePlatformFeeDeduction(rateMiddlemanPlatformFee);
 
     try {
       const fromDec = MoneyDecimal.toDecimal(clean(rateCurrencyFromAmount) || "0", 0);
@@ -324,21 +310,12 @@ export function useTransactionForm({
 
       const baseGross = fromDec.times(rateDec);
 
-      let finalGrossForBackend = baseGross;
-      if (inputAmtDec.lt(0)) {
-        finalGrossForBackend = baseGross.plus(inputAmtDec);
-      }
-
-      const grossDisplayStr = formatRateAmount(finalGrossForBackend.toString());
+      const grossDisplayStr = formatRateAmount(baseGross.toString());
       setRateToAmountGrossStr(grossDisplayStr);
 
-      let displayVal = finalGrossForBackend;
+      let displayVal = baseGross;
       if (!toAmountDeductionDec.isZero()) {
         displayVal = displayVal.minus(toAmountDeductionDec);
-      }
-      // Positive PT only: 300 − 1.5 = 298.50. Negative PT does not change form amount.
-      if (positivePtDec.gt(0)) {
-        displayVal = displayVal.minus(positivePtDec);
       }
 
       setRateCurrencyToAmount(formatRateAmount(displayVal.toString()));
@@ -441,11 +418,7 @@ export function useTransactionForm({
         pushToast(m.pleaseEnterMiddleManRateOrFee, "error");
         return;
       }
-      if (hasMiddleRate && !parseMiddlemanRateSigned(mmrNorm).valid) {
-        pushToast(m.pleaseEnterMiddleManRate, "error");
-        return;
-      }
-      if (hasMiddleRate && !isRateMulAdjustedDivisorValid(mmrNorm, rateExchangeRateRaw)) {
+      if (hasMiddleRate && !parseMiddlemanRateInput(mmrNorm).valid) {
         pushToast(m.pleaseEnterMiddleManRate, "error");
         return;
       }

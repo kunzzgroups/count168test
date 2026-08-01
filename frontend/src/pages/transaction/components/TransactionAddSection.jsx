@@ -400,12 +400,16 @@ export default function TransactionAddSection({
               <input
                 type="number"
                 step="0.01"
+                min="0"
                 id="rate_middleman_input_amount"
                 className="transaction-input"
                 placeholder={m.fee}
                 disabled={mutationsBlocked}
                 value={rateMiddlemanInputAmount}
-                onChange={(e) => setRateMiddlemanInputAmount(e.target.value)}
+                onChange={(e) => setRateMiddlemanInputAmount(e.target.value.replace(/-/g, ""))}
+                onKeyDown={(e) => {
+                  if (e.key === "-" || e.key === "Subtract") e.preventDefault();
+                }}
                 aria-label={m.fee}
               />
               <input
@@ -416,7 +420,10 @@ export default function TransactionAddSection({
                 placeholder={m.platformFee}
                 disabled={mutationsBlocked}
                 value={rateMiddlemanPlatformFee}
-                onChange={(e) => setRateMiddlemanPlatformFee(e.target.value)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/-/g, "");
+                  setRateMiddlemanPlatformFee(digits ? `-${digits}` : "");
+                }}
                 aria-label={m.platformFee}
               />
               <input

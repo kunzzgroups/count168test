@@ -557,12 +557,12 @@ try {
             $rate_middleman_account_id = !empty($_POST['rate_middleman_account_id']) ? (int)$_POST['rate_middleman_account_id'] : null;
             if (
                 $rate_platform_fee_amount !== null
-                && money_cmp($rate_platform_fee_amount, '0') < 0
+                && money_cmp($rate_platform_fee_amount, '0') > 0
                 && !$rate_middleman_account_id
             ) {
-                throw new Exception('负数 Platform Fee 必须选择 Middle-Man Account');
+                throw new Exception('Platform Fee 必须选择 Middle-Man Account');
             }
-            if ($rate_platform_fee_amount !== null && money_cmp($rate_platform_fee_amount, '0') < 0) {
+            if ($rate_platform_fee_amount !== null && money_cmp($rate_platform_fee_amount, '0') > 0) {
                 $mm = tx_fetch_account_row($pdo, (int) $rate_middleman_account_id, $listScope);
                 if (!$mm) {
                     throw new Exception('Rate Middleman Account 不存在或不属于当前范围');
@@ -935,12 +935,11 @@ try {
                     }
 
                     // Middle-man：第二币种 Win/Loss（如果存在）
-                    // 正 PT：Middle = Fee+PT（前端已算好 middleman_amount）；不写 RATE_PLATFORM_FEE。
-                    // 负 PT：
+                    // PT-Fee > 0：Middle = Fee−PT（前端已算好 middleman_amount）。
                     //   - 桌面 rate_platform_fee_from_credit=1 → From 上写正数 RATE_PLATFORM_FEE，无 Middle Remark
                     //   - Mobile/旧路径 → Middle Remark（[[PFEE_REMARK]]）或 fallback 负数 Fee 挂 Middle
-                    $platformFeeIsNegative =
-                        $rate_platform_fee_amount !== null && money_cmp($rate_platform_fee_amount, '0') < 0;
+                    $platformFeeActive =
+                        $rate_platform_fee_amount !== null && money_cmp($rate_platform_fee_amount, '0') > 0;
                     $platformFeeFromCredit = !empty($_POST['rate_platform_fee_from_credit'])
                         && (
                             $_POST['rate_platform_fee_from_credit'] === '1'
@@ -956,8 +955,8 @@ try {
                         $middleAmount = submitStoreAmount($rate_middleman_amount, SUBMIT_STORE_SCALE_RATE);
                         $middleCurrencyId = (int)$rate_middleman_currency_id ?: $myrCurrencyId;
                         $middleEntryDescription = $rate_middleman_description;
-                        // Mobile/legacy remark path only（桌面负 PT 已改 From Fee 行）
-                        if ($platformFeeIsNegative && !$platformFeeFromCredit) {
+                        // Mobile/legacy remark path only（桌面 PT-Fee 已改 From Fee 行）
+                        if ($platformFeeActive && !$platformFeeFromCredit) {
                             $middleEntryDescription = rtrim((string) $rate_middleman_description)
                                 . "\n[[PFEE_REMARK]]"
                                 . $platformFeeRemarkText;
@@ -975,8 +974,8 @@ try {
                         $middlemanRowInserted = true;
                     }
 
-                    // 桌面负 PT：Select From 上独立 Fee 行，金额为正数 +abs(PT)
-                    if ($platformFeeIsNegative && $platformFeeFromCredit && (int) $rate_transfer_to_account_id > 0) {
+                    // 桌面 PT-Fee > 0：Select From 上独立 Fee 行，金额为正数 +PT
+                    if ($platformFeeActive && $platformFeeFromCredit && (int) $rate_transfer_to_account_id > 0) {
                         $platformFeeLedgerAmount = money_abs($rate_platform_fee_amount);
                         $entryStmt->execute([
                             $main_transaction_id,
@@ -987,7 +986,7 @@ try {
                             'RATE_PLATFORM_FEE',
                             $platformFeeRemarkText
                         ]);
-                    } elseif ($platformFeeIsNegative && !$platformFeeFromCredit && !$middlemanRowInserted && $rate_middleman_account_id) {
+                    } elseif ($platformFeeActive && !$platformFeeFromCredit && !$middlemanRowInserted && $rate_middleman_account_id) {
                         // Mobile/legacy fallback：无 Middle 行时仍写负数 Fee 挂 Middle-Man
                         $platformFeeLedgerAmount = money_mul(
                             money_abs($rate_platform_fee_amount),
