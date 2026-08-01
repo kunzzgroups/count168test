@@ -1,7 +1,9 @@
 <?php
 /**
- * Shared group-only Data Capture table drafts (SALARY / COMMISSION / BONUS — not PROFIT).
- * Stored in data_capture_draft with scope_type = 'group' (group_id + process_key + currency_id).
+ * Shared payroll Data Capture table drafts (SALARY / COMMISSION / BONUS — not PROFIT).
+ * Stored in data_capture_draft: scope_type = 'group' (group_id + process_key + currency_id)
+ * for AP/IG group ledger, or scope_type = 'company' (company_id + process_key + currency_id)
+ * for the C168 / bank-only company payroll channel.
  */
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/permissions.php';
@@ -186,9 +188,12 @@ $currencyId = dcNormalizeGroupCaptureDraftCurrencyId(
 
 $action = strtolower(trim((string) ($scopeParams['action'] ?? $_GET['action'] ?? '')));
 
-if ($groupId === '') {
+// Company payroll channel (C168 / bank-only): no group_id, scope by company_id instead.
+$draftScopeType = $groupId !== '' ? 'group' : 'company';
+
+if ($groupId === '' && $company_id <= 0) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'error' => 'Missing group_id']);
+    echo json_encode(['success' => false, 'error' => 'Missing group_id or company_id']);
     exit;
 }
 
@@ -204,32 +209,34 @@ if ($currencyId <= 0 && $action !== 'get_group_capture_draft') {
     exit;
 }
 
-if ($company_id <= 0) {
-    $anchorId = function_exists('gc_resolve_group_anchor_company_id')
-        ? gc_resolve_group_anchor_company_id($pdo, $groupId)
-        : 0;
-    if ($anchorId > 0) {
-        $company_id = (int) $anchorId;
+if ($draftScopeType === 'group') {
+    if ($company_id <= 0) {
+        $anchorId = function_exists('gc_resolve_group_anchor_company_id')
+            ? gc_resolve_group_anchor_company_id($pdo, $groupId)
+            : 0;
+        if ($anchorId > 0) {
+            $company_id = (int) $anchorId;
+        }
+    }
+
+    // Phase 3: empty group draft — allow company_id=0 when group category access OK
+    if ($company_id <= 0) {
+        $pureGroupOk = function_exists('gt_v2_enabled')
+            && gt_v2_enabled()
+            && function_exists('gt_v2_group_category_access_ok')
+            && gt_v2_group_category_access_ok($pdo, $groupId)
+            && function_exists('gc_session_can_access_group_ledger')
+            && gc_session_can_access_group_ledger($pdo, $groupId);
+        if (!$pureGroupOk) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Missing company scope for permission check']);
+            exit;
+        }
+        $company_id = 0;
     }
 }
 
-// Phase 3: empty group draft — allow company_id=0 when group category access OK
-if ($company_id <= 0) {
-    $pureGroupOk = function_exists('gt_v2_enabled')
-        && gt_v2_enabled()
-        && function_exists('gt_v2_group_category_access_ok')
-        && gt_v2_group_category_access_ok($pdo, $groupId)
-        && function_exists('gc_session_can_access_group_ledger')
-        && gc_session_can_access_group_ledger($pdo, $groupId);
-    if (!$pureGroupOk) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'error' => 'Missing company scope for permission check']);
-        exit;
-    }
-    $company_id = 0;
-}
-
-if (!checkReportMaintenanceAccess($pdo, $company_id, $groupId)) {
+if (!checkReportMaintenanceAccess($pdo, $company_id, $draftScopeType === 'group' ? $groupId : null)) {
     http_response_code(403);
     echo json_encode(['success' => false, 'error' => 'Unauthorized category permission (Games or Bank required)']);
     exit;
@@ -243,6 +250,20 @@ if (is_partnership_audit_read_only_active($pdo)) {
 
 dcEnsureCaptureDraftTable($pdo);
 
+/**
+ * WHERE fragment + bind params isolating this draft row's ledger (group code or company id).
+ *
+ * @return array{sql: string, params: array}
+ */
+function dcCaptureDraftScopeWhere(string $scopeType, string $groupId, int $companyId): array
+{
+    if ($scopeType === 'group') {
+        return ['sql' => "scope_type = 'group' AND group_id = ?", 'params' => [$groupId]];
+    }
+
+    return ['sql' => "scope_type = 'company' AND company_id = ?", 'params' => [$companyId]];
+}
+
 if ($action === 'get_group_capture_draft') {
     if ($processKey === '') {
         http_response_code(400);
@@ -255,16 +276,16 @@ if ($action === 'get_group_capture_draft') {
         exit;
     }
     try {
+        $scopeWhere = dcCaptureDraftScopeWhere($draftScopeType, $groupId, $company_id);
         $stmt = $pdo->prepare("
             SELECT draft_json, updated_at, updated_by
             FROM data_capture_draft
-            WHERE scope_type = 'group'
-              AND group_id = ?
+            WHERE {$scopeWhere['sql']}
               AND process_key = ?
               AND currency_id = ?
             LIMIT 1
         ");
-        $stmt->execute([$groupId, $processKey, $currencyId]);
+        $stmt->execute(array_merge($scopeWhere['params'], [$processKey, $currencyId]));
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         $data = null;
         if ($row && !empty($row['draft_json'])) {
@@ -312,14 +333,14 @@ if ($action === 'save_group_capture_draft' && $_SERVER['REQUEST_METHOD'] === 'PO
 
     if (!dcGroupCaptureDraftHasTableData($tableData)) {
         try {
+            $scopeWhere = dcCaptureDraftScopeWhere($draftScopeType, $groupId, $company_id);
             $del = $pdo->prepare("
                 DELETE FROM data_capture_draft
-                WHERE scope_type = 'group'
-                  AND group_id = ?
+                WHERE {$scopeWhere['sql']}
                   AND process_key = ?
                   AND currency_id = ?
             ");
-            $del->execute([$groupId, $processKey, $currencyId]);
+            $del->execute(array_merge($scopeWhere['params'], [$processKey, $currencyId]));
         } catch (Throwable $e) {
             error_log('save_group_capture_draft clear empty: ' . $e->getMessage());
         }
@@ -341,16 +362,29 @@ if ($action === 'save_group_capture_draft' && $_SERVER['REQUEST_METHOD'] === 'PO
     }
 
     try {
-        $stmt = $pdo->prepare("
-            INSERT INTO data_capture_draft
-                (scope_type, group_id, company_id, process_key, currency_id, draft_json, updated_by, updated_at)
-            VALUES ('group', ?, NULL, ?, ?, ?, ?, NOW())
-            ON DUPLICATE KEY UPDATE
-                draft_json = VALUES(draft_json),
-                updated_by = VALUES(updated_by),
-                updated_at = NOW()
-        ");
-        $stmt->execute([$groupId, $processKey, $currencyId, $draftJson, $user_id > 0 ? $user_id : null]);
+        if ($draftScopeType === 'group') {
+            $stmt = $pdo->prepare("
+                INSERT INTO data_capture_draft
+                    (scope_type, group_id, company_id, process_key, currency_id, draft_json, updated_by, updated_at)
+                VALUES ('group', ?, NULL, ?, ?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    draft_json = VALUES(draft_json),
+                    updated_by = VALUES(updated_by),
+                    updated_at = NOW()
+            ");
+            $stmt->execute([$groupId, $processKey, $currencyId, $draftJson, $user_id > 0 ? $user_id : null]);
+        } else {
+            $stmt = $pdo->prepare("
+                INSERT INTO data_capture_draft
+                    (scope_type, group_id, company_id, process_key, currency_id, draft_json, updated_by, updated_at)
+                VALUES ('company', NULL, ?, ?, ?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    draft_json = VALUES(draft_json),
+                    updated_by = VALUES(updated_by),
+                    updated_at = NOW()
+            ");
+            $stmt->execute([$company_id, $processKey, $currencyId, $draftJson, $user_id > 0 ? $user_id : null]);
+        }
         echo json_encode(['success' => true]);
     } catch (Throwable $e) {
         error_log('save_group_capture_draft: ' . $e->getMessage());
@@ -372,14 +406,14 @@ if ($action === 'clear_group_capture_draft') {
         exit;
     }
     try {
+        $scopeWhere = dcCaptureDraftScopeWhere($draftScopeType, $groupId, $company_id);
         $stmt = $pdo->prepare("
             DELETE FROM data_capture_draft
-            WHERE scope_type = 'group'
-              AND group_id = ?
+            WHERE {$scopeWhere['sql']}
               AND process_key = ?
               AND currency_id = ?
         ");
-        $stmt->execute([$groupId, $processKey, $currencyId]);
+        $stmt->execute(array_merge($scopeWhere['params'], [$processKey, $currencyId]));
         echo json_encode(['success' => true]);
     } catch (Throwable $e) {
         error_log('clear_group_capture_draft: ' . $e->getMessage());

@@ -1,6 +1,6 @@
 /**
- * Group payroll table drafts — shared via server for group buckets (AP/IG).
- * Company payroll buckets (e.g. company:5 for C168) stay local-only to avoid AP data mixing.
+ * Payroll table drafts — shared via server for both group buckets (AP/IG, scope_type=group)
+ * and company payroll buckets (e.g. company:5 for C168 / bank-only, scope_type=company).
  */
 import { resolveDataCaptureGridDimensions } from "../grid/dataCaptureGridMeta.js";
 import {
@@ -75,7 +75,6 @@ function writeAllDrafts(map) {
 
 function draftAllowsServerSync(bucket, options = {}) {
   if (options.serverSync === false) return false;
-  if (payrollDraftBucketIsCompany(bucket)) return false;
   return true;
 }
 
@@ -294,7 +293,7 @@ export function saveGroupOnlyTableDraftFromCaptureSession(session, options = {})
   if (!processKey || !currencyId) return;
 
   const captureScope = options.captureScope || scopeFromGroupId(groupId);
-  const serverSync = !payrollDraftBucketIsCompany(groupId);
+  const serverSync = true;
   saveGroupOnlyTableDraft(
     groupId,
     processKey,
