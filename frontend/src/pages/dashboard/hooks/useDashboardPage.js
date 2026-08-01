@@ -2480,11 +2480,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     if (!meRef.current) return;
 
     // Short-circuit before bumping gen — avoids aborting an in-flight load that already
-    // populated pills (Groups All storm was re-entering here on every dashboardData tick).
+    // populated pills. MYR-only scopes settle at count===1; requiring >1 re-stormed
+    // user_currency_order_api on every dashboardData tick.
     if (
       currencyScopeLoadedRef.current.key === scopeKey &&
-      currencyScopeLoadedRef.current.count > 1 &&
-      currenciesRef.current.length > 1
+      currencyScopeLoadedRef.current.count >= 1 &&
+      currenciesRef.current.length >= 1
     ) {
       return;
     }
@@ -3182,11 +3183,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       return;
     }
     if (!groupAllMode && !(groupsAllMode && !groupAllMode)) return;
-    if (currencies.length > 1) return;
+    // Settled with ≥1 currency (incl. MYR-only) — do not retry on dashboardData churn.
+    if (currencies.length >= 1) return;
     const scopeKey = buildScopeCurrencyKey();
     if (
       currencyScopeLoadedRef.current.key === scopeKey &&
-      currencyScopeLoadedRef.current.count > 1
+      currencyScopeLoadedRef.current.count >= 1
     ) {
       return;
     }
@@ -3323,7 +3325,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           me,
         })
       ) {
-        for (const gid of groupIds) {
+        // Ledger groups only (AP yes / IG no) — never warm IG under Group All.
+        for (const gid of ledgerGroupIds) {
           if (cancelled) return;
           const g = String(gid).trim().toUpperCase();
           if (!g || currenciesByGroupRef.current.has(g)) continue;
@@ -3547,8 +3550,18 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
     const timer = window.setTimeout(() => {
       if (cancelled) return;
+      // Group All: only ledger groups (avoid IG get_company_currencies fan-out).
+      // Single-group: active pill siblings + other ledger-accessible groups.
+      const warmGroupIds = groupsAllMode
+        ? ledgerGroupIds
+        : groupIds.filter((gid) => {
+            const g = String(gid).trim().toUpperCase();
+            if (!g) return false;
+            if (g === activeGroup) return true;
+            return mayWarmGroupLedgerCurrencies(meRef.current, gid, companies);
+          });
       const tasks = [];
-      for (const gid of groupIds) {
+      for (const gid of warmGroupIds) {
         const g = String(gid).trim().toUpperCase();
         if (!g) continue;
         // Other groups: also warm group-ledger currency union.
@@ -3556,15 +3569,19 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           tasks.push(() => prefetchGroupOnlyCurrencies(gid));
         }
         // Include active group — sibling company currency lists enable atomic-ready dashboard warm.
+        // Under Group All, only ledger-group subsidiaries (not IG when AP-only ledger).
         for (const row of companiesForCompanyPicker(companies, gid, groupIds)) {
           if (!isSubsidiaryCompanyRow(row, groupIds)) continue;
           if (row?.id) tasks.push(() => prefetchCompanyCurrencies(row.id, gid));
         }
       }
-      for (const row of independentRows) {
-        const rid = parseInt(row?.id, 10);
-        if (!Number.isFinite(rid) || rid <= 0 || rid === activeId) continue;
-        tasks.push(() => prefetchCompanyCurrencies(row.id, null));
+      // Independent companies: skip while Group All (ledger aggregate scope).
+      if (!groupsAllMode) {
+        for (const row of independentRows) {
+          const rid = parseInt(row?.id, 10);
+          if (!Number.isFinite(rid) || rid <= 0 || rid === activeId) continue;
+          tasks.push(() => prefetchCompanyCurrencies(row.id, null));
+        }
       }
       let idx = 0;
       const drain = () => {
@@ -3587,6 +3604,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     gcBootstrapReady,
     companiesSig,
     groupIds,
+    ledgerGroupIds,
+    groupsAllMode,
     companyId,
     selectedGroup,
     companies,
@@ -7745,8 +7764,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       }
       const independentRows = independentCompaniesForPicker(companies, groupIds);
       const tasks = [];
+      // Group All: only ledger groups. Else: all visible groups (IG company browse still prefetches).
+      const warmGroupIds = groupsAllMode ? ledgerGroupIds : groupIds;
 
-      for (const gid of groupIds) {
+      for (const gid of warmGroupIds) {
         const g = String(gid).trim().toUpperCase();
         if (!g) continue;
         if (canUseGroupOnlyMode(meRef.current, g, companies)) {
@@ -7765,11 +7786,13 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           }
         }
       }
-      for (const row of independentRows) {
-        const rid = parseInt(row.id, 10);
-        if (!Number.isFinite(rid) || rid <= 0 || rid === activeId) continue;
-        if (!shouldPrefetchCompanyScope(rid, null)) continue;
-        tasks.push(() => prefetchDashboardCompany(row, null));
+      if (!groupsAllMode) {
+        for (const row of independentRows) {
+          const rid = parseInt(row.id, 10);
+          if (!Number.isFinite(rid) || rid <= 0 || rid === activeId) continue;
+          if (!shouldPrefetchCompanyScope(rid, null)) continue;
+          tasks.push(() => prefetchDashboardCompany(row, null));
+        }
       }
 
       const drain = () => {
@@ -7800,6 +7823,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     groupsAllMode,
     groupAllMode,
     groupIds,
+    ledgerGroupIds,
     prefetchDashboardCompany,
     prefetchDashboardGroupLedger,
     shouldPrefetchCompanyScope,
