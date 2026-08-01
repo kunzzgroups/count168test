@@ -887,26 +887,17 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     gap: var(--dashboard-section-gap);
     flex: 1;
     min-height: 0;
-    transition: opacity 160ms ease;
+    /* No opacity fade — crossfade made old KPI bleed under the skeleton (95→All flicker). */
 }
 
 .dashboard-data-surface.is-scope-pending .dashboard-data-surface__live {
+    visibility: hidden;
     opacity: 0;
     pointer-events: none;
 }
 
 .dashboard-data-surface.is-scope-pending {
     pointer-events: none;
-}
-
-/* Have a previous complete paint: hold it visible until next pack (no skeleton flash). */
-.dashboard-data-surface.is-scope-hold {
-    pointer-events: none;
-}
-
-.dashboard-data-surface.is-scope-hold .dashboard-data-surface__live {
-    opacity: 1;
-    transition: none;
 }
 
 .dashboard-scope-skeleton {
@@ -918,6 +909,9 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     gap: var(--dashboard-section-gap);
     min-height: 0;
     pointer-events: none;
+    /* Opaque fill so card gaps never reveal the previous scope underneath. */
+    background: #eef4fc;
+    border-radius: 16px;
 }
 
 .dashboard-scope-skeleton__kpi-card,

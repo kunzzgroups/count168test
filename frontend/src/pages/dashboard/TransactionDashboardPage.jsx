@@ -66,25 +66,14 @@ export default function TransactionDashboardPage() {
 
           <div
             className={`dashboard-data-surface${
-              page.holdPreviousScopePaint
-                ? " is-scope-hold"
-                : page.scopeDataPending
-                  ? " is-scope-pending"
-                  : ""
+              page.scopeDataPending ? " is-scope-pending" : ""
             }`}
             aria-busy={page.scopeDataPending ? "true" : undefined}
           >
-            {/* Cold start only — do not flash skeleton over a frozen previous paint (95→All). */}
-            {page.scopeDataPending && !page.holdPreviousScopePaint ? (
-              <DashboardScopeSkeleton />
-            ) : null}
+            {page.scopeDataPending ? <DashboardScopeSkeleton /> : null}
             <div
               className="dashboard-data-surface__live"
-              aria-hidden={
-                page.scopeDataPending && !page.holdPreviousScopePaint
-                  ? "true"
-                  : undefined
-              }
+              aria-hidden={page.scopeDataPending ? "true" : undefined}
             >
               <DashboardKpiGrid
                 i18n={i18n}
