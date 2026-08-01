@@ -247,6 +247,22 @@ try {
 
     $pdo->commit();
 
+    require_once __DIR__ . '/../includes/realtime.php';
+    require_once __DIR__ . '/../includes/ledger_realtime.php';
+    $groupScopeId = 0;
+    if ($maintenance_scope_group && isset($scopeCtx) && is_array($scopeCtx)) {
+        $groupScopeId = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+    }
+    $listScope = [
+        'mode' => ($maintenance_scope_group && $groupScopeId > 0) ? 'group' : 'company',
+        'company_id' => (int) $company_id,
+        'group_scope_id' => $groupScopeId,
+    ];
+    realtime_publish_scope($listScope, 'maintenance', 'transaction_delete');
+    tx_ledger_realtime_publish_scope($listScope, 'transaction_delete', [
+        'deleted' => (int) $totalDeleted,
+    ]);
+
     echo json_encode([
         'success' => true,
         'message' => "已删除 {$totalDeleted} 条记录",

@@ -1993,8 +1993,14 @@ try {
     clearTransactionSearchCache();
 
     require_once __DIR__ . '/../includes/realtime.php';
-    realtime_publish_companies([$company_id], 'processes', 'post_to_transaction');
-    realtime_publish_companies([$company_id], 'ledger', 'post_to_transaction');
+    require_once __DIR__ . '/../includes/ledger_realtime.php';
+    $listScope = [
+        'mode' => 'company',
+        'company_id' => (int) $company_id,
+        'group_scope_id' => 0,
+    ];
+    realtime_publish_scope($listScope, 'processes', 'post_to_transaction');
+    tx_ledger_realtime_publish_scope($listScope, 'post_to_transaction');
 
     if ($createdCount === 0 && $skippedFutureMonthlyDueCount > 0) {
         jsonResponse(true, "未到应付日，暂不生成交易记录（Resend 除外）。", [

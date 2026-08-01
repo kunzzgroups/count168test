@@ -141,17 +141,35 @@ export default function AppRealtimeBridge() {
         return;
       }
 
+      const invalidateLedgerCaches = (tag) => {
+        clearAllAutoRenewListCache();
+        notifyTransactionListInvalidated(tag);
+        void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.searchRoot() });
+        void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.contraInboxRoot() });
+      };
+
+      /** Maintenance / capture writes that change balances — belt if ledger publish missed. */
+      const LEDGER_TOUCHING_SOURCES = new Set([
+        "capture_delete",
+        "capture_update",
+        "payment_delete",
+        "payment_update",
+        "bankprocess_delete",
+        "transaction_delete",
+        "post_to_transaction",
+        "restore",
+        "domain_fee_create",
+        "domain_fee_update",
+        "summary_submit",
+      ]);
+
       if (domain === REALTIME_DOMAINS.DATACAPTURE) {
         void queryClient.invalidateQueries({ queryKey: dataCaptureQueryKeys.root() });
         void queryClient.invalidateQueries({
           predicate: (q) => q.queryKey?.[0] === "summary",
         });
-        // Capture writes also change TX balances — belt if ledger publish is missed.
-        if (source === "capture_delete" || source === "capture_update") {
-          clearAllAutoRenewListCache();
-          notifyTransactionListInvalidated(`realtime_${source}`);
-          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.searchRoot() });
-          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.contraInboxRoot() });
+        if (LEDGER_TOUCHING_SOURCES.has(source)) {
+          invalidateLedgerCaches(`realtime_${source}`);
         }
         return;
       }
@@ -167,16 +185,20 @@ export default function AppRealtimeBridge() {
       }
 
       if (domain === REALTIME_DOMAINS.MAINTENANCE) {
-        if (source === "capture_delete" || source === "capture_update") {
-          clearAllAutoRenewListCache();
-          notifyTransactionListInvalidated(`realtime_${source}`);
-          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.searchRoot() });
-          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.contraInboxRoot() });
+        if (LEDGER_TOUCHING_SOURCES.has(source)) {
+          invalidateLedgerCaches(`realtime_${source}`);
         }
         return;
       }
 
-      // Announcements / domain / app: pages listen via useRealtimeDomain.
+      if (domain === REALTIME_DOMAINS.DOMAIN) {
+        if (LEDGER_TOUCHING_SOURCES.has(source) || /fee/.test(source)) {
+          invalidateLedgerCaches(`realtime_${source || "domain"}`);
+        }
+        return;
+      }
+
+      // Announcements / app: pages listen via useRealtimeDomain.
     });
   }, [queryClient]);
 

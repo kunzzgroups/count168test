@@ -242,11 +242,18 @@ function DataCaptureSummaryPureInner() {
 
 
 
-  useRealtimeDomain(REALTIME_DOMAINS.DATACAPTURE, () => {
-
-    void refreshAccountList();
-
-  }, { enabled: sessionReady && Boolean(captureScope) });
+  useRealtimeDomain(
+    [REALTIME_DOMAINS.DATACAPTURE, REALTIME_DOMAINS.MAINTENANCE],
+    (detail) => {
+      void refreshAccountList();
+      const src = String(detail?.source || "");
+      // Formula / capture maintenance writes — refresh grid, not only accounts.
+      if (/^(formula_|capture_|summary_|restore)/.test(src)) {
+        void pageActions.handleRefresh();
+      }
+    },
+    { enabled: sessionReady && Boolean(captureScope) },
+  );
 
 
 

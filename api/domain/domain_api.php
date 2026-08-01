@@ -3781,7 +3781,14 @@ try {
                 $pdo->commit();
 
                 require_once __DIR__ . '/../includes/realtime.php';
+                require_once __DIR__ . '/../includes/ledger_realtime.php';
                 realtime_publish_companies([(int) $company_id], 'domain', 'create');
+                // Domain list fee writes transactions — TX/Dashboard need ledger_changed.
+                tx_ledger_realtime_publish_scope([
+                    'mode' => 'company',
+                    'company_id' => (int) $company_id,
+                    'group_scope_id' => 0,
+                ], 'domain_fee_create');
 
                 $owner = getOwnerWithCompanies($pdo, $owner_id);
                 echo json_encode([
@@ -4060,7 +4067,13 @@ try {
                 domain_api_clear_session_user_cache();
 
                 require_once __DIR__ . '/../includes/realtime.php';
+                require_once __DIR__ . '/../includes/ledger_realtime.php';
                 realtime_publish_companies([(int) $company_id], 'domain', 'update');
+                tx_ledger_realtime_publish_scope([
+                    'mode' => 'company',
+                    'company_id' => (int) $company_id,
+                    'group_scope_id' => 0,
+                ], 'domain_fee_update');
 
                 $owner = getOwnerWithCompanies($pdo, $id);
                 echo json_encode([
