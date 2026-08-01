@@ -69,7 +69,6 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_token']) && $pdo in
 
 if (!isset($_SESSION['user_id'])) {
     session_write_close();
-    http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Not logged in', 'data' => null], JSON_UNESCAPED_UNICODE);
     exit;
 }
