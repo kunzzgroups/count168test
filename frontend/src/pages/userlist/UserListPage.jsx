@@ -258,6 +258,7 @@ export default function UserListPage() {
   const companySwitchGenRef = useRef(0);
   const skipCompanyFetchEffectRef = useRef(false);
   const bootFetchedUsersKeyRef = useRef(null);
+  const fetchUsersRef = useRef(null);
   const userListCacheRef = useRef(new Map());
   const userListFetchPendingRef = useRef(new Map());
   const userListScopeRef = useRef({
@@ -706,15 +707,47 @@ export default function UserListPage() {
           if (pick?.id != null) effectiveNum = Number(pick.id);
         }
 
-        setCompanyId(groupOnlyBoot ? null : effectiveNum);
+        const bootCompanyId = groupOnlyBoot ? null : effectiveNum;
+        const bootGroupOnly = Boolean(groupOnlyBoot && bootGroup);
+        setCompanyId(bootCompanyId);
         setSelectedGroup(bootGroup);
         setSearch(String(url.searchParams.get("search") || ""));
         setShowActive(url.searchParams.get("showActive") === "1");
         setShowInactive(url.searchParams.get("showInactive") === "1");
         setShowAll(url.searchParams.get("showAll") === "1");
 
+        // Acc standard: sync scope + await list before opening boot (avoid empty→fill flash).
+        userListScopeRef.current = {
+          companyId: bootCompanyId,
+          selectedGroup: bootGroup,
+          groupOnlyUserList: bootGroupOnly,
+          aggregateUserList: false,
+          groupsAllMode: false,
+          groupAllMode: false,
+        };
+        if (!cancelled && (bootGroupOnly || bootCompanyId != null) && fetchUsersRef.current) {
+          const bootCacheKey = resolveUserListCacheKey(
+            bootCompanyId,
+            bootGroupOnly,
+            bootGroup,
+            false,
+            false,
+            false,
+          );
+          try {
+            await fetchUsersRef.current(bootCompanyId, {
+              silent: true,
+              groupOnly: bootGroupOnly,
+              selectedGroup: bootGroup,
+            });
+            if (!cancelled) bootFetchedUsersKeyRef.current = bootCacheKey;
+          } catch {
+            /* boot list is best-effort; post-boot effect can retry */
+          }
+        }
+
         const syncCompanyId =
-          effectiveNum != null && Number.isFinite(Number(effectiveNum)) ? Number(effectiveNum) : null;
+          bootCompanyId != null && Number.isFinite(Number(bootCompanyId)) ? Number(bootCompanyId) : null;
         if (syncCompanyId != null && syncCompanyId !== Number(me.company_id)) {
           void (async () => {
             try {
@@ -1092,6 +1125,7 @@ export default function UserListPage() {
     groupAllMode,
     applyUserListResult,
   ]);
+  fetchUsersRef.current = fetchUsers;
 
   useRealtimeDomain(REALTIME_DOMAINS.USERS, () => {
     void fetchUsers(null, { silent: true });
@@ -2374,14 +2408,13 @@ export default function UserListPage() {
         <div className="content">
           <div className="action-buttons-container">
             <div className="action-buttons" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div className="action-controls-row user-toolbar-primary" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 {canCreateUser ? (
                 <button
                   type="button"
                   className="btn btn-add"
                   onClick={openAdd}
                   disabled={
-                    bootLoading ||
                     userMutationsBlocked ||
                     !userListHasMutationScope(mutationScopeCompanyId, {
                       groupOnly: groupOnlyUserList,

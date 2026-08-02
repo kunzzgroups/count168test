@@ -71,7 +71,7 @@ body.user-page:not(.user-page--show-all) .action-buttons-container .user-gc-inli
 }
 
 body.user-page:not(.user-page--show-all) .user-table-wrapper {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     width: 100%;
     min-height: 0;
     display: flex;
@@ -140,7 +140,6 @@ body.user-page:not(.user-page--show-all) .user-list-table .user-list-table-heade
 @media (max-width: 1200px) {
     body.ec-auth-shell.user-page .container {
         padding-left: var(--layout-main-offset);
-        transition: padding-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     }
 }
 
@@ -496,6 +495,26 @@ body.account-page .action-buttons-container {
     flex-shrink: 0;
 }
 
+/* Acc standard toolbar stretch for Admin User List */
+body.user-page .action-buttons-container {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    align-self: stretch;
+    min-height: 0;
+}
+
+body.user-page .user-toolbar-primary {
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+
+body.user-page .user-toolbar-primary .search-container.userlist-search-bar {
+    width: clamp(150px, 17vw, 240px);
+    max-width: clamp(150px, 17vw, 240px);
+}
+
 /* 与 Games Process List：panel 底无额外 margin，表头 margin-top 12px */
 body.user-page .action-buttons-container .user-gc-inline-panel .user-gc-inline-label,
 body.account-page .action-buttons-container .user-gc-inline-panel .user-gc-inline-label {
@@ -651,7 +670,7 @@ body.ec-auth-shell .user-gc-segment {
     cursor: pointer;
     white-space: nowrap;
     line-height: 1.25;
-    transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease, opacity 0.12s ease;
+    transition: none;
     display: flex;
     justify-content: center;
 }
@@ -3009,11 +3028,7 @@ body.process-page .user-filter-chip {
     font-weight: var(--font-weight-semibold);
     color: #475569;
     line-height: 1.2;
-    transition:
-        border-color 0.15s ease,
-        box-shadow 0.15s ease,
-        color 0.15s ease,
-        background-color 0.15s ease;
+    transition: none;
 }
 
 body.user-page .user-filter-chip:hover,
@@ -3049,7 +3064,7 @@ body.process-page .user-filter-chip__dot {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.15s ease;
+    transition: none;
 }
 
 body.user-page .user-filter-chip.is-selected .user-filter-chip__dot,
@@ -3404,7 +3419,7 @@ body.user-page:not(.user-page--show-all) .user-list-table .user-list-row {
     flex: 0 0 auto;
     width: 100%;
     height: auto;
-    min-height: var(--user-list-row-min-height, 30px);
+    min-height: 0;
     box-sizing: border-box;
     align-items: center;
 }
@@ -3417,11 +3432,11 @@ body.ec-auth-shell.user-page:not(.user-page--show-all) .user-list-row .card-item
     letter-spacing: 0 !important;
 }
 
-/* 末页不足一页：保持与 Account 一致的最小行高，避免数据上下密度不一致 */
+/* 末页不足一页：与 Acc 一致用 min-height:0，行高由内容/paged-fill 决定 */
 body.user-page:not(.user-page--show-all) .user-list-table .user-cards:not(.user-cards--paged-fill) .user-list-row,
 body.ec-auth-shell.user-page:not(.user-page--show-all) .user-list-table .user-cards:not(.user-cards--paged-fill) .user-list-row {
     flex: 0 0 auto;
-    min-height: var(--user-list-row-min-height, 30px) !important;
+    min-height: 0 !important;
     height: auto;
 }
 
