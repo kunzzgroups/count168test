@@ -168,13 +168,14 @@
         font-size: 1.6rem !important;
     }
 
-    /* Process List（Games 等）：与 User / Account 表头一致 — 字号 + padding token */
+    /* Process List（Games）：表头字号/padding 与 Acc 一致；格内 padding 由下方 Acc 规则清零 */
     body.ec-auth-shell.process-page:not(.process-page--bank) .table-header:not(.bank-virtual-head-row) {
         font-size: 1.6rem !important;
         padding: var(--table-header-height) !important;
+        line-height: normal !important;
     }
 
-    body.ec-auth-shell .table-header:not(.bank-virtual-head-row):not(.user-list-table-header) .header-item,
+    body.ec-auth-shell .table-header:not(.bank-virtual-head-row):not(.user-list-table-header):not(.games-process-table-header) .header-item,
     body.ec-auth-shell .account-table-header .header-item,
     body.ec-auth-shell .card-item:not(.user-list-row .card-item),
     body.ec-auth-shell .account-card-item,
@@ -452,6 +453,20 @@
         padding: 0 !important;
     }
 
+    /* Acc：Games 表头格与 Account header-item 同为 0 padding + normal 行高 */
+    body.ec-auth-shell.process-page:not(.process-page--bank) .games-process-table-header {
+        line-height: normal !important;
+        align-items: center !important;
+    }
+
+    body.ec-auth-shell.process-page:not(.process-page--bank) .games-process-table-header .header-item,
+    body.ec-auth-shell.process-page:not(.process-page--bank) .games-process-table-header .header-item.header-item--with-sort-icon {
+        line-height: normal !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 5px !important;
+    }
+
     /* Acc 同屏：13" 下列表行 line-height 与 Account 覆写一致；略紧以减少 @ 裁切 */
     body.ec-auth-shell.process-page:not(.process-page--bank):not(.process-page--show-all) .games-process-row .card-item {
         font-size: 1.4rem !important;
@@ -611,6 +626,27 @@ body.ec-auth-shell .datacapture-table tbody tr:hover td {
     body.ec-auth-shell .modal-content,
     body.ec-auth-shell .datacapture-container {
         animation: premiumEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* Admin / Acc / Games Process：切回列表页时整页淡入会让搜索条「隐约闪一下」 */
+    body.ec-auth-shell.user-page .container,
+    body.ec-auth-shell.account-page .container,
+    body.ec-auth-shell.process-page:not(.process-page--bank) .container {
+        animation: none !important;
+    }
+
+    body.ec-auth-shell.user-page .search-container.userlist-search-bar,
+    body.ec-auth-shell.user-page .search-container.userlist-search-bar .userlist-search-input,
+    body.ec-auth-shell.user-page .search-container.userlist-search-bar .search-input,
+    body.ec-auth-shell.user-page input.search-input {
+        transition: none !important;
+        animation: none !important;
+    }
+
+    body.ec-auth-shell.user-page .search-container.userlist-search-bar .userlist-search-input:focus,
+    body.ec-auth-shell.user-page .search-container.userlist-search-bar .userlist-search-input:focus-visible,
+    body.ec-auth-shell.user-page .search-input:focus {
+        transition: none !important;
     }
 
     /* 5. Custom Brand Text Selection */

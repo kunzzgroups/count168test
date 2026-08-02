@@ -2770,13 +2770,13 @@ body.process-page.process-page--bank .search-container.userlist-search-bar .user
 }
 
 .process-page .table-header .header-item {
+    /* Games 表头见 .games-process-table-header（Acc：padding 0）；此处仅非 Games */
     padding: 2px 4px;
-    /* Default CSS padding, overridden by global-13inch on small screens */
     white-space: nowrap;
     min-width: 0;
 }
 
-.process-page .table-header .header-item.header-item--with-sort-icon {
+.process-page .table-header:not(.games-process-table-header) .header-item.header-item--with-sort-icon {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
@@ -4943,16 +4943,29 @@ body.process-page.process-page--show-all:not(.process-page--bank) .pagination-co
     box-sizing: border-box;
 }
 
+/* Acc standard：蓝条高度 = --table-header-height + 1.6rem 字，格内无额外 padding/line-height */
 .process-page:not(.process-page--bank) .games-process-table-header {
-    padding: var(--table-header-height);
+    padding: var(--table-header-height) !important;
+    gap: 8px !important;
+    font-size: 1.6rem !important;
+    font-weight: bold;
+    line-height: normal;
+    align-items: center;
+    min-height: 0;
+    box-sizing: border-box;
 }
 
-/* Acc standard：表头格 padding 0，避免 .table-header .header-item 的 2px 4px 撑高蓝条 */
 .process-page:not(.process-page--bank) .games-process-table-header .header-item {
-    padding: 0;
+    padding: 0 !important;
+    margin: 0;
+    line-height: normal;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
 }
 
-/* 可排序表头对齐 Account List（.account-header-sortable）：flex + gap 5px + 默认行高 */
+/* Acc .account-header-sortable：flex + gap 5px + padding 0 + line-height 默认 */
 .process-page:not(.process-page--bank) .games-process-table-header .header-item.header-item--with-sort-icon,
 .process-page:not(.process-page--bank) .games-process-table-header .header-item.header-sortable {
     display: flex;
@@ -4960,7 +4973,7 @@ body.process-page.process-page--show-all:not(.process-page--bank) .pagination-co
     align-items: center;
     justify-content: flex-start;
     gap: 5px;
-    padding: 0;
+    padding: 0 !important;
     overflow: visible;
     line-height: normal;
 }
@@ -4970,6 +4983,15 @@ body.process-page.process-page--show-all:not(.process-page--bank) .pagination-co
     text-overflow: clip;
     flex-shrink: 0;
     white-space: nowrap;
+    line-height: normal;
+}
+
+.process-page:not(.process-page--bank) .games-process-table-header .header-item.header-item--with-sort-icon .account-sort-icon {
+    flex: 0 0 auto;
+    align-self: center;
+    line-height: 0;
+    width: 8px;
+    height: 12px;
 }
 
 .process-page:not(.process-page--bank) .games-process-row {

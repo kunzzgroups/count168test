@@ -101,8 +101,9 @@ body.ec-auth-shell.user-page .action-buttons .btn {
 }
 
 /*
- * Admin（User List）：顶栏按键 / chip / GC 段直接无动画。
+ * Admin（User List）：顶栏按键 / chip / GC / 搜索条直接无动画。
  * dashboard .btn 的 transition:all + hover translateY / ::after sweep 会造成刷新与切换闪烁。
+ * .search-input 的 transition:all 会在 remount 时把药丸样式「动画」出来。
  */
 body.user-page .action-buttons .btn,
 body.user-page .action-buttons .btn-add,
@@ -112,7 +113,11 @@ body.user-page .user-toolbar-actions-right .btn-add,
 body.user-page .user-toolbar-actions-right .btn-delete,
 body.user-page .user-filter-chip,
 body.user-page .user-filter-chip__dot,
-body.user-page .user-gc-segment {
+body.user-page .user-gc-segment,
+body.user-page .search-container.userlist-search-bar,
+body.user-page .search-container.userlist-search-bar .userlist-search-input,
+body.user-page .search-container.userlist-search-bar .search-input,
+body.user-page .search-container.userlist-search-bar .userlist-search-input.search-input {
     transition: none !important;
     animation: none !important;
 }
@@ -3018,6 +3023,25 @@ body.ec-auth-shell.process-page .search-container.userlist-search-bar .userlist-
     color: #0f172a;
     line-height: 1.2;
     text-transform: uppercase;
+    transition: none !important;
+    animation: none !important;
+}
+
+/* Admin：搜索壳本身也不过渡（切回时勿淡入/变形） */
+body.user-page .search-container.userlist-search-bar {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* Admin：整页 container 禁止 entrance 淡入（global-13inch premiumEntrance） */
+body.user-page .container {
+    animation: none !important;
+}
+
+body.user-page .search-container.userlist-search-bar .userlist-search-input:focus,
+body.user-page .search-container.userlist-search-bar .userlist-search-input:focus-visible,
+body.user-page .search-container.userlist-search-bar .search-input:focus {
+    transition: none !important;
 }
 
 body.user-page .search-container.userlist-search-bar .userlist-search-input::placeholder,
