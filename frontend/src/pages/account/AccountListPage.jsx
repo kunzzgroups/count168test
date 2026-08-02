@@ -339,7 +339,8 @@ export default function AccountListPage() {
 
     return () => {
       document.body.classList.remove("account-page", "account-page--show-all", "bg");
-      document.body.classList.add("dashboard-page");
+      // Layout owns dashboard/process body classes by pathname — do not re-add dashboard-page
+      // here (causes Acc→Process middle flash when cleanup races the process-page layout effect).
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);

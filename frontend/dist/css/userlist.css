@@ -104,6 +104,7 @@ body.ec-auth-shell.user-page .action-buttons .btn {
  * Admin（User List）：顶栏按键 / chip / GC / 搜索条直接无动画。
  * dashboard .btn 的 transition:all + hover translateY / ::after sweep 会造成刷新与切换闪烁。
  * .search-input 的 transition:all 会在 remount 时把药丸样式「动画」出来。
+ * 表格 Status ACTIVE/INACTIVE 与 Role badge 也不做 scale / transition。
  */
 body.user-page .action-buttons .btn,
 body.user-page .action-buttons .btn-add,
@@ -117,7 +118,14 @@ body.user-page .user-gc-segment,
 body.user-page .search-container.userlist-search-bar,
 body.user-page .search-container.userlist-search-bar .userlist-search-input,
 body.user-page .search-container.userlist-search-bar .search-input,
-body.user-page .search-container.userlist-search-bar .userlist-search-input.search-input {
+body.user-page .search-container.userlist-search-bar .userlist-search-input.search-input,
+body.user-page .role-badge,
+body.user-page .status-active,
+body.user-page .status-inactive,
+body.user-page .status-clickable,
+body.user-page .user-list-row .role-badge,
+body.user-page .user-list-row .status-clickable,
+body.user-page .user-list-table .user-edit-btn {
     transition: none !important;
     animation: none !important;
 }
@@ -135,8 +143,13 @@ body.user-page .btn-add:active,
 body.user-page .btn-delete:hover,
 body.user-page .btn-delete:active,
 body.user-page .user-gc-segment:not(:disabled):active,
-body.user-page .user-filter-chip:hover {
+body.user-page .user-filter-chip:hover,
+body.user-page .status-clickable:hover,
+body.user-page .status-clickable:active,
+body.user-page .user-list-row .status-clickable:hover,
+body.user-page .user-list-row .status-clickable:active {
     transform: none !important;
+    box-shadow: none !important;
 }
 
 body.user-page .action-buttons .btn::after,
@@ -1357,18 +1370,19 @@ body.datacapture-summary-page .btn-cancel:hover {
 
 .status-clickable {
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: none;
+    animation: none;
     user-select: none;
 }
 
 .status-clickable:hover {
     opacity: 0.8;
-    transform: scale(1.05);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transform: none;
+    box-shadow: none;
 }
 
 .status-clickable:active {
-    transform: scale(0.95);
+    transform: none;
 }
 
 .role-admin {

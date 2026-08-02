@@ -355,9 +355,20 @@ export default function AuthenticatedLayout() {
     if (pathnameIs("bank-process-list", location.pathname)) {
       document.body.classList.remove("dashboard-page");
       document.body.classList.add("process-page", "process-page--bank");
-    } else if (pathnameIs("process-list", location.pathname)) {
+    } else if (
+      pathnameIs("process-list", location.pathname) ||
+      pathnameIs("games-process-list", location.pathname)
+    ) {
       document.body.classList.remove("dashboard-page", "process-page--bank", "process-page--bank-show-all");
       document.body.classList.add("process-page");
+    } else {
+      document.body.classList.remove(
+        "process-page",
+        "process-page--bank",
+        "process-page--bank-show-all",
+        "process-page--show-all",
+      );
+      document.body.classList.add("dashboard-page");
     }
   }, [location.pathname]);
 
@@ -1033,6 +1044,11 @@ export default function AuthenticatedLayout() {
       });
     }
 
+    const processListSpaPath =
+      me?.company_has_bank && !me?.company_has_gambling
+        ? spaPath("bank-process-list")
+        : spaPath("process-list");
+
     const runCompanies = () => {
       void fetchOwnerCompaniesAll({ me });
       void fetchOwnerGroupsAll(me);
@@ -1060,6 +1076,12 @@ export default function AuthenticatedLayout() {
       });
     };
 
+    // Eager Acc→Process: prefetch Process chunk + warm list as soon as Acc is open (not only idle).
+    if (pathnameIs("account-list", path) || pathnameIs("add-account", path)) {
+      prefetchRouteModule(processListSpaPath);
+      runProcessListWarm();
+    }
+
     const runTransactionWarm = () => {
       void import("../pages/transaction/transactionRoutePrefetch.js").then(({ warmTransactionRouteCache }) => {
         warmTransactionRouteCache({ me });
@@ -1070,7 +1092,10 @@ export default function AuthenticatedLayout() {
       if (pageKey === "dashboard") return;
       runCompanies();
       runProcessListWarm();
-      if (pathnameIs("dashboard", path) || pathnameIs("account-list", path)) {
+      if (pathnameIs("account-list", path) || pathnameIs("add-account", path)) {
+        prefetchRouteModule(processListSpaPath);
+        runAccountListWarm();
+      } else if (pathnameIs("dashboard", path)) {
         runAccountListWarm();
       }
       if (pathnameIs("transaction", path)) {

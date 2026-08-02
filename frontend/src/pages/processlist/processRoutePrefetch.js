@@ -31,6 +31,12 @@ export function warmProcessListRouteCache(companyId, opts = {}) {
   processListRouteWarmInflight.set(key, promise);
 }
 
+/** Sync peek for first paint — does not consume (boot still resolve/consume). */
+export function peekProcessListRouteCache(companyId, opts = {}) {
+  const key = processListRouteCacheKey(Number(companyId), opts);
+  return processListRouteWarmCache.get(key) || null;
+}
+
 export function consumeProcessListRouteCache(companyId, opts = {}) {
   const key = processListRouteCacheKey(Number(companyId), opts);
   const cached = processListRouteWarmCache.get(key) || null;

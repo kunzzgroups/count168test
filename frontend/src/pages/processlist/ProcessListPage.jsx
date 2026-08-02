@@ -16,6 +16,10 @@ import {
   resolveInitialSelectedGroupFromSession,
   resolveSubsidiaryBootCompanyId,
   fetchOwnerCompaniesAll,
+  getCachedOwnerCompanies,
+  isDashboardGroupOnlyMode,
+  readDashboardSelectedCompanyId,
+  readPersistedDashboardGcFilter,
   DASHBOARD_GROUP_FILTER_OPT_OUT_KEY,
 } from "../../utils/company/sharedCompanyFilter.js";
 import { findOwnerCompanyById } from "../../utils/company/sharedCompanyFilter.js";
@@ -56,6 +60,7 @@ import {
 } from "./processListHelpers.js";
 import {
   fetchGamesProcessListSlice,
+  peekProcessListRouteCache,
   resolveProcessListRouteCache,
   warmBankProcessListRouteCache,
   warmProcessListRouteCache,
@@ -96,6 +101,55 @@ function processRowsFingerprint(rows) {
   return rows.map((r) => Number(r.id)).join(",");
 }
 
+/** Survives SPA remount (Acc/Admin pattern) — avoids empty→fill flash Acc→Process. */
+const processListModuleCache = new Map();
+
+function readProcessListBootGc() {
+  try {
+    const optOut =
+      typeof sessionStorage !== "undefined" &&
+      sessionStorage.getItem(DASHBOARD_GROUP_FILTER_OPT_OUT_KEY) === "1";
+    const persisted = readPersistedDashboardGcFilter();
+    const groupOnly = Boolean(persisted?.groupOnly || isDashboardGroupOnlyMode());
+    const selectedGroup = optOut ? null : persisted?.selectedGroup || null;
+    if (groupOnly) {
+      return { companyId: null, selectedGroup, ungrouped: optOut };
+    }
+    const companyId = persisted?.companyId ?? readDashboardSelectedCompanyId();
+    const cid =
+      companyId != null && Number.isFinite(Number(companyId)) && Number(companyId) > 0
+        ? Number(companyId)
+        : null;
+    return { companyId: cid, selectedGroup, ungrouped: optOut };
+  } catch {
+    return { companyId: null, selectedGroup: null, ungrouped: false };
+  }
+}
+
+function readInitialProcessCompanies() {
+  const cached = getCachedOwnerCompanies();
+  return Array.isArray(cached) && cached.length > 0 ? cached : [];
+}
+
+function peekInitialProcessRows(companyId) {
+  const cid = Number(companyId);
+  if (!Number.isFinite(cid) || cid <= 0) return [];
+  const cacheKey = resolveProcessListCacheKey(cid, "", false, false, false);
+  const mod = processListModuleCache.get(cacheKey);
+  if (processListCacheHasEntry(mod) && Array.isArray(mod.rows) && mod.rows.length > 0) {
+    return mod.rows;
+  }
+  const warm = peekProcessListRouteCache(cid, {});
+  if (processListCacheHasEntry(warm) && Array.isArray(warm.rows) && warm.rows.length > 0) {
+    processListModuleCache.set(cacheKey, {
+      rows: warm.rows,
+      currencyCodes: Array.isArray(warm.currencyCodes) ? warm.currencyCodes : null,
+    });
+    return warm.rows;
+  }
+  return [];
+}
+
 function ProcessToastStack({ items }) {
   return (
     <div id="processNotificationContainer" className="process-notification-container">
@@ -118,16 +172,24 @@ export default function ProcessListPage() {
   useC168ProcessRouteGuard();
   const [lang, setLang] = useState(() => (localStorage.getItem("login_lang") === "zh" ? "zh" : "en"));
   const t = useCallback((key, params) => getProcessListText(lang, key, params), [lang]);
-  const [companies, setCompanies] = useState([]);
-  const [companyId, setCompanyId] = useState(null);
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [groupFilterKind, setGroupFilterKind] = useState("follow");
+  const initialBootGc = useMemo(() => readProcessListBootGc(), []);
+  const initialCachedCompanies = useMemo(() => readInitialProcessCompanies(), []);
+  const initialSeedRows = useMemo(
+    () => peekInitialProcessRows(initialBootGc.companyId),
+    [initialBootGc.companyId],
+  );
+  const [companies, setCompanies] = useState(() => initialCachedCompanies);
+  const [companyId, setCompanyId] = useState(() => initialBootGc.companyId);
+  const [selectedGroup, setSelectedGroup] = useState(() => initialBootGc.selectedGroup);
+  const [groupFilterKind, setGroupFilterKind] = useState(() =>
+    initialBootGc.ungrouped ? "ungrouped" : "follow",
+  );
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showActive, setShowActive] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(() => initialSeedRows);
   const [awaitingRows, setAwaitingRows] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -149,9 +211,9 @@ export default function ProcessListPage() {
   const sessionMe = sessionMeFromLayout;
   const fetchAbortRef = useRef(null);
   const searchDebounceRef = useRef(null);
-  const skipNextFetchRef = useRef(false);
+  const skipNextFetchRef = useRef(initialSeedRows.length > 0);
   const skipCompanyFetchEffectRef = useRef(false);
-  const processListCacheRef = useRef(new Map());
+  const processListCacheRef = useRef(processListModuleCache);
   const processListWarmInflightRef = useRef(new Map());
   const suppressCrossPageSyncRef = useRef(false);
   const onSwitchCompanyRef = useRef(null);
@@ -179,12 +241,12 @@ export default function ProcessListPage() {
   }, []);
 
   // Layout phase (with BankProcessListPage): avoid deferred useEffect cleanup stripping body.process-page after route swap.
+  // Do not re-add dashboard-page on leave — Acc cleanup doing that caused Acc→Process body-class flicker.
   useLayoutEffect(() => {
     document.body.classList.remove("bg", "dashboard-page", "account-page", "announcement-page");
     document.body.classList.add("process-page");
     return () => {
       document.body.classList.remove("process-page", "process-page--show-all");
-      document.body.classList.add("dashboard-page");
     };
   }, []);
 
