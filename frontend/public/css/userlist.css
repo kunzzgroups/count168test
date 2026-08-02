@@ -100,6 +100,54 @@ body.ec-auth-shell.user-page .action-buttons .btn {
     font-size: 1.4rem !important;
 }
 
+/*
+ * Admin（User List）：顶栏按键 / chip / GC 段直接无动画。
+ * dashboard .btn 的 transition:all + hover translateY / ::after sweep 会造成刷新与切换闪烁。
+ */
+body.user-page .action-buttons .btn,
+body.user-page .action-buttons .btn-add,
+body.user-page .action-buttons .btn-delete,
+body.user-page .user-toolbar-actions-right .btn,
+body.user-page .user-toolbar-actions-right .btn-add,
+body.user-page .user-toolbar-actions-right .btn-delete,
+body.user-page .user-filter-chip,
+body.user-page .user-filter-chip__dot,
+body.user-page .user-gc-segment {
+    transition: none !important;
+    animation: none !important;
+}
+
+body.user-page .action-buttons .btn:hover,
+body.user-page .action-buttons .btn:active,
+body.user-page .action-buttons .btn-add:hover,
+body.user-page .action-buttons .btn-add:active,
+body.user-page .action-buttons .btn-delete:hover,
+body.user-page .action-buttons .btn-delete:active,
+body.user-page .user-toolbar-actions-right .btn:hover,
+body.user-page .user-toolbar-actions-right .btn:active,
+body.user-page .btn-add:hover,
+body.user-page .btn-add:active,
+body.user-page .btn-delete:hover,
+body.user-page .btn-delete:active,
+body.user-page .user-gc-segment:not(:disabled):active,
+body.user-page .user-filter-chip:hover {
+    transform: none !important;
+}
+
+body.user-page .action-buttons .btn::after,
+body.user-page .action-buttons .btn:hover::after,
+body.user-page .btn-add::after,
+body.user-page .btn-add:hover::after,
+body.user-page .btn-delete::after,
+body.user-page .btn-delete:hover::after,
+body.user-page .btn:hover::after {
+    content: none !important;
+    display: none !important;
+    transition: none !important;
+    transform: none !important;
+    animation: none !important;
+}
+
 body.ec-auth-shell.user-page .user-gc-segment {
     padding: 4px 18px !important;
     font-size: 1.4rem !important;
@@ -681,6 +729,11 @@ body.process-page .user-gc-segment:not(:disabled):active {
     transform: scale(0.97);
 }
 
+/* Admin：GC 段按下不缩放 */
+body.user-page .user-gc-segment:not(:disabled):active {
+    transform: none;
+}
+
 body.user-page .user-gc-segment.is-on.is-pending,
 body.account-page .user-gc-segment.is-on.is-pending,
 body.datacapture-page .user-gc-segment.is-on.is-pending,
@@ -1012,6 +1065,12 @@ body.datacapture-summary-page .btn:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+/* Admin：覆盖上方共用 hover 上浮 */
+body.user-page .btn:hover,
+body.user-page .btn:active {
+    transform: none;
+}
+
 .user-page .btn:active,
 .account-page .btn:active,
 body.datacapture-page .btn:active,
@@ -1065,6 +1124,11 @@ body.datacapture-summary-page .btn-add:hover {
     background: var(--btn-add-gradient-hover);
     box-shadow: var(--shadow-btn-add-page-hover);
     transform: translateY(-1px);
+}
+
+body.user-page .btn-add:hover,
+body.user-page .btn-add:active {
+    transform: none;
 }
 
 /* Account List 顶栏：币种设置与 Add / Delete 同高、同字号与内边距 */
@@ -1151,6 +1215,11 @@ body.datacapture-summary-page .btn-delete:hover {
     background: var(--btn-delete-gradient-hover);
     box-shadow: 0 4px 8px rgba(220, 53, 69, 0.4);
     transform: translateY(-1px);
+}
+
+body.user-page .btn-delete:hover,
+body.user-page .btn-delete:active {
+    transform: none;
 }
 
 .user-page .btn-delete.active {
