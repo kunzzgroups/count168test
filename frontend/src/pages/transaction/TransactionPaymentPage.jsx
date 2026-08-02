@@ -247,10 +247,9 @@ function TransactionPaymentPageMain() {
   }, [search.runTypeSearch, form.txType]);
 
   const onExitTypeSearch = useCallback(async () => {
+    // Keep right form date (users often book many payments on the same day).
     await search.exitTypeSearchAndRefresh();
-    form.setTxDate(todayDmy);
-    form.setRateDate(todayDmy);
-  }, [search.exitTypeSearchAndRefresh, form.setTxDate, form.setRateDate, todayDmy]);
+  }, [search.exitTypeSearchAndRefresh]);
 
   const onSearch = useCallback(() => {
     search.runSearch({ silent: false });
