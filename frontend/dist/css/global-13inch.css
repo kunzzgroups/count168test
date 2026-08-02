@@ -452,10 +452,12 @@
         padding: 0 !important;
     }
 
+    /* Acc 同屏：13" 下列表行 line-height 与 Account 覆写一致；略紧以减少 @ 裁切 */
     body.ec-auth-shell.process-page:not(.process-page--bank):not(.process-page--show-all) .games-process-row .card-item {
         font-size: 1.4rem !important;
         font-weight: bold !important;
         line-height: 1.1 !important;
+        letter-spacing: 0 !important;
     }
 
     /* ----------------------------------------------------
@@ -1065,21 +1067,32 @@ body.ec-auth-shell .datacapture-table tbody tr:hover td {
         flex-direction: column !important;
     }
 
+    /* Acc standard：paged-fill flex 与 Account 同为 1 1 auto；轨道下限防末行裁字 */
     body.process-page:not(.process-page--bank):not(.process-page--show-all) .process-cards.process-cards--paged-fill:not(.bank-virtual-scroll) {
         display: grid !important;
         grid-template-columns: 1fr !important;
-        grid-template-rows: repeat(var(--games-process-page-size, 15), minmax(0, 1fr)) !important;
-        flex: 1 1 0 !important;
+        grid-template-rows: repeat(var(--games-process-page-size, 15), minmax(var(--games-process-row-min-height, 30px), 1fr)) !important;
+        flex: 1 1 auto !important;
         min-height: 0 !important;
         align-content: stretch !important;
     }
 
     body.process-page:not(.process-page--bank):not(.process-page--show-all) .process-cards.process-cards--paged-fill .games-process-row {
         flex: unset !important;
+        min-height: var(--games-process-row-min-height, 30px) !important;
+        height: 100% !important;
+        align-items: stretch !important;
+        align-self: stretch !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+    }
+
+    body.process-page:not(.process-page--bank):not(.process-page--show-all) .process-cards.process-cards--paged-fill .games-process-row .card-item {
+        align-self: stretch !important;
         min-height: 0 !important;
         height: 100% !important;
         align-items: center !important;
-        align-self: stretch !important;
+        box-sizing: border-box !important;
     }
 
     /* Games Process List Show All：小屏下覆盖 global unlock，整页可滚 */
