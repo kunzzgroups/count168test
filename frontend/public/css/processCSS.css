@@ -47,7 +47,7 @@ body.process-page:not(.process-page--bank):not(.process-page--show-all) .contain
 body.process-page:not(.process-page--bank):not(.process-page--show-all) .content {
     flex: 1 1 auto !important;
     min-height: 0 !important;
-    height: auto !important;
+    /* height locked by globals.css (Acc standard one-viewport); keep flex + scroll */
     max-height: none !important;
     overflow-y: auto !important;
     display: flex !important;

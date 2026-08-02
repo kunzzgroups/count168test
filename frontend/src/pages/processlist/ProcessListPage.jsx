@@ -356,9 +356,34 @@ export default function ProcessListPage() {
           } else if (ungroupedBoot && resolvedCompanyId == null) {
             setRows([]);
             skipNextFetchRef.current = true;
+          } else if (resolvedCompanyId != null) {
+            // Acc standard: await list before opening boot (do not paint empty → fill).
+            const listOpts = {
+              search: normalizedSearch,
+              showActive: showActiveChecked,
+              showInactive: showInactiveChecked,
+              showAll: showAllChecked,
+            };
+            const slice = await resolveProcessListRouteCache(resolvedCompanyId, listOpts);
+            if (processListCacheHasEntry(slice)) {
+              const cacheKey = resolveProcessListCacheKey(
+                resolvedCompanyId,
+                normalizedSearch,
+                showInactiveChecked,
+                showAllChecked,
+                showActiveChecked,
+              );
+              processListCacheRef.current.set(cacheKey, {
+                rows: slice.rows,
+                currencyCodes: slice.currencyCodes,
+              });
+              setRows(slice.rows);
+            } else {
+              setRows([]);
+            }
+            skipNextFetchRef.current = true;
           } else {
-            // Cross-route switch arrived before warm finished — silent hydrate, no Failed toast.
-            setAwaitingRows(true);
+            setRows([]);
             skipNextFetchRef.current = true;
           }
           if (!ungroupedBoot) setSelectedGroup(prefBootGroup);
@@ -485,8 +510,10 @@ export default function ProcessListPage() {
               currencyCodes: slice.currencyCodes,
             });
             setRows(slice.rows);
-            skipNextFetchRef.current = true;
+          } else {
+            setRows([]);
           }
+          skipNextFetchRef.current = true;
         } else if (isUngroupedBoot) {
           setRows([]);
           skipNextFetchRef.current = true;
@@ -968,8 +995,6 @@ export default function ProcessListPage() {
       debouncedSearch,
       lang,
       currentPage,
-      loading,
-      awaitingRows,
       companyId,
       selectedGroup,
       groupFilterKind,

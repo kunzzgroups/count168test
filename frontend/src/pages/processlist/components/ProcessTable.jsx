@@ -53,6 +53,8 @@ export default function ProcessTable({
   );
   const allDeletableSelected =
     deletableRows.length > 0 && deletableRows.every((r) => selectedIds.has(r.id));
+  // Acc standard: stretch only when the page is full — avoids row-height jump on partial pages.
+  const usePagedFill = !showAll && pageRows.length > 0 && pageRows.length >= pageSize;
 
   const sortableHeader = (label, columnKey) => (
     <div
@@ -106,9 +108,9 @@ export default function ProcessTable({
         ) : null}
       </div>
       <div
-        className={`process-cards${!showAll && pageRows.length > 0 ? " process-cards--paged-fill" : ""}`}
+        className={`process-cards${usePagedFill ? " process-cards--paged-fill" : ""}`}
         id="processTableBody"
-        style={!showAll && pageRows.length > 0 ? { "--games-process-page-size": Math.max(pageSize, pageRows.length) } : undefined}
+        style={usePagedFill ? { "--games-process-page-size": pageSize } : undefined}
       >
         {pageRows.length === 0 && !suppressEmpty ? (
           <div className="process-card">
