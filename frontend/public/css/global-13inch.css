@@ -1128,7 +1128,7 @@ body.ec-auth-shell .datacapture-table tbody tr:hover td {
     body.process-page.process-page--show-all:not(.process-page--bank) .process-card.games-process-row {
         flex: none !important;
         flex-shrink: 0 !important;
-        min-height: 26px !important;
+        min-height: var(--games-process-row-min-height, 30px) !important;
         align-items: center !important;
     }
 

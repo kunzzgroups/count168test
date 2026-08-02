@@ -2848,7 +2848,7 @@ body.process-page.process-page--show-all:not(.process-page--bank) .process-cards
 body.process-page.process-page--show-all:not(.process-page--bank) .process-card.games-process-row {
     flex: none !important;
     flex-shrink: 0 !important;
-    min-height: 26px;
+    min-height: var(--games-process-row-min-height, 30px);
     align-items: center;
 }
 
@@ -4858,7 +4858,7 @@ body.process-page.process-page--show-all:not(.process-page--bank) .pagination-co
  */
 .process-page:not(.process-page--bank) .games-process-table {
     --list-table-min-width: 980px;
-    --games-process-row-min-height: 26px;
+    --games-process-row-min-height: 30px;
     --games-process-pill-height: 20px;
     --games-process-grid-cols:
         38px
