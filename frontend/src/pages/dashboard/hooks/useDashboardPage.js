@@ -3879,15 +3879,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       const multiCodes = Array.isArray(codes) && codes.length > 1 ? codes : null;
       // Never paint KPI/trend without settled chart series.
       if (dashboardPayloadNeedsChartDaily(cached.current)) return false;
-      // Scope swap: wait for complete pie so KPI/chart/pie land together.
-      const requirePie = dashboardRequiresPieAtomicPaint(displayScopeKeyRef.current, key);
-      if (multiCodes && requirePie) {
-        const readyEarnings =
-          getCompleteCachedEarnings(cached, multiCodes) ||
-          (cacheEntryHasFullEarnings(cached, multiCodes) ? cached.earnings : null);
-        if (!readyEarnings) return false;
-      }
 
+      // Paint KPI/trend immediately — Currency/pie fills in separately (may stay loading).
       setDashboardData(cached.current);
       dashboardDataRef.current = cached.current;
       setDashboardDataPrev(cached.previous ?? null);
@@ -3909,6 +3902,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           setEarningsByCurrencyPrev([]);
           setEarningsByCurrencyLoading(false);
         } else {
+          setEarningsByCurrencyPrev([]);
           setEarningsByCurrencyLoading(true);
         }
       } else {
@@ -6657,8 +6651,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       setDashboardCache(cacheKey, { current: empty, previous: null });
       setLoading(false);
     };
-    // Company switch: wait until currency list is known before atomic paint.
-    // Empty [] in the map means "confirmed no currencies" — paint zeros, do not spin forever.
+    // Company switch: need currency list only to distinguish empty vs pending.
+    // Do NOT wait for multi-currency earnings codes — KPI/trend may paint first.
     if (
       requirePieEarly &&
       !groupAllMode &&
@@ -6673,15 +6667,6 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       }
       if (currencyState === "empty") {
         paintEmptyDashboardScope();
-        return;
-      }
-      const cachedCodes = currenciesByCompanyRef.current.get(parseInt(companyId, 10));
-      if (
-        Array.isArray(cachedCodes) &&
-        cachedCodes.length > 1 &&
-        !(Array.isArray(codesForEarnings) && codesForEarnings.length > 1)
-      ) {
-        setLoading(true);
         return;
       }
     }
@@ -7047,41 +7032,39 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             );
           }
 
+          // Currency/pie earnings — never block KPI/trend; fill after early paint.
           if (
             needsMultiCurrencyEarnings &&
             !(Array.isArray(earningsCurrent) && earningsCurrent.length > 1)
           ) {
-            panelTasks.push(
-              (async () => {
-                try {
-                  const rows = await loadEarningsParallelForAtomicPaint(
-                    gen,
+            void (async () => {
+              try {
+                const rows = await loadEarningsParallelForAtomicPaint(
+                  gen,
+                  codesForEarnings || currenciesRef.current,
+                  currencyCodeRef.current || provisionalCurrency,
+                  currentPayload,
+                  cacheKey
+                );
+                if (gen !== dashboardFetchGenRef.current) return;
+                if (Array.isArray(rows) && rows.length > 1) {
+                  earningsCurrent = rows;
+                  setEarningsByCurrency(rows);
+                  setEarningsByCurrencyLoading(false);
+                  patchDashboardCache(cacheKey, { earnings: rows });
+                  mirrorDashboardEarningsAcrossCurrencies(
+                    rows,
                     codesForEarnings || currenciesRef.current,
-                    currencyCodeRef.current || provisionalCurrency,
-                    currentPayload,
-                    cacheKey
+                    resolveDashboardScopeKey
                   );
-                  if (gen !== dashboardFetchGenRef.current) return;
-                  if (Array.isArray(rows) && rows.length > 1) {
-                    earningsCurrent = rows;
-                    setEarningsByCurrency(rows);
-                    setEarningsByCurrencyLoading(false);
-                    patchDashboardCache(cacheKey, { earnings: rows });
-                    mirrorDashboardEarningsAcrossCurrencies(
-                      rows,
-                      codesForEarnings || currenciesRef.current,
-                      resolveDashboardScopeKey
-                    );
-                  }
-                } catch {
-                  /* Pie fills later if needed */
                 }
-              })()
-            );
+              } catch {
+                /* Pie fills later if needed */
+              }
+            })();
           }
 
-          // Warm FX off the critical path — never block KPI/chart/pie paint on rates
-          // (USDT/crypto base used to 422/502 and stall atomic paint).
+          // Warm FX off the critical path — never block KPI/chart paint on rates.
           if (needsMultiCurrencyEarnings) {
             void (async () => {
               try {
@@ -7105,6 +7088,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             })();
           }
 
+          // Only await chart settle on the critical path (not currency earnings).
           if (panelTasks.length) {
             await Promise.all(panelTasks);
             if (gen !== dashboardFetchGenRef.current) return;
@@ -8638,8 +8622,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       !earningsByCurrencyLoading &&
       (useConvertedEarnings || !summaryExchangeRatesLoading));
   /**
-   * True when KPI + chart (+ multi-currency earnings) are ready for the active scope.
-   * Used for compare badges / panel stability — do not blank the layout while waiting.
+   * Full view (KPI + chart + currency) ready — Currency may lag; do not gate KPI on this.
    */
   const dashboardViewReady = useMemo(() => {
     if (!dashboardScopeKey || scopeDataPending || loading) return false;
@@ -8655,11 +8638,14 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     earningsPanelStable,
   ]);
   /**
-   * KPI + Trend share one static loading gate (em dash / empty chart) — no skeleton,
-   * no wipe-in. Includes scope pending so both stay blank until the pack paints together.
+   * KPI + Trend only — ready as soon as scope payload + chart settle.
+   * Currency/pie must NOT hold this gate (they load slower on their own).
    */
   const kpiLoading =
-    scopeDataPending || !dashboardData || loading || !dashboardViewReady;
+    scopeDataPending ||
+    loading ||
+    !dashboardData ||
+    dashboardPayloadNeedsChartDaily(dashboardData);
 
   useLayoutEffect(() => {
     if (
