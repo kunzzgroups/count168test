@@ -536,6 +536,29 @@ body.ec-auth-shell .member-card:hover {
     position: relative;
 }
 
+/* Acc / Admin 列表：对齐 Acc 静态斑马纹，勿行悬停抬升 */
+body.ec-auth-shell.user-page .user-card:hover,
+body.ec-auth-shell.user-page .user-list-row:hover,
+body.ec-auth-shell.account-page .account-card:hover,
+body.ec-auth-shell.account-page .account-list-row:hover {
+    box-shadow: none !important;
+    transform: none !important;
+    background-color: inherit !important;
+    border-radius: 0;
+    z-index: auto;
+    position: static;
+}
+
+body.ec-auth-shell.user-page .user-card.row-even:hover,
+body.ec-auth-shell.account-page .account-card:nth-child(even):hover {
+    background: #cceeff99 !important;
+}
+
+body.ec-auth-shell.user-page .user-card.row-odd:hover,
+body.ec-auth-shell.account-page .account-card:nth-child(odd):hover {
+    background: #ffffff !important;
+}
+
 /* For native table rows */
 body.ec-auth-shell .transaction-table tbody tr:hover td,
 body.ec-auth-shell .datacapture-table tbody tr:hover td {

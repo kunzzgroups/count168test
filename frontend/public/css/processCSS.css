@@ -249,8 +249,11 @@ body.process-page:not(.process-page--bank):not(.process-page--show-all) .content
 .process-page .action-buttons-container {
     margin-top: clamp(12px, 1.04vw, 20px);
     background-color: #ffffff;
+    border: none;
     border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-card, 0 2px 8px rgba(0, 0, 0, 0.1));
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;

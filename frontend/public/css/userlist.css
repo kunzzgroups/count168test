@@ -5,7 +5,6 @@ body.user-page {
     padding: 0;
     min-height: 100vh;
     height: 100vh;
-    /* 添加这行 */
     background-color: #e9f1ff;
     background-image:
         radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 48%),
@@ -14,10 +13,13 @@ body.user-page {
         radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 55%),
         linear-gradient(145deg, #97BFFC 0%, #AECFFA 40%, #f9fbff 100%);
     background-blend-mode: screen, screen, multiply, screen, normal;
+    background-size: 100vw 100vh;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
     color: #334155;
     overflow-x: hidden;
     overflow-y: auto;
-    /* 允许整页纵向滚动 */
+    position: relative;
 }
 
 /* 非 Show All：允许整页纵向滚动 */
@@ -101,10 +103,8 @@ body.ec-auth-shell.user-page .action-buttons .btn {
 }
 
 /*
- * Admin（User List）：顶栏按键 / chip / GC / 搜索条直接无动画。
+ * Admin / Acc：顶栏按键 / chip / GC / 搜索条 / Status 直接无动画（对齐 Acc 静态观感）。
  * dashboard .btn 的 transition:all + hover translateY / ::after sweep 会造成刷新与切换闪烁。
- * .search-input 的 transition:all 会在 remount 时把药丸样式「动画」出来。
- * 表格 Status ACTIVE/INACTIVE 与 Role badge 也不做 scale / transition。
  */
 body.user-page .action-buttons .btn,
 body.user-page .action-buttons .btn-add,
@@ -125,7 +125,25 @@ body.user-page .status-inactive,
 body.user-page .status-clickable,
 body.user-page .user-list-row .role-badge,
 body.user-page .user-list-row .status-clickable,
-body.user-page .user-list-table .user-edit-btn {
+body.user-page .user-list-table .user-edit-btn,
+body.account-page .action-buttons .btn,
+body.account-page .action-buttons .btn-add,
+body.account-page .action-buttons .btn-delete,
+body.account-page .action-buttons .btn-currency-setting,
+body.account-page .user-toolbar-actions-right .btn,
+body.account-page .user-toolbar-actions-right .btn-add,
+body.account-page .user-toolbar-actions-right .btn-delete,
+body.account-page .user-toolbar-actions-right .btn-currency-setting,
+body.account-page .user-filter-chip,
+body.account-page .user-filter-chip__dot,
+body.account-page .user-gc-segment,
+body.account-page .search-container.userlist-search-bar,
+body.account-page .search-container.userlist-search-bar .userlist-search-input,
+body.account-page .search-container.userlist-search-bar .search-input,
+body.account-page .search-container.userlist-search-bar .userlist-search-input.search-input,
+body.account-page .account-role-badge,
+body.account-page .status-clickable,
+body.account-page .account-list-row .account-edit-btn {
     transition: none !important;
     animation: none !important;
 }
@@ -147,7 +165,27 @@ body.user-page .user-filter-chip:hover,
 body.user-page .status-clickable:hover,
 body.user-page .status-clickable:active,
 body.user-page .user-list-row .status-clickable:hover,
-body.user-page .user-list-row .status-clickable:active {
+body.user-page .user-list-row .status-clickable:active,
+body.account-page .action-buttons .btn:hover,
+body.account-page .action-buttons .btn:active,
+body.account-page .action-buttons .btn-add:hover,
+body.account-page .action-buttons .btn-add:active,
+body.account-page .action-buttons .btn-delete:hover,
+body.account-page .action-buttons .btn-delete:active,
+body.account-page .action-buttons .btn-currency-setting:hover,
+body.account-page .action-buttons .btn-currency-setting:active,
+body.account-page .user-toolbar-actions-right .btn:hover,
+body.account-page .user-toolbar-actions-right .btn:active,
+body.account-page .btn-add:hover,
+body.account-page .btn-add:active,
+body.account-page .btn-delete:hover,
+body.account-page .btn-delete:active,
+body.account-page .btn-currency-setting:hover,
+body.account-page .btn-currency-setting:active,
+body.account-page .user-gc-segment:not(:disabled):active,
+body.account-page .user-filter-chip:hover,
+body.account-page .status-clickable:hover,
+body.account-page .status-clickable:active {
     transform: none !important;
     box-shadow: none !important;
 }
@@ -158,7 +196,16 @@ body.user-page .btn-add::after,
 body.user-page .btn-add:hover::after,
 body.user-page .btn-delete::after,
 body.user-page .btn-delete:hover::after,
-body.user-page .btn:hover::after {
+body.user-page .btn:hover::after,
+body.account-page .action-buttons .btn::after,
+body.account-page .action-buttons .btn:hover::after,
+body.account-page .btn-add::after,
+body.account-page .btn-add:hover::after,
+body.account-page .btn-delete::after,
+body.account-page .btn-delete:hover::after,
+body.account-page .btn-currency-setting::after,
+body.account-page .btn-currency-setting:hover::after,
+body.account-page .btn:hover::after {
     content: none !important;
     display: none !important;
     transition: none !important;
@@ -554,7 +601,7 @@ body.user-page.user-page--show-all .user-cards {
 body.user-page .action-buttons-container,
 body.account-page .action-buttons-container {
     background: var(--color-surface, #ffffff);
-    border: 1px solid var(--color-border, #e5e7eb);
+    border: none;
     box-shadow: var(--shadow-card, 0 2px 8px rgba(0, 0, 0, 0.1));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -568,6 +615,16 @@ body.user-page .action-buttons-container {
     align-items: stretch;
     align-self: stretch;
     min-height: 0;
+}
+
+body.user-page .action-buttons {
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex: 0 0 auto;
+    margin: 0;
 }
 
 body.user-page .user-toolbar-primary {
@@ -3612,8 +3669,8 @@ body.user-page:not(.user-page--show-all) .user-card.show-card {
 }
 
 .user-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    transform: translateY(-1px);
+    box-shadow: none;
+    transform: none;
 }
 
 .card-item {

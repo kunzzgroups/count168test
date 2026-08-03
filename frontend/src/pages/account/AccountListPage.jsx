@@ -223,6 +223,7 @@ export default function AccountListPage() {
   const listRegionRef = useRef(null);
   const [selectedGroup, setSelectedGroup] = useState(() => initialBootGc.selectedGroup);
   const [selectedDeleteIds, setSelectedDeleteIds] = useState(new Set());
+  const [selectAllAccounts, setSelectAllAccounts] = useState(false);
 
   // -- Modals & Forms --
   const [toast, setToast] = useState(null);
@@ -406,6 +407,7 @@ export default function AccountListPage() {
   const resetAccountListPagination = useCallback(() => {
     setCurrentPage(1);
     setSelectedDeleteIds(new Set());
+    setSelectAllAccounts(false);
   }, []);
 
   const resetPaginationForGcScope = useCallback(
@@ -1892,6 +1894,9 @@ export default function AccountListPage() {
 
   const accountMutationsBlocked = usePartnershipAuditReadOnlyLocked(sessionMe);
 
+  /** 仅「显示停用」模式展示批量删除勾选列；与 Admin User List 一致 */
+  const showBulkDeleteColumn = showInactive;
+
   const pageSize = useAutoListPageSize({
     listRegionRef,
     enabled: !showAll,
@@ -1914,6 +1919,7 @@ export default function AccountListPage() {
       selectedGroup,
       groupAllMode,
       groupsAllMode,
+      showBulkDeleteColumn,
     ],
   });
 
@@ -1980,7 +1986,10 @@ export default function AccountListPage() {
   );
 
   useEffect(() => {
-    if (!showInactive) setSelectedDeleteIds(new Set());
+    if (!showInactive) {
+      setSelectedDeleteIds(new Set());
+      setSelectAllAccounts(false);
+    }
   }, [showInactive]);
 
   const togglePaymentAlert = async (id) => {
@@ -2232,6 +2241,7 @@ export default function AccountListPage() {
       if (!json.success) return notifyApi(json.message, "deleteFailed", "danger");
       setConfirmDeleteOpen(false);
       setSelectedDeleteIds(new Set());
+      setSelectAllAccounts(false);
       notifyApi(json.message, "accountsDeletedSuccessfully");
       refreshAccountList();
     } catch { notify(t("deleteFailed"), "danger"); }
@@ -3097,7 +3107,10 @@ export default function AccountListPage() {
             />
           </div>
 
-          <div ref={listRegionRef} className="account-table-wrapper account-list-table">
+          <div
+            ref={listRegionRef}
+            className={`account-table-wrapper account-list-table${showBulkDeleteColumn ? " account-table-wrapper--bulk-delete-col" : ""}`}
+          >
             <div className="account-table-header account-list-table-header">
               <div className="account-header-item">{t("no")}</div>
               {renderSortableHeader(t("account"), "account")}
@@ -3108,6 +3121,24 @@ export default function AccountListPage() {
               {renderSortableHeader(t("lastLogin"), "lastLogin")}
               {renderSortableHeader(t("remark"), "remark")}
               <div className="account-header-item account-header-item--action">{t("action")}</div>
+              {showBulkDeleteColumn && (
+                <div className="account-header-item account-header-item--select">
+                  <input
+                    type="checkbox"
+                    aria-label={t("selectAllDeletableAria")}
+                    checked={selectAllAccounts}
+                    disabled={accountMutationsBlocked}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      const eligible = pageRows
+                        .filter((row) => String(row.status || "").toLowerCase() === "inactive")
+                        .map((row) => Number(row.id));
+                      setSelectedDeleteIds(on ? new Set(eligible) : new Set());
+                      setSelectAllAccounts(on);
+                    }}
+                  />
+                </div>
+              )}
             </div>
             <div
               className={`account-cards${showAll ? " account-cards--show-all" : ""}${usePagedFill ? " account-cards--paged-fill" : ""}`}
@@ -3162,16 +3193,30 @@ export default function AccountListPage() {
                           </svg>
                         </button>
                         </div>
-                        {isInactive && (
-                          <input
-                            type="checkbox"
-                            disabled={accountMutationsBlocked}
-                            checked={selectedDeleteIds.has(Number(a.id))}
-                            onChange={(e) => setSelectedDeleteIds(prev => { const n = new Set(prev); if (e.target.checked) n.add(Number(a.id)); else n.delete(Number(a.id)); return n; })}
-                          />
-                        )}
                       </div>
                     </div>
+                    {showBulkDeleteColumn && (
+                      <div className="account-card-item account-card-item--select">
+                        {isInactive ? (
+                          <input
+                            type="checkbox"
+                            aria-label={t("rowDeleteCheckboxAria")}
+                            disabled={accountMutationsBlocked}
+                            checked={selectedDeleteIds.has(Number(a.id))}
+                            onChange={(e) =>
+                              setSelectedDeleteIds((prev) => {
+                                const n = new Set(prev);
+                                if (e.target.checked) n.add(Number(a.id));
+                                else n.delete(Number(a.id));
+                                return n;
+                              })
+                            }
+                          />
+                        ) : (
+                          <span className="account-row-select-placeholder" aria-hidden="true" />
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
