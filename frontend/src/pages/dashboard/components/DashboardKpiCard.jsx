@@ -27,8 +27,8 @@ export function DashboardKpiCard({
         <span className="kpi-card-head-label">{label}</span>
       </div>
       <div className="kpi-card-main">
-        <div className="kpi-card-value">
-          {formatCurrency(value)}
+        <div className={`kpi-card-value${loading ? " is-static-loading" : ""}`}>
+          {loading ? "—" : formatCurrency(value)}
         </div>
         {showCompare && (
           <span className={`kpi-card-badge${badgeUp ? " is-up" : " is-down"}`}>

@@ -871,7 +871,7 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     gap: var(--dashboard-section-gap);
 }
 
-/* Scope switch pending: keep Filter bright; FB-style skeleton over KPI/chart/pie. */
+/* Scope pending: Filter stays live; KPI/chart use in-place static loading (no skeleton overlay). */
 .dashboard-data-surface {
     position: relative;
     display: flex;
@@ -887,17 +887,11 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     gap: var(--dashboard-section-gap);
     flex: 1;
     min-height: 0;
-    /* No opacity fade — crossfade made old KPI bleed under the skeleton (95→All flicker). */
 }
 
-.dashboard-data-surface.is-scope-pending .dashboard-data-surface__live {
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.dashboard-data-surface.is-scope-pending {
-    pointer-events: none;
+.dashboard-kpi-card .kpi-card-value.is-static-loading {
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
 }
 
 .dashboard-scope-skeleton {

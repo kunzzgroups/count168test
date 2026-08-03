@@ -8654,8 +8654,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     currencies.length,
     earningsPanelStable,
   ]);
-  /** Keep previous paint visible while the next full view loads (no empty hole). */
-  const kpiLoading = Boolean(dashboardData) ? false : loading || !dashboardViewReady;
+  /**
+   * KPI + Trend share one static loading gate (em dash / empty chart) — no skeleton,
+   * no wipe-in. Includes scope pending so both stay blank until the pack paints together.
+   */
+  const kpiLoading =
+    scopeDataPending || !dashboardData || loading || !dashboardViewReady;
 
   useLayoutEffect(() => {
     if (
