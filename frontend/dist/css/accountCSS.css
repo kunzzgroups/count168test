@@ -462,19 +462,27 @@ body.account-page:not(.account-page--show-all) .account-card {
     box-sizing: border-box;
 }
 
-/* 分页模式：行内文字与 User List 对齐，避免两页表格行高视觉不一致 */
-body.account-page:not(.account-page--show-all) .account-list-row .account-card-item,
-body.ec-auth-shell.account-page:not(.account-page--show-all) .account-list-row .account-card-item {
+/* 行内文字密度：含 Show All，与 Admin 对齐 */
+body.account-page .account-list-row .account-card-item,
+body.ec-auth-shell.account-page .account-list-row .account-card-item {
     font-size: 1.4rem !important;
     font-weight: bold !important;
     line-height: 1.3 !important;
     letter-spacing: 0 !important;
 }
 
-/* 分页列表：Role / Alert / Status 药丸（固定字号，小屏/125% 不缩小） */
-body.account-page:not(.account-page--show-all) .account-list-row .account-role-badge,
-body.ec-auth-shell.account-page:not(.account-page--show-all) .account-list-row .account-role-badge,
-body.ec-auth-shell.account-page:not(.account-page--show-all) .account-list-row span.account-role-badge {
+body.account-page.account-page--show-all .account-list-table .account-list-row.account-card,
+body.ec-auth-shell.account-page.account-page--show-all .account-card {
+    padding: 0 22px !important;
+    min-height: var(--account-list-row-min-height, 30px) !important;
+    flex: 0 0 auto !important;
+    height: auto !important;
+}
+
+/* Role / Alert / Status 药丸（固定字号；含 Show All） */
+body.account-page .account-list-row .account-role-badge,
+body.ec-auth-shell.account-page .account-list-row .account-role-badge,
+body.ec-auth-shell.account-page .account-list-row span.account-role-badge {
     box-sizing: border-box;
     height: var(--account-list-pill-height, 20px);
     padding: 0 8px;
