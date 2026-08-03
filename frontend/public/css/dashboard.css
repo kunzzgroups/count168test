@@ -1083,6 +1083,59 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     }
 }
 
+/* Quiet ambient placeholder — a soft breathing sheen, not text-shaped bars,
+   so a genuine first load doesn't read as an obvious "still loading" state.
+   Paired with useDeferredReveal: only shown after a short grace period, so
+   an already-cached scope never sees it at all. */
+.dashboard-quiet-placeholder {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(120deg, #e9eef6 0%, #f6f8fb 45%, #e9eef6 100%);
+    background-size: 220% 100%;
+    animation: dashboard-ambient-sheen 2.6s ease-in-out infinite;
+}
+
+@keyframes dashboard-ambient-sheen {
+    0%,
+    100% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+/* One-shot reveal once a genuinely-delayed load finally lands — the fully
+   computed content wipes in right-to-left instead of popping in piecemeal.
+   Only applied when the placeholder above was actually shown (see
+   useDeferredReveal); an instant/cached paint never gets this animation. */
+@keyframes dashboard-wipe-reveal {
+    from {
+        clip-path: inset(0 0 0 100%);
+        opacity: 0.4;
+    }
+
+    to {
+        clip-path: inset(0 0 0 0%);
+        opacity: 1;
+    }
+}
+
+.dashboard-wipe-in {
+    animation: dashboard-wipe-reveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-quiet-placeholder {
+        animation: none;
+    }
+
+    .dashboard-wipe-in {
+        animation: none;
+    }
+}
+
 .dashboard-card {
     background-color: var(--scd-card);
     border: 1px solid var(--scd-border);
@@ -2182,13 +2235,14 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     opacity: 1;
     transform: translateY(0);
     transition: background-color var(--duration-fast, 0.2s) var(--ease-out-soft, ease),
-        opacity 0.32s var(--ease-out-soft, ease) calc(var(--row-i, 0) * 55ms),
-        transform 0.32s var(--ease-out-soft, ease) calc(var(--row-i, 0) * 55ms);
+        opacity 0.24s var(--ease-out-soft, ease),
+        transform 0.24s var(--ease-out-soft, ease);
 }
 
-/* Currency amounts still resolving (FX/earnings fetch in flight) — dim, then
-   stagger-reveal per row (--row-i) as each one settles instead of jumping
-   straight from blank to a wall of numbers. */
+/* Currency amount still resolving on a background refresh (rare — the cold-load
+   case is covered by the card-level skeleton below, not this per-row dim). All
+   rows settle together, no per-row stagger — a partial reveal here is what
+   looked broken before. */
 .dashboard-summary-currency-row.is-amount-loading {
     opacity: 0.5;
     transform: translateY(3px);
@@ -2209,6 +2263,15 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
         opacity: 0.7;
         transform: none;
     }
+}
+
+/* Currency card while genuinely still fetching (see useDeferredReveal — only
+   shown past the grace period, never for an already-cached scope). One quiet
+   placeholder for the whole card instead of Hero/Pie rendering ahead of the
+   row list; swaps to real content via .dashboard-wipe-in once complete. */
+.dashboard-summary-quiet-placeholder {
+    min-height: 220px;
+    border-radius: var(--radius-panel, 12px);
 }
 
 .dashboard-summary-currency-row.is-active {

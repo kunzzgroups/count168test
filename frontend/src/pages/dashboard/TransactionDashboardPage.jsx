@@ -1,6 +1,7 @@
 import { useDashboardDateRange, useDashboardDateRangeState } from "./hooks/useDashboardDateRange.js";
 import { useDashboardLang } from "./hooks/useDashboardLang.js";
 import { useDashboardPage } from "./hooks/useDashboardPage.js";
+import { useDeferredReveal } from "./hooks/useDeferredReveal.js";
 import { DashboardCalendarPopup } from "./components/DashboardCalendarPopup.jsx";
 import { DashboardCompanyAccessModal } from "./components/DashboardCompanyAccessModal.jsx";
 import { DashboardEarningsSummary } from "./components/DashboardEarningsSummary.jsx";
@@ -18,6 +19,14 @@ export default function TransactionDashboardPage() {
   const { dateFrom, setDateFrom, dateTo, setDateTo } = useDashboardDateRangeState();
 
   const page = useDashboardPage({ i18n, dateFrom, dateTo, setDateFrom, setDateTo });
+  // Placeholder + reveal only for a genuinely uncached scope switch — an
+  // already-loaded company/date/currency combo never sees either (see
+  // useDeferredReveal): scopeDataPending resolves inside the grace window.
+  const {
+    showPlaceholder: showScopePlaceholder,
+    animate: animateScopeReveal,
+    revealKey: scopeRevealKey,
+  } = useDeferredReveal(page.scopeDataPending, 150);
   const { effectiveDateRangeText, periodPresets } = useDashboardDateRange({
     me: page.me,
     i18n,
@@ -70,9 +79,12 @@ export default function TransactionDashboardPage() {
             }`}
             aria-busy={page.scopeDataPending ? "true" : undefined}
           >
-            {page.scopeDataPending ? <DashboardScopeSkeleton /> : null}
+            {showScopePlaceholder ? <DashboardScopeSkeleton /> : null}
             <div
-              className="dashboard-data-surface__live"
+              key={animateScopeReveal ? `live-${scopeRevealKey}` : "live"}
+              className={`dashboard-data-surface__live${
+                animateScopeReveal ? " dashboard-wipe-in" : ""
+              }`}
               aria-hidden={page.scopeDataPending ? "true" : undefined}
             >
               <DashboardKpiGrid
