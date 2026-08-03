@@ -154,13 +154,13 @@
         padding-bottom: 4px !important;
     }
 
-    /* User List 表头蓝条：单独用 --text-base */
+    /* User List 表头蓝条：与 Acc 一致 1.6rem（不再用更小的 --text-base） */
     body.ec-auth-shell.user-page .table-header:not(.user-list-table-header) {
-        font-size: var(--text-base) !important;
+        font-size: 1.6rem !important;
     }
 
     body.ec-auth-shell.user-page .user-list-table .user-list-table-header {
-        font-size: var(--text-base) !important;
+        font-size: 1.6rem !important;
         padding: var(--table-header-height) !important;
     }
 

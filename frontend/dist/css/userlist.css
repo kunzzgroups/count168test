@@ -597,19 +597,18 @@ body.user-page.user-page--show-all .user-cards {
     overflow: hidden;
 }
 
-/* User List / Account List 工具条整块：白实底（与主区白底一致） */
+/* User List / Account List 工具条整块：与 Acc accountCSS 同款（无描边，仅阴影） */
 body.user-page .action-buttons-container,
 body.account-page .action-buttons-container {
-    background: var(--color-surface, #ffffff);
-    border: none;
-    box-shadow: var(--shadow-card, 0 2px 8px rgba(0, 0, 0, 0.1));
+    margin-top: clamp(12px, 1.04vw, 20px);
+    background-color: #ffffff;
+    border: none !important;
+    outline: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     flex-shrink: 0;
-}
-
-/* Acc standard toolbar stretch for Admin User List */
-body.user-page .action-buttons-container {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -617,7 +616,22 @@ body.user-page .action-buttons-container {
     min-height: 0;
 }
 
+/* Acc standard toolbar stretch for Admin User List */
+body.user-page .action-buttons-container {
+    flex: 0 0 auto;
+}
+
 body.user-page .action-buttons {
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+body.account-page .action-buttons {
     padding: 10px 20px;
     display: flex;
     justify-content: space-between;
