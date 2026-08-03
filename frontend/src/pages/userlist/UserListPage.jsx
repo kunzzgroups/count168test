@@ -510,7 +510,7 @@ export default function UserListPage() {
     document.body.classList.add("user-page");
     return () => {
       document.body.classList.remove("user-page", "user-page--show-all", "bg");
-      document.body.classList.add("dashboard-page");
+      // document.body.classList.add("dashboard-page");
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);

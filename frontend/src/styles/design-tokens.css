@@ -252,7 +252,7 @@
   --list-table-min-width: 980px;
 
   /* Account 表头蓝条 padding（accountCSS .account-table-header） */
-  --table-header-height: 6px 22px;
+  --table-header-height: 4px 22px;
 
   /*
    * Customer / Domain Report 列表行高（Maintenance 虚拟表与之对齐）
