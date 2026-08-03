@@ -2179,7 +2179,36 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     font-family: var(--summary-font);
     border-left: none;
     background: transparent;
-    transition: background-color var(--duration-fast, 0.2s) var(--ease-out-soft, ease);
+    opacity: 1;
+    transform: translateY(0);
+    transition: background-color var(--duration-fast, 0.2s) var(--ease-out-soft, ease),
+        opacity 0.32s var(--ease-out-soft, ease) calc(var(--row-i, 0) * 55ms),
+        transform 0.32s var(--ease-out-soft, ease) calc(var(--row-i, 0) * 55ms);
+}
+
+/* Currency amounts still resolving (FX/earnings fetch in flight) — dim, then
+   stagger-reveal per row (--row-i) as each one settles instead of jumping
+   straight from blank to a wall of numbers. */
+.dashboard-summary-currency-row.is-amount-loading {
+    opacity: 0.5;
+    transform: translateY(3px);
+}
+
+.dashboard-summary-currency-row.is-amount-loading .dashboard-summary-currency-amount,
+.dashboard-summary-currency-row.is-amount-loading .dashboard-summary-currency-original,
+.dashboard-summary-currency-row.is-amount-loading .dashboard-summary-currency-rate {
+    color: var(--summary-text-muted, #94a3b8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-summary-currency-row {
+        transition: background-color var(--duration-fast, 0.2s) var(--ease-out-soft, ease);
+    }
+
+    .dashboard-summary-currency-row.is-amount-loading {
+        opacity: 0.7;
+        transform: none;
+    }
 }
 
 .dashboard-summary-currency-row.is-active {

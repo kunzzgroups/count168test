@@ -413,15 +413,18 @@ export function DashboardEarningsSummary({
                 <div
                   key={row.code}
                   role="listitem"
-                  className={`dashboard-summary-currency-row${row.code === currencyCode ? " is-active" : ""}`}
-                  style={
-                    row.code === currencyCode
+                  className={`dashboard-summary-currency-row${row.code === currencyCode ? " is-active" : ""}${
+                    rowAmountLoading ? " is-amount-loading" : ""
+                  }`}
+                  style={{
+                    "--row-i": index,
+                    ...(row.code === currencyCode
                       ? {
                           "--currency-accent":
                             currencyPieFillByCode[row.code] || getCurrencyColor(row.code, index),
                         }
-                      : undefined
-                  }
+                      : null),
+                  }}
                 >
                   <div className="dashboard-summary-currency-label">
                     <span
