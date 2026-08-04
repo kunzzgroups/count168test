@@ -1430,6 +1430,21 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     width: 100%;
     height: 100%;
     min-height: inherit;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 6px 0 4px;
+}
+
+.dashboard-panel-chart-placeholder-line {
+    display: block;
+    width: 100%;
+    height: 1px;
+    background: #e5e7eb;
+}
+
+.dashboard-panel-chart-placeholder-line--base {
+    background: #cbd5e1;
 }
 
 .dashboard-panel-chart-body.is-scope-morph {
@@ -1815,6 +1830,23 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     color: var(--summary-text-muted);
     font-family: var(--summary-font);
     line-height: 1.3;
+}
+
+/* Currency card reveal — content stays fully clipped (not "loading", just quiet)
+   until data is complete, then wipes in from the right edge toward the left. */
+.dashboard-summary-reveal {
+    clip-path: inset(0 0 0 100%);
+    transition: clip-path 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dashboard-summary-reveal.is-revealed {
+    clip-path: inset(0 0 0 0%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-summary-reveal {
+        transition: none;
+    }
 }
 
 .dashboard-summary-compare {
