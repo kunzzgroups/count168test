@@ -287,7 +287,7 @@ body.user-page:not(.user-page--show-all) .user-list-table .user-list-table-heade
  * 表头与数据行共用 grid 变量；完整显示 Action / Last Login / Created By 等标题
  */
 .user-list-table {
-    --list-table-min-width: 980px;
+    --list-table-min-width: 1040px;
     --user-list-row-min-height: 30px;
     --user-list-pill-height: 20px;
     --user-list-grid-cols:
@@ -295,7 +295,7 @@ body.user-page:not(.user-page--show-all) .user-list-table .user-list-table-heade
         minmax(120px, 1.5fr)
         minmax(120px, 1.5fr)
         minmax(130px, 1.2fr)
-        minmax(84px, 0.7fr)
+        minmax(140px, 0.7fr)
         minmax(72px, 0.55fr)
         minmax(131px, 1fr)
         minmax(96px, 1.2fr)
@@ -305,7 +305,7 @@ body.user-page:not(.user-page--show-all) .user-list-table .user-list-table-heade
         minmax(120px, 1.5fr)
         minmax(120px, 1.5fr)
         minmax(130px, 1.2fr)
-        minmax(84px, 0.7fr)
+        minmax(140px, 0.7fr)
         minmax(72px, 0.55fr)
         minmax(131px, 1fr)
         minmax(96px, 1.2fr)
@@ -320,7 +320,7 @@ body.lang-zh.user-page .user-list-table {
         minmax(120px, 1.5fr)
         minmax(120px, 1.5fr)
         minmax(130px, 1.2fr)
-        minmax(84px, 0.7fr)
+        minmax(140px, 0.7fr)
         minmax(72px, 0.55fr)
         minmax(131px, 1fr)
         minmax(96px, 1.2fr)
@@ -330,7 +330,7 @@ body.lang-zh.user-page .user-list-table {
         minmax(120px, 1.5fr)
         minmax(120px, 1.5fr)
         minmax(130px, 1.2fr)
-        minmax(84px, 0.7fr)
+        minmax(140px, 0.7fr)
         minmax(72px, 0.55fr)
         minmax(131px, 1fr)
         minmax(96px, 1.2fr)
@@ -546,15 +546,7 @@ body.ec-auth-shell.user-page .user-list-table .user-list-row .card-item--action 
     transform: none;
 }
 
-.user-list-table .user-list-row .card-item:has(.role-badge) {
-    overflow: visible;
-    text-overflow: clip;
-    flex-shrink: 0;
-    min-width: min-content;
-}
-
 .user-list-table .user-list-row .role-badge {
-    flex-shrink: 0;
     white-space: nowrap;
 }
 
@@ -3643,17 +3635,11 @@ body.ec-auth-shell.user-page .user-list-row .role-badge {
     font-weight: 700 !important;
     letter-spacing: 0.02em !important;
     border-radius: 6px !important;
-    flex-shrink: 0;
     white-space: nowrap;
-    min-width: max-content !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
     border-width: 1px !important;
-}
-
-body.user-page:not(.user-page--show-all) .user-list-row .card-item:has(.role-badge) {
-    overflow: visible;
-    text-overflow: clip;
-    flex-shrink: 0;
-    min-width: min-content;
 }
 
 /* 非 Show All：行高随内容；勿用 flex-grow 撑满半屏 */
