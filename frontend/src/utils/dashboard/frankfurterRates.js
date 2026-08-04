@@ -134,21 +134,34 @@ async function backfillMissingFrankfurterQuotes(baseCode, apiQuotes, dateYmd, se
   }
 
   const unsupported = new Set(missing);
-  for (const quote of missing) {
-    const dateCandidates = dateYmd ? [dateYmd, null] : [null];
-    for (const dateTry of dateCandidates) {
-      try {
-        const one = await fetchFrankfurterRatesOnce(baseCode, [quote], dateTry);
-        if (one.rates[quote] && one.rates[quote] > 0) {
-          merged = mergeFrankfurterRatePayload(baseCode, merged, one);
-          unsupported.delete(quote);
-          break;
+  // Each quote still tries its own date candidates in order, but different quotes
+  // run concurrently — there's no rate-limit constraint on Frankfurter tying them
+  // together, so the sequential await here only cost latency for no benefit.
+  const results = await Promise.allSettled(
+    missing.map(async (quote) => {
+      const dateCandidates = dateYmd ? [dateYmd, null] : [null];
+      for (const dateTry of dateCandidates) {
+        try {
+          const one = await fetchFrankfurterRatesOnce(baseCode, [quote], dateTry);
+          if (one.rates[quote] && one.rates[quote] > 0) {
+            return one;
+          }
+        } catch {
+          /* try next date or leave unsupported */
         }
-      } catch {
-        /* try next date or leave unsupported */
       }
+      return null;
+    })
+  );
+
+  results.forEach((result, index) => {
+    const quote = missing[index];
+    const one = result.status === "fulfilled" ? result.value : null;
+    if (one) {
+      merged = mergeFrankfurterRatePayload(baseCode, merged, one);
+      unsupported.delete(quote);
     }
-  }
+  });
 
   return {
     rates: merged.rates,

@@ -123,7 +123,12 @@ export function DashboardTrendChart({
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div className="dashboard-panel-chart-placeholder" aria-hidden="true" />
+          <div className="dashboard-panel-chart-placeholder" aria-hidden="true">
+            <span className="dashboard-panel-chart-placeholder-line" />
+            <span className="dashboard-panel-chart-placeholder-line" />
+            <span className="dashboard-panel-chart-placeholder-line" />
+            <span className="dashboard-panel-chart-placeholder-line dashboard-panel-chart-placeholder-line--base" />
+          </div>
         )}
       </div>
     </div>

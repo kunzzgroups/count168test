@@ -6,7 +6,6 @@ import { DashboardCompanyAccessModal } from "./components/DashboardCompanyAccess
 import { DashboardEarningsSummary } from "./components/DashboardEarningsSummary.jsx";
 import { DashboardFilterPanel } from "./components/DashboardFilterPanel.jsx";
 import { DashboardKpiGrid } from "./components/DashboardKpiGrid.jsx";
-import { DashboardScopeSkeleton } from "./components/DashboardScopeSkeleton.jsx";
 import { DashboardTrendChart } from "./components/DashboardTrendChart.jsx";
 import "../../../public/css/userlist.css";
 import "../../../public/css/transaction.css";
@@ -26,6 +25,19 @@ export default function TransactionDashboardPage() {
     setDateFrom,
     setDateTo,
   });
+
+  // While a new scope is loading, show 0.00 instead of the outgoing scope's real
+  // numbers — keep `showEarnings` as-is so the card count doesn't flicker 3↔4.
+  const kpiForDisplay = page.scopeDataPending
+    ? {
+        profit: 0,
+        expenses: 0,
+        earnings: 0,
+        netProfit: 0,
+        showEarnings: page.kpi.showEarnings,
+        comparisons: null,
+      }
+    : page.kpi;
 
   return (
     <>
@@ -65,22 +77,19 @@ export default function TransactionDashboardPage() {
           />
 
           <div
-            className={`dashboard-data-surface${
-              page.scopeDataPending ? " is-scope-pending" : ""
-            }`}
+            className="dashboard-data-surface"
             aria-busy={page.scopeDataPending ? "true" : undefined}
           >
-            {page.scopeDataPending ? <DashboardScopeSkeleton /> : null}
-            <div
-              className="dashboard-data-surface__live"
-              aria-hidden={page.scopeDataPending ? "true" : undefined}
-            >
+            {/* No skeleton — KPI/chart/currency stay mounted and self-represent their own
+                loading state (0.00 defaults, chart placeholder, currency shimmer) instead of
+                being hidden behind a full-surface placeholder. */}
+            <div className="dashboard-data-surface__live">
               <DashboardKpiGrid
                 i18n={i18n}
-                kpi={page.kpi}
+                kpi={kpiForDisplay}
                 kpiCompareLabel={page.kpiCompareLabel}
                 kpiFooter={page.kpiFooter}
-                loading={page.loading}
+                loading={page.loading || page.scopeDataPending}
               />
 
               <div
@@ -90,7 +99,7 @@ export default function TransactionDashboardPage() {
               >
                 <DashboardTrendChart
                   i18n={i18n}
-                  chartRows={page.chartRows}
+                  chartRows={page.scopeDataPending ? [] : page.chartRows}
                   chartSeries={page.chartSeries}
                   chartVisible={page.chartVisible}
                   onToggleSeries={page.toggleChartSeries}
@@ -108,9 +117,9 @@ export default function TransactionDashboardPage() {
                   summaryPanelLabel={page.summaryPanelLabel}
                   summaryEarningsValue={page.summaryEarningsValue}
                   summaryConversionNote={page.summaryConversionNote}
-                  summaryEarningsLoading={page.summaryEarningsLoading}
+                  summaryEarningsLoading={page.summaryEarningsLoading || page.scopeDataPending}
                   earningsPanelStable={page.earningsPanelStable}
-                  earningsByCurrencyLoading={page.earningsByCurrencyLoading}
+                  earningsByCurrencyLoading={page.earningsByCurrencyLoading || page.scopeDataPending}
                   exchangeRates={page.exchangeRates}
                   exchangeRatesLoading={page.exchangeRatesLoading}
                   exchangeRateScopeKey={page.exchangeRateScopeKey}

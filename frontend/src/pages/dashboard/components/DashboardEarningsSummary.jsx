@@ -97,22 +97,17 @@ export function DashboardEarningsSummary({
     setHoveredPieSector(null);
   }, [currencyCode, earningsPanelView]);
 
-  const isRowAmountLoading = useCallback(
-    (code) => {
-      if (currencies.length <= 1) return summaryEarningsLoading;
-      const row = panelCurrencyRows.find((r) => r.code === code);
-      return row?.earnings == null;
-    },
-    [currencies.length, panelCurrencyRows, summaryEarningsLoading]
-  );
+  const showMultiCurrencyBreakdown = currencies.length > 1;
 
-  const isRowRateLoading = useCallback(() => {
-    if (currencies.length <= 1) return false;
-    return (
-      exchangeRatesLoading ||
-      (exchangeRateScopeKey && exchangeRates.scopeKey !== exchangeRateScopeKey)
-    );
-  }, [currencies.length, exchangeRatesLoading, exchangeRates.scopeKey, exchangeRateScopeKey]);
+  // Card-level readiness gate — the whole card (pie + rows) reveals as one atomic
+  // unit instead of each row/cell popping in on its own as flags resolve.
+  const currencyCardReady = showMultiCurrencyBreakdown
+    ? !earningsByCurrencyLoading &&
+      panelCurrencyRows.length > 0 &&
+      panelCurrencyRows.every((row) => row.earnings != null) &&
+      !exchangeRatesLoading &&
+      (!exchangeRateScopeKey || exchangeRates.scopeKey === exchangeRateScopeKey)
+    : !summaryEarningsLoading;
 
   useLayoutEffect(() => {
     const wrap = pieAreaRef.current;
@@ -201,7 +196,6 @@ export function DashboardEarningsSummary({
     pieShellLayout,
   ]);
 
-  const showMultiCurrencyBreakdown = currencies.length > 1;
   const isStackedLayout = true;
   const isCompactTable = !showMultiCurrencyBreakdown;
 
@@ -277,7 +271,11 @@ export function DashboardEarningsSummary({
           isStackedLayout ? " is-compact-breakdown" : ""
         }${showMultiCurrencyBreakdown ? " is-multi-currency-layout" : ""}`}
       >
-        <div className="dashboard-summary-top-row">
+        <div
+          className={`dashboard-summary-top-row dashboard-summary-reveal${
+            currencyCardReady ? " is-revealed" : ""
+          }`}
+        >
           {summaryViewTabs}
           {summaryHero}
           <div
@@ -320,10 +318,7 @@ export function DashboardEarningsSummary({
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
-              {!summaryEarningsLoading &&
-                earningsPanelStable &&
-                earningsPieSlices.length > 0 &&
-                !hoveredPieTooltip && (
+              {earningsPanelStable && earningsPieSlices.length > 0 && !hoveredPieTooltip && (
                 <div className="dashboard-summary-pie-center" aria-hidden="true">
                   <span className="dashboard-summary-pie-center-pct">
                     {pieCenterPct != null && Number.isFinite(pieCenterPct)
@@ -361,11 +356,11 @@ export function DashboardEarningsSummary({
           </div>
         </div>
         <div
-          className={`dashboard-summary-currency-list${
+          className={`dashboard-summary-currency-list dashboard-summary-reveal${
             showMultiCurrencyBreakdown ? " is-multi-currency" : ""
           }${isCompactTable ? " is-compact-breakdown" : ""}${
             earningsBreakdownShowsRate ? " is-with-original" : ""
-          }`}
+          }${currencyCardReady ? " is-revealed" : ""}`}
           aria-label={i18n.currencyBreakdown}
         >
           <div className="dashboard-summary-currency-list-head" aria-hidden="true">
@@ -384,8 +379,6 @@ export function DashboardEarningsSummary({
           </div>
           <div className="dashboard-summary-currency-list-body" role="list">
             {panelCurrencyRows.map((row, index) => {
-              const rowAmountLoading = isRowAmountLoading(row.code);
-              const rowRateLoading = isRowRateLoading();
               const sharePct = computeCurrencySharePct(row, earningsShareByCode);
               const { primary, native } = resolveEarningsRowDisplayAmounts(
                 row,
@@ -435,11 +428,7 @@ export function DashboardEarningsSummary({
                   </div>
                   <div className="dashboard-summary-currency-amount-col">
                     <span className="dashboard-summary-currency-amount">
-                      {rowAmountLoading
-                        ? "…"
-                        : primary != null
-                          ? formatCurrency(primary)
-                          : "—"}
+                      {primary != null ? formatCurrency(primary) : "—"}
                     </span>
                   </div>
                   {(earningsBreakdownShowsRate || isCompanyBreakdownView) && (
@@ -447,25 +436,21 @@ export function DashboardEarningsSummary({
                       <span className="dashboard-summary-currency-original">
                         {isCompanyBreakdownView
                           ? row.group || "—"
-                          : rowAmountLoading
-                            ? "…"
-                            : showOriginalAmount && native != null
-                              ? formatCurrency(native)
-                              : "—"}
+                          : showOriginalAmount && native != null
+                            ? formatCurrency(native)
+                            : "—"}
                       </span>
                     </div>
                   )}
                   {!isCompanyBreakdownView && (
                     <span className="dashboard-summary-currency-rate" title={unitRateTitle}>
-                      {rowRateLoading
-                        ? "…"
-                        : earningsBreakdownShowsRate
-                          ? unitRateLabel && unitRateLabel !== "—"
-                            ? unitRateLabel
-                            : "—"
-                          : sharePct != null
-                            ? `${Number(sharePct).toFixed(1)}%`
-                            : "—"}
+                      {earningsBreakdownShowsRate
+                        ? unitRateLabel && unitRateLabel !== "—"
+                          ? unitRateLabel
+                          : "—"
+                        : sharePct != null
+                          ? `${Number(sharePct).toFixed(1)}%`
+                          : "—"}
                     </span>
                   )}
                 </div>

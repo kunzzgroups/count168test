@@ -7253,38 +7253,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             bootEarnings.length > 1 &&
             dashboardEarningsRowsComplete(bootEarnings, codesForPie));
 
-        // Product: show only when KPI+chart+pie are complete — await pie before paint.
-        if (groupAllMode && needsMultiCurrencyEarnings && !pieReady && current) {
-          dashboardDataRef.current = current;
-          setEarningsByCurrencyLoading(true);
-          try {
-            const rows = await loadEarningsParallelForAtomicPaint(
-              gen,
-              codesForPie,
-              currencyCode,
-              current,
-              cacheKey
-            );
-            if (gen !== dashboardFetchGenRef.current) return;
-            if (
-              Array.isArray(rows) &&
-              rows.length > 1 &&
-              dashboardEarningsRowsComplete(rows, codesForPie)
-            ) {
-              bootEarnings = rows;
-              pieReady = true;
-            }
-          } catch {
-            /* pie remains incomplete — keep loading rather than paint a partial board */
-          }
-          if (gen !== dashboardFetchGenRef.current) return;
-          if (!pieReady) {
-            setLoading(true);
-            deferActiveScopeEarningsUpgrade(200);
-            return;
-          }
-        }
-
+        // Paint KPI/chart the instant their own payload is ready — never wait on the
+        // Currency card's pie/earnings breakdown (that used to hold up the whole page's
+        // skeleton: "never swap KPI/chart ahead of complete pie"). The Currency card
+        // resolves on its own below and reveals as one atomic unit whenever it lands.
         setDashboardData(current);
         dashboardDataRef.current = current;
         setDisplayScopeKey(cacheKey);
@@ -7294,28 +7266,59 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           current,
           previous: warmedGroupAll?.previous ?? cached?.previous ?? null,
         };
-        if (
-          groupAllMode &&
-          needsMultiCurrencyEarnings &&
-          pieReady &&
-          Array.isArray(bootEarnings)
-        ) {
-          setEarningsByCurrency(bootEarnings);
+
+        const applyEarningsPaint = (rows) => {
+          setEarningsByCurrency(rows);
           setEarningsByCurrencyPrev([]);
           setEarningsByCurrencyLoading(false);
-          cachePatch.earnings = bootEarnings;
-          mirrorDashboardEarningsAcrossCurrencies(
-            bootEarnings,
-            codesForPie,
-            resolveDashboardScopeKey
-          );
+          mirrorDashboardEarningsAcrossCurrencies(rows, codesForPie, resolveDashboardScopeKey);
+          const earningsCachePatch = { earnings: rows };
           // Drop ephemeral merge hint before caching the KPI payload.
           if (current && current._group_all_earnings_by_currency) {
             const { _group_all_earnings_by_currency: _drop, ...rest } = current;
             current = stampDashboardPayloadRange(rest, dateFrom, dateTo);
-            cachePatch.current = current;
+            earningsCachePatch.current = current;
             setDashboardData(current);
             dashboardDataRef.current = current;
+          }
+          patchDashboardCache(cacheKey, earningsCachePatch);
+        };
+
+        if (groupAllMode && needsMultiCurrencyEarnings) {
+          if (pieReady && Array.isArray(bootEarnings)) {
+            // Already have complete pie data (cache/synthesis) — paint together, now.
+            applyEarningsPaint(bootEarnings);
+            cachePatch.current = current;
+          } else {
+            // Currency card lags behind — resolve it independently so it never blocks
+            // the KPI/chart paint above.
+            setEarningsByCurrency(codesForPie.map((code) => ({ code, earnings: null })));
+            setEarningsByCurrencyLoading(true);
+            const earningsGen = gen;
+            (async () => {
+              try {
+                const rows = await loadEarningsParallelForAtomicPaint(
+                  earningsGen,
+                  codesForPie,
+                  currencyCode,
+                  current,
+                  cacheKey
+                );
+                if (earningsGen !== dashboardFetchGenRef.current) return;
+                if (
+                  Array.isArray(rows) &&
+                  rows.length > 1 &&
+                  dashboardEarningsRowsComplete(rows, codesForPie)
+                ) {
+                  applyEarningsPaint(rows);
+                  return;
+                }
+              } catch {
+                /* pie remains incomplete — retry below rather than paint a partial board */
+              }
+              if (earningsGen !== dashboardFetchGenRef.current) return;
+              deferActiveScopeEarningsUpgrade(200);
+            })();
           }
         }
 
