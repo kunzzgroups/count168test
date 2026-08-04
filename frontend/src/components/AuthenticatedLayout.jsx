@@ -348,6 +348,10 @@ export default function AuthenticatedLayout() {
     if (onAccountLike || onUserLike || onAutoRenew || onAnnouncement) {
       document.body.classList.remove("bg");
     }
+
+    return () => {
+      document.body.classList.remove("account-page", "user-page", "auto-renew-page-body", "announcement-page");
+    };
   }, [location.pathname, searchParams]);
 
   /* Process 路由：父级 layout 阶段即挂上 body class，避免 SPA 切入时 Global Unlock 先撑出双 scrollbar */
@@ -370,6 +374,15 @@ export default function AuthenticatedLayout() {
       );
       document.body.classList.add("dashboard-page");
     }
+
+    return () => {
+      document.body.classList.remove(
+        "process-page",
+        "process-page--bank",
+        "process-page--bank-show-all",
+        "process-page--show-all",
+      );
+    };
   }, [location.pathname]);
 
   /* Transaction Payment / Dashboard：layout 阶段挂 transaction-page，避免 lazy chunk 加载前样式错位 */
@@ -380,6 +393,10 @@ export default function AuthenticatedLayout() {
     document.body.classList.toggle("transaction-page", onTransactionPayment || onDashboard);
     document.body.classList.toggle("dashboard-home-page", onDashboard);
     resetMaintenanceCalendarPopupOnNavigation();
+
+    return () => {
+      document.body.classList.remove("transaction-page", "dashboard-home-page");
+    };
   }, [location.pathname, chromelessPaymentHistory]);
 
   useLayoutEffect(() => {
