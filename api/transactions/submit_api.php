@@ -762,7 +762,7 @@ try {
                         'transaction_type' => 'RATE',
                         'account_id' => $rate_middleman_account_id,
                         'from_account_id' => null,
-                        'amount' => $rate_middleman_amount,
+                        'amount' => money_abs($rate_middleman_amount),
                         'transaction_date' => $transaction_date_db,
                         'description' => $rate_middleman_description,
                         'sms' => $sms,
@@ -951,7 +951,7 @@ try {
                         : 'charge PlatForm Fee';
 
                     $middlemanRowInserted = false;
-                    if ($rate_middleman_account_id && $rate_middleman_amount !== null && money_cmp($rate_middleman_amount, '0') > 0) {
+                    if ($rate_middleman_account_id && $rate_middleman_amount !== null && money_cmp($rate_middleman_amount, '0') !== 0) {
                         $middleAmount = submitStoreAmount($rate_middleman_amount, SUBMIT_STORE_SCALE_RATE);
                         $middleCurrencyId = (int)$rate_middleman_currency_id ?: $myrCurrencyId;
                         $middleEntryDescription = $rate_middleman_description;
