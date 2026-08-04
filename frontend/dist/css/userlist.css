@@ -401,6 +401,14 @@ body.user-page .user-list-table .user-card.user-list-row {
     box-sizing: border-box;
 }
 
+/* 通用列内容防溢出：任何屏宽下都优先省略号收窄，避免文字溢出格外挤压/覆盖到相邻列（对齐 Bank Process 写法） */
+.user-list-table .user-list-row .card-item:not(.card-item--action):not(:has(.role-badge)) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .user-list-table .user-list-table-header .header-sortable {
     padding: 0 !important;
     gap: 5px;

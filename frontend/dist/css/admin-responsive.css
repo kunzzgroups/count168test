@@ -3,8 +3,8 @@
    Desktop / laptop: design-tokens + global-13inch. Tablet: ≤1024. No phone UX.
    ========================================================================== */
 
-/* --- Tablet / narrow (≤1366)：布局锁死；字号/间距跟 Acc，不再单独压扁 --- */
-@media (max-width: 1366px) {
+/* --- Tablet / narrow (≤1550)：布局锁死；字号/间距跟 Acc，不再单独压扁 --- */
+@media (max-width: 1550px) {
   body.user-page .container {
     padding-right: clamp(12px, 1.5vw, 24px);
   }
@@ -101,7 +101,8 @@
   }
 
   body.user-page .user-list-table .user-list-row .card-item:nth-child(3),
-  body.user-page .user-list-table .user-list-row .card-item:nth-child(4) {
+  body.user-page .user-list-table .user-list-row .card-item:nth-child(4),
+  body.user-page .user-list-table .user-list-row .card-item:nth-child(6) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -168,7 +169,12 @@
     font-weight: 700 !important;
     padding: 0 8px !important;
     line-height: 1.1 !important;
-    min-width: max-content !important;
+    /* 窄屏防溢出压住下一列：收缩 + 省略号，而不是强制 max-content 撑出格外宽度 */
+    min-width: 0 !important;
+    max-width: 100% !important;
+    flex-shrink: 1 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
     border-width: 1px !important;
     border-radius: 6px !important;
   }
