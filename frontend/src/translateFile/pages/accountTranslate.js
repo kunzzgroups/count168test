@@ -98,6 +98,7 @@ export const ACCOUNT_I18N = {
     roleDebtor: "DEBTOR",
     statusActive: "ACTIVE",
     statusInactive: "INACTIVE",
+    clickToggleStatus: "Click to toggle status",
     alertOn: "ON",
     alertOff: "OFF",
     password: "Password",
