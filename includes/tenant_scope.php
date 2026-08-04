@@ -715,8 +715,8 @@ function tenant_create_currency(PDO $pdo, string $code, array $ctx): array
         return ['id' => $newId, 'code' => $code];
     }
 
-    $stmt = $pdo->prepare('SELECT id FROM currency WHERE code = ? AND company_id = ?');
-    $stmt->execute([$code, $companyId]);
+    $subsidiaryOnly = tenant_sql_currency_subsidiary_only($pdo);
+    $stmt = $pdo->prepare('SELECT id FROM currency WHERE code = ? AND company_id = ?' . $subsidiaryOnly);
     if ($stmt->fetchColumn()) {
         throw new Exception('Currency ' . $code . ' already exists');
     }
@@ -728,7 +728,7 @@ function tenant_create_currency(PDO $pdo, string $code, array $ctx): array
     $newId = (int) $pdo->lastInsertId();
     if ($newId <= 0) {
         $findStmt = $pdo->prepare(
-            'SELECT id FROM currency WHERE code = ? AND company_id = ? ORDER BY id DESC LIMIT 1'
+            'SELECT id FROM currency WHERE code = ? AND company_id = ?' . $subsidiaryOnly . ' ORDER BY id DESC LIMIT 1'
         );
         $findStmt->execute([$code, $companyId]);
         $newId = (int) ($findStmt->fetchColumn() ?: 0);

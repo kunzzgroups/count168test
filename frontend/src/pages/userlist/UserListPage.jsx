@@ -35,6 +35,7 @@ import {
   resolveInitialSelectedGroupFromSession,
   sortedUniqueGroupIds,
   fetchOwnerCompaniesAll,
+  getCachedOwnerCompanies,
 } from "../../utils/company/sharedCompanyFilter.js";
 import { pathnameIs, spaPath } from "../../utils/routing/pageRoutes.js";
 import { resolveDefaultLandingPath } from "../../utils/auth/sidebarPermissions.js";
@@ -107,6 +108,14 @@ function normalizeCompanyRow(row) {
     group_id: row.group_id ?? row.groupId ?? row.group ?? null,
     company_id: row.company_id ?? row.companyId ?? row.code ?? "",
   };
+}
+
+/** Seed from the shared owner-companies cache so the Group ID/Company toolbar row
+ * doesn't render empty (then pop in) on every SPA remount, matching Acc's boot pattern. */
+function readInitialCachedCompanies() {
+  const cached = getCachedOwnerCompanies();
+  if (!cached?.length) return [];
+  return cached.map(normalizeCompanyRow);
 }
 
 function buildModalCompanyList(raw) {
@@ -261,7 +270,7 @@ export default function UserListPage() {
   langRef.current = lang;
   const t = useCallback((key, params) => getUserListText(lang, key, params), [lang]);
   const [bootLoading, setBootLoading] = useState(true);
-  const [companies, setCompanies] = useState([]);
+  const [companies, setCompanies] = useState(() => readInitialCachedCompanies());
   const [companyId, setCompanyId] = useState(() => readUserListBootScopeFromSession().companyId);
   const [usersRaw, setUsersRaw] = useState(() => {
     const scope = readUserListBootScopeFromSession();
