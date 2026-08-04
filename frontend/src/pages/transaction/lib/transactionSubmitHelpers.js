@@ -344,7 +344,7 @@ export function buildRatePayload({
     payload.rate_transfer_from_account = transferToId;
     payload.rate_transfer_to_account = transferFromId;
 
-    if (middleId && !middleDec.isZero()) {
+    if (middleId) {
       payload.rate_middleman_account_id = middleId;
       payload.rate_middleman_currency = rateCurrencyTo;
       payload.rate_middleman_amount = store(middleDec.toString());

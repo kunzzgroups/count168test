@@ -406,15 +406,20 @@ export function useTransactionForm({
       const mmFeeNorm = String(rateMiddlemanInputAmount ?? "")
         .replace(/,/g, "")
         .trim();
+      const mmPlatNorm = String(rateMiddlemanPlatformFee ?? "")
+        .replace(/,/g, "")
+        .trim();
       const hasMiddleRate = mmrNorm !== "";
       const hasMiddleFee = mmFeeNorm !== "";
+      const hasMiddlePlatFee = mmPlatNorm !== "";
+      const hasAnyMiddleParam = hasMiddleRate || hasMiddleFee || hasMiddlePlatFee;
 
-      // Middle-Man: account alone needs rate multiplier OR fee; rate/fee alone still need account.
-      if ((hasMiddleRate || hasMiddleFee) && !middleId) {
+      // Middle-Man: account alone needs rate multiplier, fee, or platform fee; filling any of the three requires account.
+      if (hasAnyMiddleParam && !middleId) {
         pushToast(m.pleaseSelectMiddleManAccount, "error");
         return;
       }
-      if (middleId && !hasMiddleRate && !hasMiddleFee) {
+      if (middleId && !hasAnyMiddleParam) {
         pushToast(m.pleaseEnterMiddleManRateOrFee, "error");
         return;
       }
