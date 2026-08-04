@@ -7296,6 +7296,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             setEarningsByCurrencyLoading(true);
             const earningsGen = gen;
             (async () => {
+              let painted = false;
               try {
                 const rows = await loadEarningsParallelForAtomicPaint(
                   earningsGen,
@@ -7304,20 +7305,26 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
                   current,
                   cacheKey
                 );
-                if (earningsGen !== dashboardFetchGenRef.current) return;
                 if (
+                  earningsGen === dashboardFetchGenRef.current &&
                   Array.isArray(rows) &&
                   rows.length > 1 &&
                   dashboardEarningsRowsComplete(rows, codesForPie)
                 ) {
                   applyEarningsPaint(rows);
-                  return;
+                  painted = true;
                 }
               } catch {
                 /* pie remains incomplete — retry below rather than paint a partial board */
               }
-              if (earningsGen !== dashboardFetchGenRef.current) return;
-              deferActiveScopeEarningsUpgrade(200);
+              if (!painted) {
+                // Always reschedule, even if this attempt was superseded by a newer
+                // scope fetch — otherwise earningsByCurrencyLoading is left stuck true
+                // forever with nothing left watching to retry it. upgradeActiveScopeEarnings
+                // re-reads live state at call time, so it safely no-ops if a newer attempt
+                // already resolved things.
+                deferActiveScopeEarningsUpgrade(200);
+              }
             })();
           }
         }
