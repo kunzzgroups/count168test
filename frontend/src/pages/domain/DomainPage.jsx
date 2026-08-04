@@ -7,12 +7,13 @@ import "../../../public/css/accountCSS.css";
 import "../../../public/css/userlist.css";
 import { spaPath } from "../../utils/routing/pageRoutes.js";
 import {
-  ROWS_PER_PAGE,
   MAX_VISIBLE_CHIPS,
   hasProtectedCompany,
   forceSearchValue,
   normalizeDomainFeeSettingsFromApi,
 } from "./domainHelpers.js";
+import { useAutoListPageSize } from "../../hooks/useAutoListPageSize.js";
+import { PAGE_SIZE_MIN, PAGE_SIZE_MAX } from "../../constants/listPageSize.js";
 
 // Sub-components
 import DomainNotification, { showDomainAlert } from "./components/DomainNotification.jsx";
@@ -68,6 +69,7 @@ export default function DomainPage() {
   // ── Search / Pagination ────────────────────────────────────────────────────
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const listRegionRef = useRef(null);
 
   // ── Checkboxes for delete ──────────────────────────────────────────────────
   const [checkedIds, setCheckedIds] = useState(new Set());
@@ -171,12 +173,22 @@ export default function DomainPage() {
     });
   }, [domains, searchTerm]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredDomains.length / ROWS_PER_PAGE));
+  const pageSize = useAutoListPageSize({
+    listRegionRef,
+    rowSelector: ".domain-list-row",
+    headerSelector: ".domain-list-table-header",
+    paginationSelector: ".pagination-container",
+    minRows: PAGE_SIZE_MIN,
+    maxRows: PAGE_SIZE_MAX,
+    remeasureDeps: [filteredDomains.length, searchTerm, lang, currentPage],
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredDomains.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
   const pagedDomains = useMemo(() => {
-    const start = (safePage - 1) * ROWS_PER_PAGE;
-    return filteredDomains.slice(start, start + ROWS_PER_PAGE);
-  }, [filteredDomains, safePage]);
+    const start = (safePage - 1) * pageSize;
+    return filteredDomains.slice(start, start + pageSize);
+  }, [filteredDomains, safePage, pageSize]);
 
   // Reset to page 1 on search change
   useEffect(() => { setCurrentPage(1); }, [searchTerm]);
@@ -375,7 +387,7 @@ export default function DomainPage() {
           </div>
         </div>
 
-        <div className="table-container domain-list-table">
+        <div className="table-container domain-list-table" ref={listRegionRef}>
           <div className="domain-list-table-inner">
             <div className="table-header domain-list-table-header">
               <div>{t("no")}</div>
@@ -389,7 +401,7 @@ export default function DomainPage() {
             </div>
             <div className="domain-cards" id="domainTableBody">
             {pagedDomains.map((domain, idx) => {
-              const globalIdx = (safePage - 1) * ROWS_PER_PAGE + idx + 1;
+              const globalIdx = (safePage - 1) * pageSize + idx + 1;
               const companiesFull = Array.isArray(domain.companies_full) ? domain.companies_full : [];
               const companyList = companiesFull.map((c) => c.company_id).filter(Boolean);
               const visible = companyList.slice(0, MAX_VISIBLE_CHIPS);

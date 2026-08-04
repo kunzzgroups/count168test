@@ -4671,7 +4671,7 @@ body.domain-page .domain-react-page .domain-cards {
     flex: 1 1 auto;
     min-height: 0;
     max-height: none;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-x: hidden;
     padding-top: 2px;
     padding-bottom: 52px;

@@ -6,7 +6,6 @@ import { formatDmyDash, formatYmd, parseDdMmYyyyToYmd, parseYmd } from "../../ut
 // true: Company Settings 弹窗中 Permissions 只能选择一个分类（互斥）
 export const SINGLE_CATEGORY_MODE = true;
 
-export const ROWS_PER_PAGE = 20;
 export const MAX_VISIBLE_CHIPS = 3;
 
 // ===================== Date Helpers =====================

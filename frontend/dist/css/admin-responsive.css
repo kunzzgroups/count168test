@@ -103,7 +103,11 @@
   /*
    * 窄屏列宽再分配：Role/Status 现在会安全省略号收缩，不再需要大量保留宽度；
    * 把让出来的空间给 Email（信箱本来就比 Role/Status 更长更重要，避免被硬截断看不清）。
+   * 选择器必须至少匹配 global-13inch.css 的 body.ec-auth-shell.user-page .user-list-table
+   * （≤1440px 也会命中，且优先级是 3 个 class），否则在 1024–1440px 之间会被那条旧规则盖掉。
    */
+  body.ec-auth-shell.user-page .user-list-table,
+  body.ec-auth-shell.lang-zh.user-page .user-list-table,
   body.user-page .user-list-table,
   body.lang-zh.user-page .user-list-table {
     --user-list-grid-cols:
