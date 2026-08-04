@@ -13,7 +13,6 @@ import {
 } from "../lib/dashboardEarnings.js";
 import { DASHBOARD_EARNINGS_PIE_MIN_ANGLE } from "../lib/dashboardConstants.js";
 import { formatCurrency, formatI18nTemplate } from "../lib/dashboardFormat.js";
-import { useDeferredReveal } from "../hooks/useDeferredReveal.js";
 import { EarningsPieSectorTooltip } from "./EarningsPieSectorTooltip.jsx";
 
 export function DashboardEarningsSummary({
@@ -205,15 +204,6 @@ export function DashboardEarningsSummary({
   const showMultiCurrencyBreakdown = currencies.length > 1;
   const isStackedLayout = true;
   const isCompactTable = !showMultiCurrencyBreakdown;
-  // Whole card (hero + pie + rows) waits together for the full multi-currency
-  // batch instead of Hero/Pie rendering ahead of the row list. Deferred so an
-  // already-cached scope never shows a placeholder or plays the reveal at
-  // all — see useDeferredReveal.
-  const {
-    showPlaceholder: showCurrencyPlaceholder,
-    animate: animateCurrencyReveal,
-    revealKey: currencyRevealKey,
-  } = useDeferredReveal(showMultiCurrencyBreakdown && earningsByCurrencyLoading, 150);
 
   const summaryHero = (
     <div className="dashboard-summary-hero dashboard-summary-hero--compact">
@@ -287,27 +277,6 @@ export function DashboardEarningsSummary({
           isStackedLayout ? " is-compact-breakdown" : ""
         }${showMultiCurrencyBreakdown ? " is-multi-currency-layout" : ""}`}
       >
-        {showMultiCurrencyBreakdown && earningsByCurrencyLoading ? (
-          showCurrencyPlaceholder ? (
-            <div key="placeholder">
-              {summaryViewTabs}
-              <div
-                className="dashboard-summary-quiet-placeholder dashboard-quiet-placeholder"
-                aria-hidden="true"
-              />
-            </div>
-          ) : (
-            // Grace period before the placeholder shows — render nothing rather
-            // than a half-formed Hero+Pie-without-rows state (see useDeferredReveal).
-            <div key="pending" aria-hidden="true">
-              {summaryViewTabs}
-            </div>
-          )
-        ) : (
-          <div
-            key={animateCurrencyReveal ? `content-${currencyRevealKey}` : "content"}
-            className={animateCurrencyReveal ? "dashboard-wipe-in" : undefined}
-          >
         <div className="dashboard-summary-top-row">
           {summaryViewTabs}
           {summaryHero}
@@ -444,9 +413,7 @@ export function DashboardEarningsSummary({
                 <div
                   key={row.code}
                   role="listitem"
-                  className={`dashboard-summary-currency-row${row.code === currencyCode ? " is-active" : ""}${
-                    rowAmountLoading ? " is-amount-loading" : ""
-                  }`}
+                  className={`dashboard-summary-currency-row${row.code === currencyCode ? " is-active" : ""}`}
                   style={
                     row.code === currencyCode
                       ? {
@@ -506,8 +473,6 @@ export function DashboardEarningsSummary({
             })}
           </div>
         </div>
-          </div>
-        )}
       </div>
     </div>
   );

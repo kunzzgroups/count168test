@@ -28,9 +28,8 @@ export function DashboardTrendChart({
   chartDateRangeText,
   chartXAxisLayout,
   chartScopeKey = "",
-  loading = false,
 }) {
-  const hasChartData = !loading && chartRows.length > 0;
+  const hasChartData = chartRows.length > 0;
   const chartSessionKey = `${chartScopeKey || "scope"}-${chartDateRangeText}`;
 
   const activeDataKeys = useMemo(
