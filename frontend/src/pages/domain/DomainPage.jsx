@@ -180,6 +180,7 @@ export default function DomainPage() {
     paginationSelector: ".pagination-container",
     minRows: PAGE_SIZE_MIN,
     maxRows: PAGE_SIZE_MAX,
+    stableRowHeight: true,
     remeasureDeps: [filteredDomains.length, searchTerm, lang, currentPage],
   });
 
