@@ -67,6 +67,43 @@ function dashboard_bootstrap_cache_remember(string $key, callable $fn)
     return $value;
 }
 
+/**
+ * Cross-request cache (APCu) for dashboardComputeSubsidiaryEarningsTotal()'s per-company
+ * dashboard_api_capture() calls — the recursive full-pipeline recompute that runs once per
+ * subsidiary company on every group-aggregate dashboard load. Invalidated on any ledger/
+ * ownership write via realtime_publish() (see api/includes/realtime.php); the TTL below is
+ * only a safety net for a write path that somehow doesn't go through that chokepoint.
+ * No-ops silently if the apcu extension isn't installed — caching becomes a no-op, not a fatal.
+ */
+const DASHBOARD_SUBSIDIARY_CAPTURE_CACHE_PREFIX = 'dash_cap_v1:';
+const DASHBOARD_SUBSIDIARY_CAPTURE_CACHE_TTL_SECONDS = 300;
+
+function dashboard_subsidiary_capture_cache_key(array $captureParams): string
+{
+    ksort($captureParams);
+
+    return DASHBOARD_SUBSIDIARY_CAPTURE_CACHE_PREFIX . md5((string) json_encode($captureParams));
+}
+
+function dashboard_subsidiary_capture_cache_get(string $key): ?array
+{
+    if (!function_exists('apcu_fetch')) {
+        return null;
+    }
+    $success = false;
+    $value = apcu_fetch($key, $success);
+
+    return ($success && is_array($value)) ? $value : null;
+}
+
+function dashboard_subsidiary_capture_cache_set(string $key, array $value): void
+{
+    if (!function_exists('apcu_store')) {
+        return;
+    }
+    apcu_store($key, $value, DASHBOARD_SUBSIDIARY_CAPTURE_CACHE_TTL_SECONDS);
+}
+
 
 /** When set, trend series GROUP BY month (YYYY-MM) instead of day — matches FE shouldAggregateChartByMonth. */
 function dashboard_api_chart_monthly(): bool
@@ -1679,7 +1716,14 @@ function dashboardComputeSubsidiaryEarningsTotal(
                 $captureParams['kpi_only'] = '1';
             }
 
-            $cap = dashboard_api_capture($captureParams);
+            $captureCacheKey = dashboard_subsidiary_capture_cache_key($captureParams);
+            $cap = dashboard_subsidiary_capture_cache_get($captureCacheKey);
+            if ($cap === null) {
+                $cap = dashboard_api_capture($captureParams);
+                if (!empty($cap['success']) && is_array($cap['data'] ?? null)) {
+                    dashboard_subsidiary_capture_cache_set($captureCacheKey, $cap);
+                }
+            }
             if (empty($cap['success']) || !is_array($cap['data'] ?? null)) {
                 continue;
             }

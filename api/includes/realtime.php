@@ -131,6 +131,27 @@ if (!function_exists('realtime_normalize_domain')) {
     }
 }
 
+if (!function_exists('dashboard_subsidiary_capture_cache_clear')) {
+    /**
+     * Clears dashboard_api.php's APCu per-subsidiary capture cache (prefix 'dash_cap_v1:').
+     * Called from realtime_publish() below for ledger/ownership writes — every dashboard
+     * number derived from transactions or equity % becomes stale the moment either changes.
+     * Defined here (not in dashboard_api.php) because dashboard_api.php runs top-level
+     * request bootstrap on require — it must never be included from another endpoint.
+     */
+    function dashboard_subsidiary_capture_cache_clear(): void
+    {
+        if (!class_exists('APCUIterator') || !function_exists('apcu_delete')) {
+            return;
+        }
+        try {
+            apcu_delete(new APCUIterator('/^dash_cap_v1:/'));
+        } catch (\Throwable $e) {
+            // Best-effort — a cache-clear failure must never break the write request.
+        }
+    }
+}
+
 if (!function_exists('realtime_publish')) {
     /**
      * @param string[] $channels
@@ -143,6 +164,13 @@ if (!function_exists('realtime_publish')) {
         array $extra = [],
         string $type = 'domain_changed'
     ): void {
+        // Dashboard cache invalidation runs regardless of the realtime broadcast toggle
+        // below — unrelated concerns that happen to share this chokepoint.
+        $invalidateDomain = strtolower(trim($domain));
+        if ($invalidateDomain === 'ledger' || $invalidateDomain === 'ownership') {
+            dashboard_subsidiary_capture_cache_clear();
+        }
+
         $channels = array_values(array_filter(array_map(static function ($c) {
             return trim((string) $c);
         }, $channels)));
