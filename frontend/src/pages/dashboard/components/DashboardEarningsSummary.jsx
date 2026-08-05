@@ -101,12 +101,15 @@ export function DashboardEarningsSummary({
 
   // Card-level readiness gate — the whole card (pie + rows) reveals as one atomic
   // unit instead of each row/cell popping in on its own as flags resolve.
+  // FX rates are intentionally NOT part of this gate: they're fetched fire-and-forget
+  // off the critical path (see "Warm FX off the critical path" in useDashboardPage.js)
+  // and can fail/lag indefinitely — the app's existing design lets the card show native
+  // (unconverted) amounts until rates arrive, so requiring them here would let a stalled
+  // FX fetch block the whole card forever even after the real earnings amounts are ready.
   const currencyCardReady = showMultiCurrencyBreakdown
     ? !earningsByCurrencyLoading &&
       panelCurrencyRows.length > 0 &&
-      panelCurrencyRows.every((row) => row.earnings != null) &&
-      !exchangeRatesLoading &&
-      (!exchangeRateScopeKey || exchangeRates.scopeKey === exchangeRateScopeKey)
+      panelCurrencyRows.every((row) => row.earnings != null)
     : !summaryEarningsLoading;
 
   useLayoutEffect(() => {
