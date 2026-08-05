@@ -705,9 +705,9 @@ const SESSION_DASHBOARD_WARM_DELAY_MS = 600;
 const CROSS_GROUP_COMPANY_WARM_DELAY_MS = 2000;
 /** Parallel kpi bootstrap requests when filling multi-currency earnings sidebar. */
 /** Parallel secondary-currency earnings captures (FE fans out; avoids PHP serial foreach). */
-const EARNINGS_KPI_PARALLEL_BATCH = 6;
+const EARNINGS_KPI_PARALLEL_BATCH = 4;
 /** Company All pie: more parallel light earnings packs (each is kpi_only, not full chart). */
-const EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL = 10;
+const EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL = 6;
 /** Defer trend-chart daily fetch so MoM previous can use DB first (skip for month-bucket ranges). */
 const CHART_DAILY_DEFER_MS = 250;
 /** Sibling currency warm — start after settle so early currency clicks hit cache. */
