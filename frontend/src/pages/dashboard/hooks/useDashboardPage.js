@@ -6390,8 +6390,19 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           earnGen,
           codes
         );
-        if (earnGen !== earningsFetchGenRef.current) return;
-        if (resolveDashboardScopeKey() !== cacheKey) return;
+        if (earnGen !== earningsFetchGenRef.current) {
+          // A newer attempt superseded this one — don't paint its (possibly stale)
+          // result, but still leave a follow-up check scheduled in case that newer
+          // attempt doesn't end up settling things either.
+          deferActiveScopeEarningsUpgrade(200);
+          return;
+        }
+        if (resolveDashboardScopeKey() !== cacheKey) {
+          // Scope moved on while this was in flight — re-check under whatever the
+          // live scope is now, rather than silently dropping this attempt.
+          deferActiveScopeEarningsUpgrade(200);
+          return;
+        }
         if (
           Array.isArray(rows) &&
           rows.length > 1 &&
