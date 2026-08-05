@@ -3099,7 +3099,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     resolveMergeCompanyList,
     me,
     companiesForPicker,
-    deferActiveScopeEarningsUpgrade,
+    // deferActiveScopeEarningsUpgrade intentionally omitted: it's declared further
+    // down in this hook, so listing it here throws a TDZ error at render time
+    // ("Cannot access before initialization"). It's still called inside the async
+    // body below (safe — that only runs after the whole hook has finished
+    // executing for this render) and its own identity is stable (useCallback([])),
+    // so omitting it from this array doesn't cause a stale-closure bug either.
   ]);
 
   loadCurrenciesRef.current = loadCurrencies;
