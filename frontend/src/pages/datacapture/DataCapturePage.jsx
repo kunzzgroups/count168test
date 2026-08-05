@@ -63,6 +63,7 @@ import {
   getGroupOnlyProcessOptions,
   isGroupOnlyProcessId,
 } from "./lib/dataCaptureGroupOnlyProcesses.js";
+import { gamesPayrollDraftBucket } from "./lib/dataCaptureGamesPayrollProcesses.js";
 import { resolveDataCaptureGridDimensions } from "./grid/dataCaptureGridMeta.js";
 import DataCaptureProcessSelect from "./components/DataCaptureProcessSelect.jsx";
 import SimpleSelect from "../../components/SimpleSelect.jsx";
@@ -237,6 +238,21 @@ function DataCapturePageContent() {
   );
   const showCompanyProcessUi = isCompanySelected && !companyPayrollChannel;
 
+  /**
+   * Games company UI (real SALARY/BONUS/COMMISSION processes, matched by name)
+   * reuses the same "company:<id>" draft bucket convention as Bank/C168, scoped
+   * to save-draft only — never touches the Bank category pill's hard-coded rows.
+   */
+  const effectivePayrollDraftBucket = groupPayrollUi
+    ? payrollDraft.bucket
+    : showCompanyProcessUi
+      ? gamesPayrollDraftBucket(companyId)
+      : "";
+  const effectivePayrollDraftServerSync = groupPayrollUi
+    ? payrollDraft.serverSync
+    : Boolean(effectivePayrollDraftBucket);
+  const payrollDraftHooksEnabled = groupPayrollUi || showCompanyProcessUi;
+
   const groupOnlyTable = groupPayrollUi;
 
   const onClearCompanyRef = useRef(() => {});
@@ -332,8 +348,8 @@ function DataCapturePageContent() {
     applyCompanyOnlyFields: showCompanyProcessUi,
     companyPayrollUi: companyPayrollChannel,
     lang,
-    payrollPrefsKey: payrollDraft.prefsKey,
-    payrollDraftServerSync: payrollDraft.serverSync,
+    payrollPrefsKey: effectivePayrollDraftBucket,
+    payrollDraftServerSync: effectivePayrollDraftServerSync,
     selectedGroup,
     scriptsReady,
     selectedPermission,
@@ -394,27 +410,29 @@ function DataCapturePageContent() {
     groupPayrollUi,
     groupLedgerCapture: groupLedgerScope,
     groupPayrollCapture: companyPayrollChannel,
-    payrollDraftBucket: payrollDraft.bucket,
-    payrollDraftServerSync: payrollDraft.serverSync,
+    payrollDraftBucket: effectivePayrollDraftBucket,
+    payrollDraftServerSync: effectivePayrollDraftServerSync,
     selectedGroup,
     selectedPermission,
   });
   useDataCaptureGrid(scriptsReady, groupOnlyTable);
   useGroupOnlyTableDraftFlush({
-    enabled: groupPayrollUi,
+    enabled: payrollDraftHooksEnabled,
+    groupPayrollUi,
     captureScope,
-    draftBucket: payrollDraft.bucket,
-    payrollDraftServerSync: payrollDraft.serverSync,
-    selectedProcessId: form.selectedProcess?.id,
+    draftBucket: effectivePayrollDraftBucket,
+    payrollDraftServerSync: effectivePayrollDraftServerSync,
+    selectedProcess: form.selectedProcess,
     currencyId: form.currencyId,
     captureType,
   });
   useGroupOnlyTableDraftAutosave({
-    enabled: groupPayrollUi,
+    enabled: payrollDraftHooksEnabled,
+    groupPayrollUi,
     captureScope,
-    draftBucket: payrollDraft.bucket,
-    payrollDraftServerSync: payrollDraft.serverSync,
-    selectedProcessId: form.selectedProcess?.id,
+    draftBucket: effectivePayrollDraftBucket,
+    payrollDraftServerSync: effectivePayrollDraftServerSync,
+    selectedProcess: form.selectedProcess,
     currencyId: form.currencyId,
     captureType,
   });
