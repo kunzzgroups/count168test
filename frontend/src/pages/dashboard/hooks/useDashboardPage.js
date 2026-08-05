@@ -2677,6 +2677,14 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         .map((c) => parseInt(c.id, 10))
         .filter((id) => Number.isFinite(id) && id > 0);
 
+      // eslint-disable-next-line no-console
+      console.log("[CURRENCY_DEBUG] loadCurrencies groupAllMode branch entered", {
+        t: performance.now().toFixed(1),
+        groupsAllMode,
+        mergeCompanyIdsLength: mergeCompanyIds.length,
+        companiesLength: companies.length,
+      });
+
       if (!mergeCompanyIds.length) {
         if (!companies.length) return;
         const cachedFallback = groupsAllMode
@@ -2686,6 +2694,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             ? currenciesByGroupRef.current.get(`${groupKey}:ALL`) ??
               readPersistedGroupAllCurrencyCodes(groupKey)
             : null;
+        // eslint-disable-next-line no-console
+        console.log("[CURRENCY_DEBUG] loadCurrencies mergeCompanyIds empty — cachedFallback path", {
+          t: performance.now().toFixed(1),
+          cachedFallbackLength: cachedFallback?.length ?? null,
+        });
         if (cachedFallback?.length) {
           commitCurrencyList(cachedFallback);
           writeDashboardGroupCurrencyCaches(currenciesByGroupRef.current, {
@@ -2784,6 +2797,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           if (codes.length) {
             commitCurrencyList(codes);
             if (codes.length > 1) {
+              // eslint-disable-next-line no-console
+              console.log("[CURRENCY_DEBUG] codes ready", {
+                t: performance.now().toFixed(1),
+                codesLength: codes.length,
+                codes,
+              });
               // On a cold load, loadDashboard() may already have run and computed
               // needsMultiCurrencyEarnings=false because this currency list wasn't
               // ready yet — that skips the Currency card's fetch entirely for that
@@ -5467,14 +5486,32 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
   /** Soft defer — does not burn EARNINGS_INCOMPLETE_RETRY_MAX (in-flight waits). */
   const deferActiveScopeEarningsUpgrade = useCallback((delayMs = 200) => {
+    // eslint-disable-next-line no-console
+    console.log("[CURRENCY_DEBUG] deferActiveScopeEarningsUpgrade scheduled", {
+      t: performance.now().toFixed(1),
+      delayMs,
+      cancellingPending: Boolean(earningsRetryTimerRef.current),
+      stack: new Error().stack?.split("\n").slice(1, 4).join(" | "),
+    });
     if (earningsRetryTimerRef.current) {
       window.clearTimeout(earningsRetryTimerRef.current);
     }
     earningsRetryTimerRef.current = window.setTimeout(() => {
       earningsRetryTimerRef.current = null;
       const codes = currenciesRef.current;
-      if (codes.length <= 1 || !dashboardDataRef.current) return;
-      if (dashboardEarningsRowsComplete(earningsByCurrencyRef.current, codes)) return;
+      const bailShort = codes.length <= 1 || !dashboardDataRef.current;
+      const complete = !bailShort && dashboardEarningsRowsComplete(earningsByCurrencyRef.current, codes);
+      // eslint-disable-next-line no-console
+      console.log("[CURRENCY_DEBUG] deferActiveScopeEarningsUpgrade fired", {
+        t: performance.now().toFixed(1),
+        codesLength: codes.length,
+        hasDashboardData: Boolean(dashboardDataRef.current),
+        bailShort,
+        alreadyComplete: complete,
+        willCallUpgrade: !bailShort && !complete,
+      });
+      if (bailShort) return;
+      if (complete) return;
       upgradeActiveScopeEarningsRef.current?.();
     }, delayMs);
   }, []);
@@ -6344,7 +6381,23 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
   const upgradeActiveScopeEarnings = useCallback(async () => {
     const cacheKey = dashboardScopeKey;
-    if (!cacheKey || currencies.length <= 1 || !dashboardDataRef.current) return;
+    // eslint-disable-next-line no-console
+    console.log("[CURRENCY_DEBUG] upgradeActiveScopeEarnings called", {
+      t: performance.now().toFixed(1),
+      cacheKey,
+      currenciesLength: currencies.length,
+      hasDashboardData: Boolean(dashboardDataRef.current),
+    });
+    if (!cacheKey || currencies.length <= 1 || !dashboardDataRef.current) {
+      // eslint-disable-next-line no-console
+      console.log("[CURRENCY_DEBUG] upgradeActiveScopeEarnings bailed at entry guard", {
+        t: performance.now().toFixed(1),
+        cacheKey,
+        currenciesLength: currencies.length,
+        hasDashboardData: Boolean(dashboardDataRef.current),
+      });
+      return;
+    }
 
     const codes = currenciesRef.current;
     const primary = currencyCodeRef.current;
@@ -6431,9 +6484,22 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         earningsParallelInFlightRef.current === cacheKey ||
         dashboardFetchInFlightScopeRef.current === cacheKey
       ) {
+        // eslint-disable-next-line no-console
+        console.log("[CURRENCY_DEBUG] upgradeActiveScopeEarnings bailed: in-flight guard", {
+          t: performance.now().toFixed(1),
+          cacheKey,
+          earningsParallelInFlight: earningsParallelInFlightRef.current,
+          dashboardFetchInFlightScope: dashboardFetchInFlightScopeRef.current,
+        });
         deferActiveScopeEarningsUpgrade(200);
         return;
       }
+      // eslint-disable-next-line no-console
+      console.log("[CURRENCY_DEBUG] upgradeActiveScopeEarnings starting fetchGroupAllEarningsRowsForRange", {
+        t: performance.now().toFixed(1),
+        cacheKey,
+        codes,
+      });
       const existingRows = Array.isArray(earningsByCurrencyRef.current)
         ? earningsByCurrencyRef.current
         : [];
@@ -6458,6 +6524,14 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           earnGen,
           codes
         );
+        // eslint-disable-next-line no-console
+        console.log("[CURRENCY_DEBUG] fetchGroupAllEarningsRowsForRange resolved", {
+          t: performance.now().toFixed(1),
+          cacheKey,
+          rowsLength: Array.isArray(rows) ? rows.length : null,
+          rows,
+          genStillCurrent: earnGen === earningsFetchGenRef.current,
+        });
         if (earnGen !== earningsFetchGenRef.current) {
           // A newer attempt superseded this one — don't paint its (possibly stale)
           // result, but still leave a follow-up check scheduled in case that newer
@@ -6608,6 +6682,20 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
   upgradeActiveScopeEarningsRef.current = upgradeActiveScopeEarnings;
 
   useEffect(() => {
+    const codes0 = currenciesRef.current;
+    // eslint-disable-next-line no-console
+    console.log("[CURRENCY_DEBUG] watcher effect ran", {
+      t: performance.now().toFixed(1),
+      currenciesLength: currencies.length,
+      hasDashboardData: Boolean(dashboardData),
+      companyId,
+      groupAllMode,
+      groupsAllMode,
+      earningsComplete: dashboardEarningsRowsComplete(earningsByCurrencyRef.current, codes0),
+      earningsByCurrencyLoading,
+      earningsParallelInFlight: earningsParallelInFlightRef.current,
+      dashboardFetchInFlightScope: dashboardFetchInFlightScopeRef.current,
+    });
     if (currencies.length <= 1 || !dashboardData) return;
     if (companyId != null && !groupAllMode) return;
     if (!groupAllMode && !(groupsAllMode && !groupAllMode)) return;
@@ -6616,6 +6704,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     if (earningsByCurrencyLoading) return;
     if (earningsParallelInFlightRef.current) return;
     if (dashboardFetchInFlightScopeRef.current) return;
+    // eslint-disable-next-line no-console
+    console.log("[CURRENCY_DEBUG] watcher effect calling upgradeActiveScopeEarnings", {
+      t: performance.now().toFixed(1),
+    });
     void upgradeActiveScopeEarningsRef.current?.();
   }, [
     currencies.length,
@@ -6720,6 +6812,17 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         : null) ?? (currenciesRef.current.length > 1 ? currenciesRef.current : null);
     const needsMultiCurrencyEarnings =
       Array.isArray(multiCurrencyCodes) && multiCurrencyCodes.length > 1;
+    // eslint-disable-next-line no-console
+    console.log("[CURRENCY_DEBUG] loadDashboard needsMultiCurrencyEarnings computed", {
+      t: performance.now().toFixed(1),
+      groupAllMode,
+      groupsAllMode,
+      codesForEarnings,
+      currenciesRefLength: currenciesRef.current.length,
+      multiCurrencyCodesLength: Array.isArray(multiCurrencyCodes) ? multiCurrencyCodes.length : null,
+      needsMultiCurrencyEarnings,
+      cacheKey,
+    });
     setLoadError("");
 
     const requirePieEarly = dashboardRequiresPieAtomicPaint(
