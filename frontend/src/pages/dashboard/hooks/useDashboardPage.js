@@ -6994,13 +6994,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           const paintBootstrap = () => {
             if (!currentPayload || dashboardPayloadNeedsChartDaily(currentPayload)) return false;
             const pieCodes = codesForEarnings || currenciesRef.current;
-            const pieReady =
-              !needsMultiCurrencyEarnings ||
-              (Array.isArray(earningsCurrent) &&
-                earningsCurrent.length > 1 &&
-                dashboardEarningsRowsComplete(earningsCurrent, pieCodes));
-            if (requirePie && needsMultiCurrencyEarnings && !pieReady) return false;
-
+            // KPI/chart paint the instant their own data is ready — never wait on the
+            // Currency card's multi-currency earnings breakdown. When earnings aren't
+            // ready yet, this falls into the "seed placeholder rows, resolve in the
+            // background" branch below instead of blocking the whole paint.
             current = currentPayload;
             setMultiCurrencyKpi(null);
             setMultiCurrencyKpiPrev(null);
@@ -7044,10 +7041,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             return true;
           };
 
-          // Same-scope refresh: paint early. Scope swap waits for pie (gated in paintBootstrap).
-          if (!requirePie) {
-            paintBootstrap();
-          }
+          // Paint as early as possible — KPI/chart no longer wait on pie/earnings, so this
+          // succeeds on a scope swap too whenever chart data already came bundled (`full`).
+          paintBootstrap();
 
           const panelTasks = [];
 
@@ -7084,10 +7080,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
                   currentPayload = markDashboardChartSettled(
                     applyDashboardPayloadAdjustments(withDaily, companyId, selectedGroup)
                   );
-                  if (!requirePie) paintBootstrap();
+                  paintBootstrap();
                 } catch {
                   currentPayload = markDashboardChartSettled(currentPayload);
-                  if (!requirePie) paintBootstrap();
+                  paintBootstrap();
                 }
               })()
             );
@@ -7166,7 +7162,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             painted = paintBootstrap();
           }
           if (requirePie && !painted) {
-            // Keep previous company UI — never swap KPI/chart ahead of complete pie.
+            // paintBootstrap() only fails here if chart data itself still isn't settled
+            // (pie/earnings no longer gate this) — keep the previous company UI until it is.
             // Single-currency first paint with a payload: exit skeleton (zeros OK).
             if (!dashboardDataRef.current && currentPayload && !needsMultiCurrencyEarnings) {
               currentPayload = markDashboardChartSettled(currentPayload);
