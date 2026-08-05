@@ -692,13 +692,13 @@ const DASHBOARD_STALE_RETRY_MAX = 3;
 const EARNINGS_INCOMPLETE_RETRY_MAX = 5;
 const PREFETCH_WAIT_MAX_ROUNDS = 40;
 /** Coalesce rapid filter switches into one currency reload. */
-const LOAD_CURRENCIES_COALESCE_MS = 32;
+const LOAD_CURRENCIES_COALESCE_MS = 300;
 /** Defer session sync so dashboard fetch gets connection priority on company pick. */
-const COMPANY_SESSION_DEFER_MS = 500;
+const COMPANY_SESSION_DEFER_MS = 2000;
 /** Defer group-all currency refresh while dashboard merge is in flight. */
 const CURRENCY_REFRESH_DEFER_MS = 600;
 /** Parallel company dashboard fetches when merging Group/Company "All". */
-const MERGE_DASHBOARD_PARALLEL_BATCH = 12;
+const MERGE_DASHBOARD_PARALLEL_BATCH = 4;
 /** Idle delay before one-time session warm of picker companies (current currency only). */
 const SESSION_DASHBOARD_WARM_DELAY_MS = 600;
 /** Cross-group / independent company warm after active scope settles. */
@@ -9110,21 +9110,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         groupAllMode: false,
         mergedSubsetIds: null,
       });
-      if (gid && !groupsAllMode) {
-        window.setTimeout(() => {
-          if (switchGen !== companySwitchGenRef.current) return;
-          if (prefetchInteractionGen !== scopeInteractionGenRef.current) return;
-          for (const row of companiesForCompanyPicker(companies, gid, groupIds)) {
-            if (isVirtualGroupLinkCompanyRow(row)) continue;
-            if (companyRowIsGroupEntity(row, gid)) continue;
-            const rid = parseInt(row.id, 10);
-            if (!Number.isFinite(rid) || rid <= 0 || rid === id) continue;
-            if (!shouldPrefetchCompanyScope(rid, gid)) continue;
-            void prefetchDashboardCompany(row, gid);
-          }
-          void prefetchDashboardGroupAll(gid);
-        }, COMPANY_SWITCH_PREFETCH_DELAY_MS);
-      }
+      
       const sessionViewGroup = groupsAllMode ? null : (gid || null);
       window.setTimeout(() => {
         if (switchGen !== companySwitchGenRef.current) return;
@@ -9450,16 +9436,6 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     });
     notifyDashboardGroupFilterChanged(bootGroup, id);
     const bootRow = companies.find((co) => parseInt(co.id, 10) === id);
-    if (bootRow) {
-      const deferBootPrefetch = () => {
-        if (!dashboardDataRef.current || dashboardFetchInFlightScopeRef.current) {
-          window.setTimeout(deferBootPrefetch, 400);
-          return;
-        }
-        void prefetchDashboardCompany(bootRow, bootGroup);
-      };
-      window.setTimeout(deferBootPrefetch, 0);
-    }
     void syncCompanySession(id, bootGroup);
   }, [
     gcBootstrapReady,
