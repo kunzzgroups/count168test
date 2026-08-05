@@ -6945,6 +6945,15 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             cacheKey
           );
           const primaryBootstrapScope = longRange ? "full" : "kpi";
+          // Short ranges: fire chart alongside KPI instead of after it settles — same
+          // start time as the primary request, not a deferred follow-up. Long ranges
+          // already get chart bundled into "full" so there's nothing extra to start.
+          const chartBootPromise =
+            primaryBootstrapScope === "kpi"
+              ? loadDashboardViaBootstrap({ scope: "chart", currencyCodesOverride: [] }).catch(
+                  () => null
+                )
+              : null;
           const boot = await loadDashboardViaBootstrap({
             scope: primaryBootstrapScope,
             currencyOverride: provisionalCurrency || undefined,
@@ -7056,14 +7065,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             }
           }
 
-          if (dashboardPayloadNeedsChartDaily(currentPayload)) {
+          if (dashboardPayloadNeedsChartDaily(currentPayload) && chartBootPromise) {
             panelTasks.push(
               (async () => {
                 try {
-                  const chartBoot = await loadDashboardViaBootstrap({
-                    scope: "chart",
-                    currencyCodesOverride: [],
-                  });
+                  const chartBoot = await chartBootPromise;
                   if (gen !== dashboardFetchGenRef.current) return;
                   const withDaily = chartBoot?.current?.daily_data
                     ? { ...currentPayload, daily_data: chartBoot.current.daily_data }
