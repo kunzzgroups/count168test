@@ -2783,6 +2783,15 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
           if (codes.length) {
             commitCurrencyList(codes);
+            if (codes.length > 1) {
+              // On a cold load, loadDashboard() may already have run and computed
+              // needsMultiCurrencyEarnings=false because this currency list wasn't
+              // ready yet — that skips the Currency card's fetch entirely for that
+              // pass, with no other trigger left to start it. Re-check now that the
+              // list is in. Deferred so `currencies` state has actually re-rendered
+              // before upgradeActiveScopeEarnings reads it.
+              deferActiveScopeEarningsUpgrade(200);
+            }
           }
         } catch {
           /* Keep previous currency pills on transient errors. */
@@ -3090,6 +3099,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     resolveMergeCompanyList,
     me,
     companiesForPicker,
+    deferActiveScopeEarningsUpgrade,
   ]);
 
   loadCurrenciesRef.current = loadCurrencies;
