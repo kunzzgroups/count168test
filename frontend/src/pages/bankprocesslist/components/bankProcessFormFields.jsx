@@ -299,8 +299,8 @@ export function BankFormCalendarDateField({
           <button
             type="button"
             className="bank-form-datepicker-clear"
-            title={clearLabel}
             aria-label={clearLabel}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={clearValue}
           >
             ×
