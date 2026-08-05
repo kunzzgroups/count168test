@@ -5906,6 +5906,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       earningsScopeUpgradeRef.current = { scopeKey: upgradeKey, attempts: 1 };
     }
     earningsLoadInFlightRef.current = cacheKey;
+    let gen;
     try {
     const cached = getDashboardCache(cacheKey);
     const sharedEarnings = resolveScopeDashboardEarnings(currencies);
@@ -5922,7 +5923,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       !(mergedSubsetIds && mergedSubsetIds.length > 1) &&
       (companyId != null || groupAggregateMode);
 
-    const gen = ++earningsFetchGenRef.current;
+    gen = ++earningsFetchGenRef.current;
     if (!dashboardDataRef.current) {
       setEarningsByCurrency(currencies.map((code) => ({ code, earnings: null })));
       setEarningsByCurrencyPrev([]);
@@ -5932,10 +5933,16 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     if (canUseDashboardBootstrap && dashboardDataRef.current) {
       try {
         const rows = await loadEarningsProgressive(gen, { cacheKey });
-        if (gen !== earningsFetchGenRef.current) return;
+        if (gen !== earningsFetchGenRef.current) {
+          deferActiveScopeEarningsUpgrade(200);
+          return;
+        }
         if (dashboardEarningsRowsComplete(rows, currencies)) return;
       } catch {
-        if (gen !== earningsFetchGenRef.current) return;
+        if (gen !== earningsFetchGenRef.current) {
+          deferActiveScopeEarningsUpgrade(200);
+          return;
+        }
         /* fall back to bootstrap batch */
       }
     }
@@ -5943,7 +5950,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     setEarningsByCurrencyLoading(true);
 
     if (canUseDashboardBootstrap) {
-      if (dashboardBootstrapInFlightRef.current === cacheKey) return;
+      if (dashboardBootstrapInFlightRef.current === cacheKey) {
+        deferActiveScopeEarningsUpgrade(200);
+        return;
+      }
       try {
         // Prefer FE-parallel currency captures over one serial PHP currencies= fan-out.
         const rows = await loadEarningsParallelForAtomicPaint(
@@ -5952,7 +5962,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           currencyCodeRef.current,
           dashboardDataRef.current
         );
-        if (gen !== earningsFetchGenRef.current) return;
+        if (gen !== earningsFetchGenRef.current) {
+          deferActiveScopeEarningsUpgrade(200);
+          return;
+        }
         if (Array.isArray(rows) && rows.length > 1) {
           setEarningsByCurrency(rows);
           mirrorDashboardEarningsAcrossCurrencies(
@@ -5964,7 +5977,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         setEarningsByCurrencyLoading(false);
         return;
       } catch {
-        if (gen !== earningsFetchGenRef.current) return;
+        if (gen !== earningsFetchGenRef.current) {
+          deferActiveScopeEarningsUpgrade(200);
+          return;
+        }
         /* fall back to legacy per-currency fetch */
       }
     }
@@ -5973,7 +5989,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       ? () => fetchGroupAllEarningsRowsForRange(dateFrom, dateTo, gen, currencies)
       : () => fetchEarningsRowsForRange(dateFrom, dateTo, gen);
     const currentRows = await fetchCurrentRows();
-    if (gen !== earningsFetchGenRef.current) return;
+    if (gen !== earningsFetchGenRef.current) {
+      deferActiveScopeEarningsUpgrade(200);
+      return;
+    }
 
     setEarningsByCurrency(currentRows);
     setEarningsByCurrencyLoading(false);
@@ -6001,6 +6020,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       if (earningsLoadInFlightRef.current === cacheKey) {
         earningsLoadInFlightRef.current = "";
       }
+      // Safety net for the bail-outs above — none of them reset the loading flag
+      // themselves, so make sure it never stays stuck true once this attempt (if
+      // still current) is done, one way or another.
+      if (gen != null && gen === earningsFetchGenRef.current) {
+        setEarningsByCurrencyLoading(false);
+      }
     }
   }, [
     companyId,
@@ -6021,6 +6046,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     groupsAllMode,
     groupAllMode,
     mergedSubsetIds,
+    deferActiveScopeEarningsUpgrade,
   ]);
 
   /** Invalidate in-flight per-currency earnings when scope/date changes (not on currency list hydrate). */
