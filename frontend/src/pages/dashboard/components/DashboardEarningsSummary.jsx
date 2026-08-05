@@ -291,7 +291,11 @@ export function DashboardEarningsSummary({
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
                   <Pie
-                    key={exchangeRateScopeKey || "pie"}
+                    // Keyed on view + base currency only — NOT on the FX-rate scope key.
+                    // Rates load independently of earnings and can land after the reveal
+                    // animation already started; keying on them forced a remount (a visible
+                    // flash) the moment they arrived instead of a smooth in-place update.
+                    key={`${earningsPanelView}-${currencyCode || "pie"}`}
                     data={
                       earningsPieSlices.length
                         ? earningsPieSlices
