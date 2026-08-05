@@ -234,36 +234,42 @@ function formulaMaintenanceResolveScopedPayrollProcessId(
     }
     $class = formulaMaintenanceClassifyPayrollProcessIds($pdo, $companyId);
     $pool = $isGroupScope ? $class['group'] : $class['subsidiary'];
-    if ($pool === []) {
-        if (
-            !$isGroupScope
-            && $companyId > 0
-            && !dcCompanyIdIsGroupEntity($pdo, $companyId)
-        ) {
-            $stmt = $pdo->prepare(
-                'SELECT id FROM process
-                 WHERE company_id = ? AND UPPER(TRIM(process_id)) = ?
-                 ORDER BY id ASC LIMIT 1'
-            );
-            $stmt->execute([$companyId, $code]);
-            $directId = (int) ($stmt->fetchColumn() ?: 0);
-
-            return $directId > 0 ? $directId : null;
+    if ($pool !== []) {
+        $stmt = $pdo->prepare("
+            SELECT id FROM process
+            WHERE company_id = ? AND id IN (" . implode(',', $pool) . ")
+              AND UPPER(TRIM(process_id)) = ?
+            ORDER BY id ASC
+            LIMIT 1
+        ");
+        $stmt->execute([$companyId, $code]);
+        $id = (int) ($stmt->fetchColumn() ?: 0);
+        if ($id > 0) {
+            return $id;
         }
-
-        return null;
     }
-    $stmt = $pdo->prepare("
-        SELECT id FROM process
-        WHERE company_id = ? AND id IN (" . implode(',', $pool) . ")
-          AND UPPER(TRIM(process_id)) = ?
-        ORDER BY id ASC
-        LIMIT 1
-    ");
-    $stmt->execute([$companyId, $code]);
-    $id = (int) ($stmt->fetchColumn() ?: 0);
 
-    return $id > 0 ? $id : (int) $pool[0];
+    // $pool is classified across ALL payroll codes (SALARY/COMMISSION/BONUS) by a currency/
+    // description heuristic, not by $code - so it may be empty for $code, or contain only ids
+    // belonging to a different code. Never guess (e.g. pool[0]); fall back to a direct lookup by
+    // the exact code instead.
+    if (
+        !$isGroupScope
+        && $companyId > 0
+        && !dcCompanyIdIsGroupEntity($pdo, $companyId)
+    ) {
+        $stmt = $pdo->prepare(
+            'SELECT id FROM process
+             WHERE company_id = ? AND UPPER(TRIM(process_id)) = ?
+             ORDER BY id ASC LIMIT 1'
+        );
+        $stmt->execute([$companyId, $code]);
+        $directId = (int) ($stmt->fetchColumn() ?: 0);
+
+        return $directId > 0 ? $directId : null;
+    }
+
+    return null;
 }
 
 /**
@@ -623,11 +629,12 @@ function formulaMaintenanceResolveProcessFilter(
         }
         if (dcIsGroupPayrollProcessCode($code)) {
             $mapped = formulaMaintenanceResolveScopedPayrollProcessId($pdo, $companyId, $code, $isGroupScope);
-            if ($mapped === null || $mapped <= 0) {
-                return ['process_id' => null, 'legacy_code' => $code];
-            }
+            // $processId is already verified to match $code for this exact company - if the
+            // group/subsidiary pool remap can't confirm a (possibly different) id, fall back to
+            // the original id instead of discarding it and reporting "no data".
+            $resolvedId = ($mapped !== null && $mapped > 0) ? $mapped : $processId;
 
-            return ['process_id' => $mapped, 'legacy_code' => null];
+            return ['process_id' => $resolvedId, 'legacy_code' => null];
         }
         formulaMaintenanceAssertProcessIdForScope($pdo, $processId, $companyId, $isGroupScope);
 
@@ -735,7 +742,6 @@ function formulaMaintenanceResolveRelatedProcessIds(
 function formulaMaintenanceSqlTemplateProcessJoin(
     PDO $pdo,
     int $companyId,
-    ?int $processIdFilter = null,
     bool $isGroupScope = false
 ): string {
     $class = formulaMaintenanceClassifyPayrollProcessIds($pdo, $companyId);
@@ -747,7 +753,7 @@ function formulaMaintenanceSqlTemplateProcessJoin(
         ? "UPPER(TRIM(p.process_id)) IN (" . dcSqlQuotedGroupPayrollProcessCodes() . ")"
         : ($poolInSql !== '' ? "p.id IN ({$poolInSql})" : '1=1');
 
-    $join = "LEFT JOIN process p ON {$companyMatch}
+    return "LEFT JOIN process p ON {$companyMatch}
         AND (
             (dct.process_id REGEXP '^[0-9]+$' AND p.id = CAST(dct.process_id AS UNSIGNED))
             OR (
@@ -759,26 +765,42 @@ function formulaMaintenanceSqlTemplateProcessJoin(
                 )
             )
         )";
+}
 
-    if ($processIdFilter !== null && $processIdFilter > 0) {
-        $relatedIds = formulaMaintenanceResolveRelatedProcessIds(
-            $pdo,
-            $companyId,
-            (int) $processIdFilter,
-            $isGroupScope
-        );
-        if (!empty($relatedIds)) {
-            $idList = implode(',', array_map('intval', $relatedIds));
-
-            return $join . " AND (
-                (dct.process_id REGEXP '^[0-9]+$' AND CAST(dct.process_id AS UNSIGNED) IN ({$idList}))
-                OR (
-                    dct.process_id NOT REGEXP '^[0-9]+$'
-                    AND (p.id IN ({$idList}) OR p.id IS NULL)
-                )
-            )";
-        }
+/**
+ * WHERE-clause fragment restricting results to the selected process (and related process ids,
+ * e.g. group/subsidiary payroll rows sharing one code). Must be applied in WHERE, not in the
+ * LEFT JOIN's ON clause, since ON-clause conditions on a LEFT JOIN don't exclude unmatched
+ * left-side (dct) rows - they only null out the joined process columns.
+ * Returns '' when no filter should be applied.
+ */
+function formulaMaintenanceSqlTemplateProcessFilter(
+    PDO $pdo,
+    int $companyId,
+    ?int $processIdFilter,
+    bool $isGroupScope = false
+): string {
+    if ($processIdFilter === null || $processIdFilter <= 0) {
+        return '';
     }
 
-    return $join;
+    $relatedIds = formulaMaintenanceResolveRelatedProcessIds(
+        $pdo,
+        $companyId,
+        (int) $processIdFilter,
+        $isGroupScope
+    );
+    if (empty($relatedIds)) {
+        return '';
+    }
+
+    $idList = implode(',', array_map('intval', $relatedIds));
+
+    return " AND (
+        (dct.process_id REGEXP '^[0-9]+$' AND CAST(dct.process_id AS UNSIGNED) IN ({$idList}))
+        OR (
+            dct.process_id NOT REGEXP '^[0-9]+$'
+            AND (p.id IN ({$idList}) OR p.id IS NULL)
+        )
+    )";
 }

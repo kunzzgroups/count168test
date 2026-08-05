@@ -77,7 +77,7 @@ function fetchFormulaListRaw(
                 a.name AS account_name,
                 c.code AS currency_code
             FROM data_capture_templates dct
-            " . formulaMaintenanceSqlTemplateProcessJoin($pdo, $companyId, $processIdFilter, $isGroupScope) . "
+            " . formulaMaintenanceSqlTemplateProcessJoin($pdo, $companyId, $isGroupScope) . "
             LEFT JOIN description d ON p.description_id = d.id
             LEFT JOIN account a ON dct.account_id = a.id
             LEFT JOIN currency c ON dct.currency_id = c.id
@@ -86,7 +86,7 @@ function fetchFormulaListRaw(
     if ($scopeProcessSql !== '') {
         $sql .= $scopeProcessSql;
     }
-    // processIdFilter is enforced in formulaMaintenanceSqlTemplateProcessJoin().
+    $sql .= formulaMaintenanceSqlTemplateProcessFilter($pdo, $companyId, $processIdFilter, $isGroupScope);
     if ($search !== '') {
         $like = '%' . $search . '%';
         $sql .= " AND (
