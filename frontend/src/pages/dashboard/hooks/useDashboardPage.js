@@ -5740,18 +5740,25 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             : EARNINGS_KPI_PARALLEL_BATCH,
           async (code) => {
             if (dashboardGen !== dashboardFetchGenRef.current) return null;
-            try {
-              const payload = await loadMergedDashboard(
-                dateFromRef.current,
-                dateToRef.current,
-                code,
-                { earningsOnly: true, useActiveScopeAbort: false }
-              );
-              if (dashboardGen !== dashboardFetchGenRef.current) return null;
-              return buildCurrencyRowFromPayload(code, payload);
-            } catch {
-              return { code, netProfit: null, earnings: null };
+            // One quick same-request retry per currency — a lone transient failure
+            // (network blip, momentary backend hiccup) shouldn't mark this currency
+            // permanently missing and drag the whole batch's completeness check down.
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+              try {
+                const payload = await loadMergedDashboard(
+                  dateFromRef.current,
+                  dateToRef.current,
+                  code,
+                  { earningsOnly: true, useActiveScopeAbort: false }
+                );
+                if (dashboardGen !== dashboardFetchGenRef.current) return null;
+                return buildCurrencyRowFromPayload(code, payload);
+              } catch {
+                if (dashboardGen !== dashboardFetchGenRef.current) return null;
+                /* try once more before giving up */
+              }
             }
+            return { code, netProfit: null, earnings: null };
           }
         );
 
@@ -7168,6 +7175,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
               return;
             }
             setLoading(true);
+            // Pie/earnings still incomplete after the parallel fan-out (e.g. one of several
+            // currency fetches failed) — always schedule a follow-up check here. Otherwise
+            // this dead-ends with nothing left watching to retry it.
+            deferActiveScopeEarningsUpgrade(200);
             return;
           }
           return;
