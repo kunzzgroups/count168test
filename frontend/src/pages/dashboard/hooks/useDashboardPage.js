@@ -5480,7 +5480,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
   }, []);
 
   const scheduleIncompleteEarningsRetry = useCallback((delayMs = 150) => {
-    if (earningsIncompleteRetryRef.current >= EARNINGS_INCOMPLETE_RETRY_MAX) return;
+    if (earningsIncompleteRetryRef.current >= EARNINGS_INCOMPLETE_RETRY_MAX) {
+      // Stop hiding the Currency card after giving up on gap-fill.
+      setEarningsByCurrencyLoading(false);
+      return;
+    }
     earningsIncompleteRetryRef.current += 1;
     deferActiveScopeEarningsUpgrade(delayMs);
   }, [deferActiveScopeEarningsUpgrade]);
@@ -6151,11 +6155,23 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       return;
     }
     if (dashboardDataRef.current) {
+      let keepVisible = false;
       setEarningsByCurrency((prev) => {
-        if (dashboardEarningsRowsComplete(prev, currencies, primary, primaryEarnings)) return prev;
+        if (dashboardEarningsRowsComplete(prev, currencies, primary, primaryEarnings)) {
+          keepVisible = true;
+          return prev;
+        }
+        // Keep a partial date-filter paint visible — reseeding would flash the card away.
+        if (
+          Array.isArray(prev) &&
+          prev.some((row) => row?.earnings != null || row?.netProfit != null)
+        ) {
+          keepVisible = true;
+          return prev;
+        }
         return buildSeededEarningsRows(currencies, primary, primaryNetProfit, primaryEarnings);
       });
-      setEarningsByCurrencyLoading(true);
+      setEarningsByCurrencyLoading(!keepVisible);
       deferActiveScopeEarningsUpgrade(120);
       return;
     }
@@ -6418,10 +6434,21 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         deferActiveScopeEarningsUpgrade(200);
         return;
       }
-      setEarningsByCurrency(
-        buildSeededEarningsRows(codes, primary, primaryNetProfit, primaryEarnings)
+      const existingRows = Array.isArray(earningsByCurrencyRef.current)
+        ? earningsByCurrencyRef.current
+        : [];
+      const hasPartialPaint = existingRows.some(
+        (row) => row?.earnings != null || row?.netProfit != null
       );
-      setEarningsByCurrencyLoading(true);
+      if (!hasPartialPaint) {
+        setEarningsByCurrency(
+          buildSeededEarningsRows(codes, primary, primaryNetProfit, primaryEarnings)
+        );
+        setEarningsByCurrencyLoading(true);
+      } else {
+        // Keep partial Currency card visible while gap-fill runs (date-filter path).
+        setEarningsByCurrencyLoading(false);
+      }
       earningsParallelInFlightRef.current = cacheKey;
       const earnGen = ++earningsFetchGenRef.current;
       try {
@@ -7357,8 +7384,17 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             cachePatch.current = current;
           } else {
             // Currency card lags behind — resolve it independently so it never blocks
-            // the KPI/chart paint above.
-            setEarningsByCurrency(codesForPie.map((code) => ({ code, earnings: null })));
+            // the KPI/chart paint above. Seed primary so the reveal gate can pass once
+            // loading clears even if secondaries stay null after date-range fan-out.
+            const seedMetrics = computeCurrencyMetricsFromPayload(current);
+            setEarningsByCurrency(
+              buildSeededEarningsRows(
+                codesForPie,
+                currencyCode,
+                seedMetrics.netProfit,
+                seedMetrics.earnings
+              )
+            );
             setEarningsByCurrencyLoading(true);
             const earningsGen = gen;
             (async () => {
@@ -7374,14 +7410,18 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
                 if (
                   earningsGen === dashboardFetchGenRef.current &&
                   Array.isArray(rows) &&
-                  rows.length > 1 &&
-                  dashboardEarningsRowsComplete(rows, codesForPie)
+                  rows.length > 1
                 ) {
+                  // Paint complete OR partial — waiting only for a full board left the
+                  // card opacity-0 after date filters when any secondary currency lagged.
                   applyEarningsPaint(rows);
                   painted = true;
+                  if (!dashboardEarningsRowsComplete(rows, codesForPie)) {
+                    deferActiveScopeEarningsUpgrade(200);
+                  }
                 }
               } catch {
-                /* pie remains incomplete — retry below rather than paint a partial board */
+                /* pie remains incomplete — retry below rather than leave loading stuck */
               }
               if (!painted) {
                 // Always reschedule, even if this attempt was superseded by a newer
@@ -8025,6 +8065,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       earningsScopeUpgradeRef.current.scopeKey === upgradeKey &&
       earningsScopeUpgradeRef.current.attempts >= EARNINGS_INCOMPLETE_RETRY_MAX
     ) {
+      // Retries exhausted — never leave the Currency card hidden behind loading.
+      setEarningsByCurrencyLoading(false);
       return undefined;
     }
 

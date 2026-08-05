@@ -99,17 +99,17 @@ export function DashboardEarningsSummary({
 
   const showMultiCurrencyBreakdown = currencies.length > 1;
 
-  // Card-level readiness gate — the whole card (pie + rows) reveals as one atomic
-  // unit instead of each row/cell popping in on its own as flags resolve.
-  // FX rates are intentionally NOT part of this gate: they're fetched fire-and-forget
-  // off the critical path (see "Warm FX off the critical path" in useDashboardPage.js)
-  // and can fail/lag indefinitely — the app's existing design lets the card show native
-  // (unconverted) amounts until rates arrive, so requiring them here would let a stalled
-  // FX fetch block the whole card forever even after the real earnings amounts are ready.
+  // Card-level readiness gate — hide only while the first multi-currency paint is
+  // still pending. Do NOT require every currency row to be non-null: after a date
+  // filter on Group+Company All, secondary currencies can stay null (or retries
+  // exhaust) while KPI/chart already painted — requiring `every` left the card at
+  // opacity 0 forever. Missing cells already render as "—".
+  // FX rates are intentionally NOT part of this gate (fire-and-forget off the
+  // critical path in useDashboardPage.js).
   const currencyCardReady = showMultiCurrencyBreakdown
     ? !earningsByCurrencyLoading &&
       panelCurrencyRows.length > 0 &&
-      panelCurrencyRows.every((row) => row.earnings != null)
+      panelCurrencyRows.some((row) => row.earnings != null)
     : !summaryEarningsLoading;
 
   useLayoutEffect(() => {
