@@ -42,10 +42,26 @@ try {
     $currency = $_GET['currency'] ?? null;
 
     $currency_id = null;
-    if ($currency && $company_id > 0) {
-        $currency_stmt = $pdo->prepare("SELECT id FROM currency WHERE code = ? AND company_id = ?");
-        $currency_stmt->execute([$currency, $company_id]);
-        $currency_id = $currency_stmt->fetchColumn();
+    if ($currency) {
+        $code = strtoupper(trim((string) $currency));
+        if ($code !== '') {
+            if (($listScope['mode'] ?? '') === 'group' && function_exists('tx_table_has_scope_column') && tx_table_has_scope_column($pdo, 'currency')) {
+                $scopeId = (int) ($listScope['group_scope_id'] ?? 0);
+                if ($scopeId > 0) {
+                    $currency_stmt = $pdo->prepare("
+                        SELECT id FROM currency
+                        WHERE code = ? AND scope_type = 'group' AND scope_id = ?
+                        LIMIT 1
+                    ");
+                    $currency_stmt->execute([$code, $scopeId]);
+                    $currency_id = $currency_stmt->fetchColumn() ?: null;
+                }
+            } elseif ($company_id > 0) {
+                $currency_stmt = $pdo->prepare("SELECT id FROM currency WHERE code = ? AND company_id = ? LIMIT 1");
+                $currency_stmt->execute([$code, $company_id]);
+                $currency_id = $currency_stmt->fetchColumn() ?: null;
+            }
+        }
     }
 
     $where_conditions = [];

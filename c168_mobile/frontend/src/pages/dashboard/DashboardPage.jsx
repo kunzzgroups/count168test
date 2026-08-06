@@ -10,23 +10,38 @@ import HeroSummaryCard from "./HeroSummaryCard.jsx";
 import ScopeBreadcrumb from "./ScopeBreadcrumb.jsx";
 import "./dashboard.css";
 
+const HERO_METRIC_SPARK_KEY = {
+  profit: "profit",
+  expense: "expenses",
+  net: "netProfit",
+  earnings: "earnings",
+};
+
 export default function DashboardPage() {
   const dash = useMobileDashboard();
   const { i18n, kpi, loading, refreshing, error, me, blocked, compareLabel } = dash;
   const [filterOpen, setFilterOpen] = useState(false);
   const [ratesHintDismissed, setRatesHintDismissed] = useState(false);
+  const [heroMetric, setHeroMetric] = useState("net");
   const ratesHint = dash.ratesWarning && !ratesHintDismissed ? dash.ratesWarning : "";
 
   useEffect(() => {
     if (!dash.ratesWarning) setRatesHintDismissed(false);
   }, [dash.ratesWarning]);
 
+  useEffect(() => {
+    if (heroMetric === "earnings" && !kpi?.showEarnings) setHeroMetric("net");
+  }, [heroMetric, kpi?.showEarnings]);
+
   const sparklineValues = useMemo(() => {
     const rows = dash.chartRows || [];
     if (rows.length < 2) return [];
+    const dataKey = HERO_METRIC_SPARK_KEY[heroMetric] || "netProfit";
     const step = Math.max(1, Math.floor(rows.length / 24));
-    return rows.filter((_, i) => i % step === 0 || i === rows.length - 1).map((r) => Number(r.netProfit) || 0);
-  }, [dash.chartRows]);
+    return rows
+      .filter((_, i) => i % step === 0 || i === rows.length - 1)
+      .map((r) => Number(r[dataKey]) || 0);
+  }, [dash.chartRows, heroMetric]);
 
   if (blocked) return null;
 
@@ -43,6 +58,11 @@ export default function DashboardPage() {
       compare: kpi?.comparisons?.earnings,
     });
   }
+
+  const heroCard = kpiCards.find((c) => c.variant === heroMetric) || kpiCards.find((c) => c.variant === "net");
+  const heroLabel = heroCard?.label || i18n.netProfit;
+  const heroValue = heroCard?.value ?? dash.summaryValue;
+  const heroCompare = heroCard?.compare ?? dash.heroCompare;
 
   const companyCode = String(dash.selectedCompany?.company_id || "").toUpperCase();
   const groupId = String(
@@ -147,15 +167,17 @@ export default function DashboardPage() {
         <div className="m-dash-content">
           <HeroSummaryCard
             i18n={i18n}
+            label={heroLabel}
             currency={dash.currency}
-            value={dash.summaryValue}
-            compare={dash.heroCompare}
+            value={heroValue}
+            compare={heroCompare}
             compareLabel={compareLabel}
             multiCurrency={dash.showMultiCurrencyNote}
             loading={loading}
             empty={!loading && !dash.hasData}
             emptyLabel={false}
             sparklineValues={sparklineValues}
+            accent={heroMetric}
           />
 
           {!loading && !dash.hasData && (
@@ -200,6 +222,8 @@ export default function DashboardPage() {
                   compare={card.compare}
                   compareLabel={compareLabel}
                   loading={loading}
+                  selected={heroMetric === card.variant}
+                  onSelect={() => setHeroMetric(card.variant)}
                 />
               ))}
             </div>
@@ -214,6 +238,7 @@ export default function DashboardPage() {
             dateRangeText={dash.dateRangeShort}
             xAxisLayout={dash.chartXAxisLayout}
             emptyText={loading ? i18n.loading : i18n.chartSelectSeries || i18n.noData}
+            tapHint={i18n.chartTapHint}
           />
 
           <CurrencyDistributionCard

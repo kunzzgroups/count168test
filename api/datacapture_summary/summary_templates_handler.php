@@ -22,6 +22,26 @@ function dcSummaryApiHandleSaveTemplate(): void
                 throw new Exception('Missing required fields: id_product or account_id');
             }
         
+            $rawProc = isset($row['process_id']) && $row['process_id'] !== '' ? $row['process_id'] : ($row['process_code'] ?? $row['processCode'] ?? null);
+            $resolvedTemplateProcessId = null;
+            if (is_numeric($rawProc)) {
+                $resolvedTemplateProcessId = (int) $rawProc;
+            } elseif (is_string($rawProc) && trim($rawProc) !== '') {
+                $resolvedTemplateProcessId = dcEnsureProcessIdByCode(
+                    $pdo,
+                    (int) $company_id,
+                    trim($rawProc),
+                    (bool) $capture_scope_group,
+                    $groupIdForAccess,
+                    !empty($row['currency_id']) ? (int) $row['currency_id'] : null
+                );
+            } elseif (!empty($capture_scope_group)) {
+                // Group Summary save must know which process (SALARY/COMMISSION/BONUS/PROFIT) the
+                // row belongs to — silently defaulting to SALARY here previously mis-filed
+                // COMMISSION/PROFIT formulas under the SALARY process (see Formula Maintenance bug).
+                throw new Exception('Missing process_id/process_code for group scope template save');
+            }
+
             // Prepare template payload
             $templatePayload = [
                 'product_type' => $row['product_type'] ?? 'main',
@@ -47,7 +67,7 @@ function dcSummaryApiHandleSaveTemplate(): void
                 'last_source_value' => $row['last_source_value'] ?? null,
                 'last_processed_amount' => isset($row['last_processed_amount']) ? $row['last_processed_amount'] : 0,
                 'template_key' => $row['template_key'] ?? null,
-                'process_id' => isset($row['process_id']) && is_numeric($row['process_id']) ? (int)$row['process_id'] : null,
+                'process_id' => $resolvedTemplateProcessId,
                 'data_capture_id' => isset($row['data_capture_id']) && !empty($row['data_capture_id']) ? (int)$row['data_capture_id'] : null,
                 // Preserve row position in summary table if provided
                 'row_index' => isset($row['row_index']) && $row['row_index'] !== null ? (int)$row['row_index'] : null,
@@ -112,6 +132,20 @@ function dcSummaryApiHandleSaveTemplate(): void
                     'data_capture_id' => isset($templatePayload['data_capture_id']) ? (int)$templatePayload['data_capture_id'] : null,
                 ];
                 syncFormulaToMultiUseProcesses($pdo, $processIdForSync, $syncTemplateData, $company_id);
+            }
+
+            require_once __DIR__ . '/../includes/realtime.php';
+            if (!empty($capture_scope_group)) {
+                $listScope = [
+                    'mode' => 'group',
+                    'company_id' => (int) $company_id,
+                    'group_scope_id' => (int) ($capture_scope_ctx['group_scope_id'] ?? $capture_scope_ctx['scope_id'] ?? 0),
+                ];
+                realtime_publish_scope($listScope, 'datacapture', 'save_template');
+                realtime_publish_scope($listScope, 'maintenance', 'formula_update');
+            } elseif ((int) $company_id > 0) {
+                realtime_publish_companies([(int) $company_id], 'datacapture', 'save_template');
+                realtime_publish_companies([(int) $company_id], 'maintenance', 'formula_update');
             }
         
             echo json_encode([
@@ -286,6 +320,19 @@ function dcSummaryApiHandleDeleteTemplate(): void
                 } else {
                     error_log("Deleted template by key: product_type=$productType, template_key=$templateKey");
                 }
+                require_once __DIR__ . '/../includes/realtime.php';
+                if (!empty($capture_scope_group)) {
+                    $listScope = [
+                        'mode' => 'group',
+                        'company_id' => (int) $companyId,
+                        'group_scope_id' => (int) ($capture_scope_ctx['group_scope_id'] ?? $capture_scope_ctx['scope_id'] ?? 0),
+                    ];
+                    realtime_publish_scope($listScope, 'datacapture', 'delete_template');
+                    realtime_publish_scope($listScope, 'maintenance', 'formula_delete');
+                } elseif ((int) $companyId > 0) {
+                    realtime_publish_companies([(int) $companyId], 'datacapture', 'delete_template');
+                    realtime_publish_companies([(int) $companyId], 'maintenance', 'formula_delete');
+                }
                 echo json_encode([
                     'success' => true,
                     'message' => 'Template deleted successfully',
@@ -316,6 +363,7 @@ function dcSummaryApiHandleFetchTemplates(): void
         try {
             $ids = [];
             $processId = null;
+            $processCode = '';
             $captureId = null;
             $payload = [];
 
@@ -328,13 +376,21 @@ function dcSummaryApiHandleFetchTemplates(): void
                 if (isset($payload['idProducts']) && is_array($payload['idProducts'])) {
                     $ids = array_values(array_filter(array_map('trim', $payload['idProducts'])));
                 }
+                if (isset($payload['processCode']) || isset($payload['process_code'])) {
+                    $processCode = strtoupper(trim((string) ($payload['processCode'] ?? $payload['process_code'] ?? '')));
+                }
                 if (isset($payload['processId'])) {
-                    // processId should be process.id (int), not process.process_id (string)
+                    // processId should be process.id (int); pure Group may send "SALARY" as code.
                     $processIdValue = $payload['processId'];
                     if (is_numeric($processIdValue)) {
-                        $processId = (int)$processIdValue;
+                        $processId = (int) $processIdValue;
                     } elseif (is_string($processIdValue) && trim($processIdValue) !== '') {
-                        $processId = (int)trim($processIdValue);
+                        $raw = trim($processIdValue);
+                        if (ctype_digit($raw)) {
+                            $processId = (int) $raw;
+                        } elseif ($processCode === '' && dcIsGroupPayrollProcessCode($raw)) {
+                            $processCode = strtoupper($raw);
+                        }
                     }
                 }
                 if (isset($payload['captureId']) && $payload['captureId'] !== null && $payload['captureId'] !== '') {
@@ -350,13 +406,22 @@ function dcSummaryApiHandleFetchTemplates(): void
             }
 
             if ($processId === null && !empty($_GET['processId'])) {
-                // processId should be process.id (int)
                 $getProcessId = $_GET['processId'];
                 if (is_numeric($getProcessId)) {
-                    $processId = (int)$getProcessId;
+                    $processId = (int) $getProcessId;
                 } elseif (is_string($getProcessId) && trim($getProcessId) !== '') {
-                    $processId = (int)trim($getProcessId);
+                    $raw = trim($getProcessId);
+                    if (ctype_digit($raw)) {
+                        $processId = (int) $raw;
+                    } elseif ($processCode === '' && dcIsGroupPayrollProcessCode($raw)) {
+                        $processCode = strtoupper($raw);
+                    }
                 }
+            }
+            if ($processCode === '' && !empty($_GET['processCode'])) {
+                $processCode = strtoupper(trim((string) $_GET['processCode']));
+            } elseif ($processCode === '' && !empty($_GET['process_code'])) {
+                $processCode = strtoupper(trim((string) $_GET['process_code']));
             }
             if (!empty($_GET['captureId']) && is_numeric($_GET['captureId'])) {
                 $captureId = (int)$_GET['captureId'];
@@ -366,14 +431,63 @@ function dcSummaryApiHandleFetchTemplates(): void
                 throw new Exception('No id products provided');
             }
 
-            if ($processId === null) {
-                throw new Exception('Process ID is required');
-            }
-
             $processCompanyId = !empty($capture_scope_ctx)
                 ? dcCaptureProcessCompanyId($capture_scope_ctx)
                 : (int) $company_id;
-            dcAssertProcessIdInCaptureScope($pdo, (int) $processId, (int) $processCompanyId, (bool) $capture_scope_group);
+            $groupIdForEnsure = dcNormalizeGroupId(
+                $groupIdForAccess
+                    ?? ($scopeParams['view_group'] ?? $scopeParams['group_id'] ?? '')
+            );
+            // Pure Group: resolve anchor company so ensure/resolve can find process rows.
+            if ($processCompanyId <= 0 && !empty($capture_scope_group) && $groupIdForEnsure !== '') {
+                if (function_exists('gc_resolve_group_anchor_company_id')) {
+                    $processCompanyId = (int) gc_resolve_group_anchor_company_id($pdo, $groupIdForEnsure);
+                }
+                if ($processCompanyId <= 0 && function_exists('tx_resolve_group_entity_company_id')) {
+                    $processCompanyId = (int) tx_resolve_group_entity_company_id($pdo, $groupIdForEnsure);
+                }
+            }
+
+            if (($processId === null || $processId <= 0) && $processCode !== '') {
+                $ensured = dcEnsureProcessIdByCode(
+                    $pdo,
+                    (int) $processCompanyId,
+                    $processCode,
+                    (bool) $capture_scope_group,
+                    $groupIdForEnsure !== '' ? $groupIdForEnsure : null,
+                    null
+                );
+                if ($ensured !== null && $ensured > 0) {
+                    $processId = (int) $ensured;
+                }
+            }
+
+            // Empty / pure group ledger: process table rows need a company_id anchor.
+            // When there is none, Summary still works with processCode (same as submit path).
+            // Return empty templates instead of failing the whole Summary page.
+            if (($processId === null || $processId <= 0)
+                && !empty($capture_scope_group)
+                && $processCode !== ''
+                && $processCompanyId <= 0
+            ) {
+                echo json_encode([
+                    'success' => true,
+                    'templates' => new stdClass(),
+                    'subsByParent' => new stdClass(),
+                ]);
+                exit;
+            }
+
+            if ($processId === null || $processId <= 0) {
+                throw new Exception('Process ID is required');
+            }
+
+            dcAssertProcessIdInCaptureScope(
+                $pdo,
+                (int) $processId,
+                (int) $processCompanyId,
+                (bool) $capture_scope_group
+            );
 
             // 在 Data Capture 选择的 Process 下设置的 formula 只在该 Process 显示；若该 Process 有 sync 到其他 Process 则同步显示
             // Summary 的 formula 仅来自 Maintenance（data_capture_templates）；Process 在 Maintenance 无记录则不显示 formula

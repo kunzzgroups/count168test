@@ -30,9 +30,10 @@ export function sessionUserHasCompanyCategoryAccess(sessionUser) {
   return false;
 }
 
-/** Session may use Data Capture when group/company has Games (incl. aggregated group flags). */
+/** Session may use Data Capture when group/company has Games (incl. group-login fixed Games). */
 export function sessionUserHasGamblingAccess(sessionUser) {
   if (sessionUser?.company_has_gambling === true) return true;
+  if (String(sessionUser?.login_scope || "").toLowerCase() === "group") return true;
   return permissionsIncludeGames(sessionUser?.company_permissions);
 }
 

@@ -59,7 +59,7 @@
 .m-filter-span-badge {
   border-radius: var(--m-radius-pill);
   padding: 0.25rem 0.625rem;
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   font-weight: 700;
 }
 
@@ -92,7 +92,7 @@
 }
 
 .m-filter-hint {
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   font-weight: 500;
   line-height: 1.375;
   color: var(--m-color-label);
@@ -160,7 +160,7 @@
 }
 
 .m-filter-range-label {
-  font-size: 0.625rem;
+  font-size: var(--m-text-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -187,7 +187,7 @@
 }
 
 .m-filter-range-chevron i {
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
 }
 
 /* Calendar sub-sheet */
@@ -207,7 +207,7 @@
 
 .m-filter-cal-hint {
   margin-top: 0.125rem;
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   font-weight: 500;
   color: var(--m-color-muted);
 }
@@ -239,7 +239,7 @@
 }
 
 .m-filter-cal-draft-label {
-  font-size: 0.625rem;
+  font-size: var(--m-text-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -271,7 +271,7 @@
 }
 
 .m-filter-cal-nav-btn i {
-  font-size: 0.75rem;
+  font-size: var(--m-text-secondary);
 }
 
 .m-filter-cal-month {
@@ -289,7 +289,7 @@
 
 .m-filter-cal-weekday {
   padding: 0.25rem 0;
-  font-size: 0.625rem;
+  font-size: var(--m-text-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;

@@ -1,6 +1,7 @@
 <?php
 require_once '../../includes/session_check.php';
 require_once '../../includes/config.php';
+require_once '../../includes/group_company_access.php';
 
 header('Content-Type: application/json');
 
@@ -10,6 +11,15 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $company_id = $_GET['company_id'] ?? null;
+
+if ($company_id) {
+    try {
+        gc_assert_api_company_access($pdo, (int) $company_id, gc_session_login_identifier());
+    } catch (Throwable $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        exit();
+    }
+}
 
 try {
     if ($company_id) {

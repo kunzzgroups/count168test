@@ -177,3 +177,41 @@ export function mergeGroupData(dataList, dateRange = {}) {
     })),
   };
 }
+
+/**
+ * After merging multiple group-ledger payloads (Groups All), mark aggregate earnings
+ * so KPI uses groupAggregateEarnings path (desktop finalizeMergedGroupLedgerDashboard).
+ */
+export function finalizeMergedGroupLedgerDashboard(merged, groupLedgerPayloads) {
+  if (!merged || !groupLedgerPayloads?.length) return merged;
+  const ledgerRows = groupLedgerPayloads.filter(
+    (d) => d && (d._group_aggregate_earnings || d.group_ledger_net_profit != null || d.has_group_ownership),
+  );
+  const rows = ledgerRows.length ? ledgerRows : groupLedgerPayloads.filter(Boolean);
+  if (!rows.length) return merged;
+
+  let aggregateEarnings = 0;
+  let hasGroupOwnership = false;
+  let hasOwnershipSetup = false;
+  for (const d of rows) {
+    const net = netProfitFromDashboardPayload(d);
+    const accPct = parseFloat(d?.group_account_percentage) || 0;
+    const mul = accPct > 0 ? accPct / 100 : 1;
+    aggregateEarnings += net * mul;
+    if (d.has_group_ownership) hasGroupOwnership = true;
+    if (viewerHasEarningsConfig(d) || d.has_ownership_setup) hasOwnershipSetup = true;
+  }
+
+  return {
+    ...merged,
+    subsidiary_earnings_total: aggregateEarnings,
+    _subsidiary_earnings_total: aggregateEarnings,
+    group_ledger_net_profit: 0,
+    group_account_percentage: 0,
+    group_equity_percentage: 0,
+    ownership_percentage: 0,
+    has_group_ownership: hasGroupOwnership,
+    has_ownership_setup: hasOwnershipSetup || hasGroupOwnership || aggregateEarnings !== 0,
+    _group_aggregate_earnings: true,
+  };
+}

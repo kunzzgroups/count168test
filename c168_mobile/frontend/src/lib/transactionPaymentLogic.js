@@ -1,12 +1,9 @@
+import { resolveSavedCurrencyOrder } from "./currencyOrder.js";
 import { parseBalanceValue } from "./transactionFormat.js";
 import { MoneyDecimal } from "./money/moneyDecimal.js";
 
 function clearTxSearchCache() {
   /* mobile: no desktop search cache */
-}
-
-function resolveSavedCurrencyOrder(_companyId, order) {
-  return Array.isArray(order) ? order : null;
 }
 
 export const TRANSACTION_CURRENCY_FILTER_KEY_PREFIX = "transaction_currency_filter_v1_";
@@ -359,33 +356,16 @@ export function filterTransactionTableRows(rawLeft, rawRight, { showZeroBalance,
   };
 }
 
-export function normalizeRateRowsByCrDr(leftRows, rightRows, isRate) {
-  const safeLeft = Array.isArray(leftRows) ? leftRows : [];
-  const safeRight = Array.isArray(rightRows) ? rightRows : [];
-  if (!isRate) {
-    return { leftRows: [...safeLeft], rightRows: [...safeRight] };
-  }
-  const normalizedLeft = [];
-  const normalizedRight = [];
-  safeLeft.forEach((row) => {
-    const crDr = parseBalanceValue(row?.cr_dr);
-    if (crDr === null || Math.abs(crDr) < 1e-5) {
-      normalizedLeft.push(row);
-      return;
-    }
-    if (crDr > 0) normalizedLeft.push(row);
-    else normalizedRight.push(row);
-  });
-  safeRight.forEach((row) => {
-    const crDr = parseBalanceValue(row?.cr_dr);
-    if (crDr === null || Math.abs(crDr) < 1e-5) {
-      normalizedRight.push(row);
-      return;
-    }
-    if (crDr > 0) normalizedLeft.push(row);
-    else normalizedRight.push(row);
-  });
-  return { leftRows: normalizedLeft, rightRows: normalizedRight };
+/**
+ * Historically re-split RATE rows by Cr/Dr sign. Product rule is now unified with
+ * CONTRA/PAYMENT: keep search_api Balance-based left/right for all types.
+ * Kept as a passthrough so older call sites stay safe.
+ */
+export function normalizeRateRowsByCrDr(leftRows, rightRows, _isRate = false) {
+  return {
+    leftRows: Array.isArray(leftRows) ? [...leftRows] : [],
+    rightRows: Array.isArray(rightRows) ? [...rightRows] : [],
+  };
 }
 
 /** @deprecated Use {@link filterTransactionTableRows} — kept for legacy two-step callers. */
@@ -658,8 +638,7 @@ export function countDisplayedRows(rawSearchData, searchState, txType, typeSearc
     showPaymentOnly: typeSearchActive ? false : searchState.showPaymentOnly,
     showCaptureOnly: typeSearchActive ? false : searchState.showCaptureOnly,
   });
-  const norm = normalizeRateRowsByCrDr(z.left, z.right, txType === "RATE");
-  return (norm.leftRows?.length || 0) + (norm.rightRows?.length || 0);
+  return (z.left?.length || 0) + (z.right?.length || 0);
 }
 
 /** Read cached transaction list payload from sessionStorage (same format as saveTxListToSession). */

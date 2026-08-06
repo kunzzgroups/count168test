@@ -16,6 +16,7 @@ export function DashboardKpiCard({
   const showCompare = compare && !loading;
   const badgeUp = compare?.pct >= 0;
   const deltaUp = compare?.isUp;
+  const revealed = !loading;
 
   return (
     <div
@@ -26,7 +27,7 @@ export function DashboardKpiCard({
         <i className={`kpi-card-head-icon ${KPI_CARD_ICONS[variant] || "far fa-chart-bar"}`} aria-hidden="true" />
         <span className="kpi-card-head-label">{label}</span>
       </div>
-      <div className="kpi-card-main">
+      <div className={`kpi-card-main dashboard-summary-reveal${revealed ? " is-revealed" : ""}`}>
         <div className="kpi-card-value">
           {formatCurrency(value)}
         </div>
@@ -37,7 +38,7 @@ export function DashboardKpiCard({
           </span>
         )}
       </div>
-      <div className="kpi-card-foot">
+      <div className={`kpi-card-foot dashboard-summary-reveal${revealed ? " is-revealed" : ""}`}>
         {showCompare ? (
           <>
             <span className={`kpi-card-delta${deltaUp ? " is-up" : " is-down"}`}>

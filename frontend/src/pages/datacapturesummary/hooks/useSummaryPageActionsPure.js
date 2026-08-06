@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { loadActiveCaptureSession, markCaptureRestorePending } from "../../datacapture/lib/dataCaptureStorage.js";
 import { saveGroupOnlyProcessPrefsFromProcessData } from "../../datacapture/lib/dataCaptureGroupOnlyProcessPersistence.js";
+import { dataCaptureQueryKeys } from "../../datacapture/lib/dataCaptureApi.js";
 import { isGroupLedgerCapture } from "../../../utils/company/c168CaptureChannel.js";
+import { notifyTransactionListInvalidated } from "../../transaction/lib/transactionPaymentLogic.js";
 import { clearSummaryCaptureRoundStorage } from "../lib/summaryStorage.js";
 import { saveSummaryRefreshStatePure } from "../lib/summaryRefreshStatePure.js";
 import { mergeRowsWithSummaryDomDraft } from "../lib/summaryRefreshDomSync.js";
@@ -96,6 +99,7 @@ export function useSummaryPageActionsPure({
 }) {
 
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const {
 
@@ -158,6 +162,9 @@ export function useSummaryPageActionsPure({
     t,
 
     onSuccess: () => {
+      // Same-tab sync before navigate: TX Payment + DC Submitted list must not wait on SSE.
+      notifyTransactionListInvalidated("summary_submit");
+      void queryClient.invalidateQueries({ queryKey: dataCaptureQueryKeys.root() });
 
       const session = loadActiveCaptureSession();
 
@@ -348,7 +355,7 @@ export function useSummaryPageActionsPure({
       );
       for (const parent of parentsToSync) {
         await syncSubOrderTemplates(nextRows, parent, (row) =>
-          saveSummaryTemplatePure(row, { captureScope, companyId, processId })
+          saveSummaryTemplatePure(row, { captureScope, companyId, processId, processCode })
         );
       }
 

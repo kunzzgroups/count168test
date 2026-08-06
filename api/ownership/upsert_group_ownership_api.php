@@ -8,6 +8,7 @@
  */
 require_once '../../includes/session_check.php';
 require_once '../../includes/config.php';
+require_once '../../includes/group_company_access.php';
 require_once '../includes/money_decimal.php';
 require_once '../includes/ownership_history.php';
 
@@ -30,6 +31,13 @@ $percentage = money_normalize($data['percentage'] ?? 0, 2);
 
 if (!$group_id || !$raw_id) {
     echo json_encode(['status' => 'error', 'message' => 'Missing group_id or account_id']);
+    exit();
+}
+
+try {
+    gc_assert_group_ledger_access($pdo, $group_id);
+} catch (Throwable $e) {
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     exit();
 }
 
@@ -98,6 +106,8 @@ try {
 
     $savedBy = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
     ownership_history_snapshot_group_from_live($pdo, $group_id, $savedBy);
+
+    ownership_realtime_publish_for_group($pdo, $group_id, 'upsert_group');
 
     echo json_encode([
         'status'  => 'success',

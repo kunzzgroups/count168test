@@ -5,6 +5,7 @@ import {
   bankProcessFrequencyNormalized,
   bankProcessUiStatusKey,
   bankTypeLabel,
+  canDeleteBankProcess,
   canShowBankResend,
   formatBankMoney,
   formatDueDisplayDate,
@@ -99,12 +100,17 @@ export function BankProcessActionsSheet({
   onOpenRemark,
   onOpenResend,
   onOpenEdit,
+  onDelete,
 }) {
   const current = bankProcessUiStatusKey(row);
   const [draftStatus, setDraftStatus] = useState(current);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
-    if (open) setDraftStatus(bankProcessUiStatusKey(row));
+    if (open) {
+      setDraftStatus(bankProcessUiStatusKey(row));
+      setConfirmDelete(false);
+    }
   }, [open, row]);
 
   if (!row) return null;
@@ -112,6 +118,7 @@ export function BankProcessActionsSheet({
   const owner = String(row.supplier || "").trim() || "—";
   const supplier = String(row.card_lower || "").trim() || "—";
   const canResend = canShowBankResend(row);
+  const canDelete = canDeleteBankProcess(row);
 
   return (
     <SheetShell
@@ -197,7 +204,42 @@ export function BankProcessActionsSheet({
             {i18n.bankResend}
           </button>
         ) : null}
+        {canDelete && onDelete ? (
+          <button
+            type="button"
+            className="m-bp-action-btn m-bp-action-btn--danger tap-scale"
+            disabled={busy}
+            onClick={() => setConfirmDelete(true)}
+          >
+            <i className="fas fa-trash" aria-hidden="true" />
+            {i18n.delete}
+          </button>
+        ) : null}
       </div>
+
+      {confirmDelete ? (
+        <div className="m-bp-delete-confirm">
+          <p>{i18n.bankDeleteConfirm}</p>
+          <div className="m-bp-action-row">
+            <button
+              type="button"
+              className="m-bp-action-btn tap-scale"
+              disabled={busy}
+              onClick={() => setConfirmDelete(false)}
+            >
+              {i18n.cancel}
+            </button>
+            <button
+              type="button"
+              className="m-bp-action-btn m-bp-action-btn--danger tap-scale"
+              disabled={busy}
+              onClick={() => onDelete?.(row)}
+            >
+              {i18n.delete}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </SheetShell>
   );
 }

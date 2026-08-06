@@ -6,6 +6,7 @@ import { ensureCrossPageCompanySelection, syncCompanySessionApi } from "../../ut
 import { spaPath } from "../../utils/routing/pageRoutes.js";
 import { replaceBrowserPathOnly } from "../../utils/routing/privateBrowserUrl.js";
 import {
+  buildDashboardSidebarNotifyOptions,
   clearDashboardGroupFilterKeepCompany,
   notifyDashboardGroupFilterChanged,
   persistDashboardFilterState,
@@ -15,13 +16,20 @@ import {
   resolveInitialSelectedGroupFromSession,
   resolveSubsidiaryBootCompanyId,
   fetchOwnerCompaniesAll,
+  getCachedOwnerCompanies,
+  isDashboardGroupOnlyMode,
+  readDashboardSelectedCompanyId,
+  readPersistedDashboardGcFilter,
   DASHBOARD_GROUP_FILTER_OPT_OUT_KEY,
 } from "../../utils/company/sharedCompanyFilter.js";
 import { findOwnerCompanyById } from "../../utils/company/sharedCompanyFilter.js";
 import { useGroupAnchorSessionSync } from "../../utils/company/useGroupAnchorSessionSync.js";
 import { isPartnershipAuditReadOnlyLocked } from "../../utils/audit/partnershipAuditReadOnly.js";
 import { buildApiUrl } from "../../utils/core/apiUrl.js";
-import { isBankCategoryCompany, resolveBankOnlyCategoryHint } from "../bankprocesslist/lib/bankProcessHelpers.js";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
+import { resolveIsBankOnlyCompanyAsync } from "../bankprocesslist/lib/bankProcessHelpers.js";
+import { prefetchRouteModule } from "../../utils/routing/routePrefetch.js";
 import "../../../public/css/processCSS.css";
 import "../../../public/css/description-input.css";
 import "../../../public/css/processlist.css";
@@ -52,8 +60,9 @@ import {
 } from "./processListHelpers.js";
 import {
   fetchGamesProcessListSlice,
-  prefetchBankProcessListPayload,
+  peekProcessListRouteCache,
   resolveProcessListRouteCache,
+  warmBankProcessListRouteCache,
   warmProcessListRouteCache,
 } from "./processRoutePrefetch.js";
 import ProcessTable from "./components/ProcessTable.jsx";
@@ -76,14 +85,13 @@ function filterSearchInput(raw) {
     .toUpperCase();
 }
 
-function resolveProcessListCacheKey(companyId, debouncedSearch, showInactive, showAll) {
-  return `company:${Number(companyId)}|${String(debouncedSearch || "").trim()}|${showInactive ? "1" : "0"}|${showAll ? "1" : "0"}`;
+function resolveProcessListCacheKey(companyId, debouncedSearch, showInactive, showAll, showActive = false) {
+  return `company:${Number(companyId)}|${String(debouncedSearch || "").trim()}|${showActive ? "1" : "0"}|${showInactive ? "1" : "0"}|${showAll ? "1" : "0"}`;
 }
 
-function processRowVisibleAfterStatusChange(newStatus, { showInactive, showAll }) {
+function processRowVisibleAfterStatusChange(newStatus, { showActive = false, showInactive = false } = {}) {
   const status = String(newStatus || "").toLowerCase();
-  if (showAll && showInactive) return status === "inactive";
-  if (showAll) return status === "active";
+  if (showActive && showInactive) return status === "active" || status === "inactive";
   if (showInactive) return status === "inactive";
   return status === "active";
 }
@@ -91,6 +99,55 @@ function processRowVisibleAfterStatusChange(newStatus, { showInactive, showAll }
 function processRowsFingerprint(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return "0";
   return rows.map((r) => Number(r.id)).join(",");
+}
+
+/** Survives SPA remount (Acc/Admin pattern) — avoids empty→fill flash Acc→Process. */
+const processListModuleCache = new Map();
+
+function readProcessListBootGc() {
+  try {
+    const optOut =
+      typeof sessionStorage !== "undefined" &&
+      sessionStorage.getItem(DASHBOARD_GROUP_FILTER_OPT_OUT_KEY) === "1";
+    const persisted = readPersistedDashboardGcFilter();
+    const groupOnly = Boolean(persisted?.groupOnly || isDashboardGroupOnlyMode());
+    const selectedGroup = optOut ? null : persisted?.selectedGroup || null;
+    if (groupOnly) {
+      return { companyId: null, selectedGroup, ungrouped: optOut };
+    }
+    const companyId = persisted?.companyId ?? readDashboardSelectedCompanyId();
+    const cid =
+      companyId != null && Number.isFinite(Number(companyId)) && Number(companyId) > 0
+        ? Number(companyId)
+        : null;
+    return { companyId: cid, selectedGroup, ungrouped: optOut };
+  } catch {
+    return { companyId: null, selectedGroup: null, ungrouped: false };
+  }
+}
+
+function readInitialProcessCompanies() {
+  const cached = getCachedOwnerCompanies();
+  return Array.isArray(cached) && cached.length > 0 ? cached : [];
+}
+
+function peekInitialProcessRows(companyId) {
+  const cid = Number(companyId);
+  if (!Number.isFinite(cid) || cid <= 0) return [];
+  const cacheKey = resolveProcessListCacheKey(cid, "", false, false, false);
+  const mod = processListModuleCache.get(cacheKey);
+  if (processListCacheHasEntry(mod) && Array.isArray(mod.rows) && mod.rows.length > 0) {
+    return mod.rows;
+  }
+  const warm = peekProcessListRouteCache(cid, {});
+  if (processListCacheHasEntry(warm) && Array.isArray(warm.rows) && warm.rows.length > 0) {
+    processListModuleCache.set(cacheKey, {
+      rows: warm.rows,
+      currencyCodes: Array.isArray(warm.currencyCodes) ? warm.currencyCodes : null,
+    });
+    return warm.rows;
+  }
+  return [];
 }
 
 function ProcessToastStack({ items }) {
@@ -115,15 +172,24 @@ export default function ProcessListPage() {
   useC168ProcessRouteGuard();
   const [lang, setLang] = useState(() => (localStorage.getItem("login_lang") === "zh" ? "zh" : "en"));
   const t = useCallback((key, params) => getProcessListText(lang, key, params), [lang]);
-  const [companies, setCompanies] = useState([]);
-  const [companyId, setCompanyId] = useState(null);
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [groupFilterKind, setGroupFilterKind] = useState("follow");
+  const initialBootGc = useMemo(() => readProcessListBootGc(), []);
+  const initialCachedCompanies = useMemo(() => readInitialProcessCompanies(), []);
+  const initialSeedRows = useMemo(
+    () => peekInitialProcessRows(initialBootGc.companyId),
+    [initialBootGc.companyId],
+  );
+  const [companies, setCompanies] = useState(() => initialCachedCompanies);
+  const [companyId, setCompanyId] = useState(() => initialBootGc.companyId);
+  const [selectedGroup, setSelectedGroup] = useState(() => initialBootGc.selectedGroup);
+  const [groupFilterKind, setGroupFilterKind] = useState(() =>
+    initialBootGc.ungrouped ? "ungrouped" : "follow",
+  );
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [showActive, setShowActive] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState(() => initialSeedRows);
   const [awaitingRows, setAwaitingRows] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -145,9 +211,9 @@ export default function ProcessListPage() {
   const sessionMe = sessionMeFromLayout;
   const fetchAbortRef = useRef(null);
   const searchDebounceRef = useRef(null);
-  const skipNextFetchRef = useRef(false);
+  const skipNextFetchRef = useRef(initialSeedRows.length > 0);
   const skipCompanyFetchEffectRef = useRef(false);
-  const processListCacheRef = useRef(new Map());
+  const processListCacheRef = useRef(processListModuleCache);
   const processListWarmInflightRef = useRef(new Map());
   const suppressCrossPageSyncRef = useRef(false);
   const onSwitchCompanyRef = useRef(null);
@@ -175,12 +241,12 @@ export default function ProcessListPage() {
   }, []);
 
   // Layout phase (with BankProcessListPage): avoid deferred useEffect cleanup stripping body.process-page after route swap.
+  // Do not re-add dashboard-page on leave — Acc cleanup doing that caused Acc→Process body-class flicker.
   useLayoutEffect(() => {
     document.body.classList.remove("bg", "dashboard-page", "account-page", "announcement-page");
     document.body.classList.add("process-page");
     return () => {
       document.body.classList.remove("process-page", "process-page--show-all");
-      document.body.classList.add("dashboard-page");
     };
   }, []);
 
@@ -263,11 +329,13 @@ export default function ProcessListPage() {
         const layoutMe = sessionMeFromLayout;
         const currentUrl = new URL(window.location.href);
         const bootSearch = filterSearchInput(currentUrl.searchParams.get("search") || "");
+        const bootShowActive = currentUrl.searchParams.has("showActive");
         const bootShowInactive = currentUrl.searchParams.has("showInactive");
         const bootShowAll = currentUrl.searchParams.has("showAll");
         if (layoutMe?.company_id) {
           warmProcessListRouteCache(layoutMe.company_id, {
             search: bootSearch,
+            showActive: bootShowActive,
             showInactive: bootShowInactive,
             showAll: bootShowAll,
           });
@@ -316,14 +384,19 @@ export default function ProcessListPage() {
           setDebouncedSearch(normalizedSearch);
 
           const showAllChecked = currentUrl.searchParams.has("showAll");
+          const showActiveChecked = currentUrl.searchParams.has("showActive");
           const showInactiveChecked = currentUrl.searchParams.has("showInactive");
           setShowAll(showAllChecked);
+          setShowActive(showActiveChecked);
           setShowInactive(showInactiveChecked);
 
           setCurrencies(Array.isArray(prefetchedMeta.currencies) ? prefetchedMeta.currencies : []);
           setDescriptions(Array.isArray(prefetchedMeta.descriptions) ? prefetchedMeta.descriptions : []);
           setDays(Array.isArray(prefetchedMeta.days) ? prefetchedMeta.days : []);
           setExistingProcesses(Array.isArray(prefetchedMeta.existingProcesses) ? prefetchedMeta.existingProcesses : []);
+          if (resolvedCompanyId != null && !Array.isArray(prefetchedMeta.currencies)) {
+            void loadFormMeta(resolvedCompanyId);
+          }
 
           if (processListCacheHasEntry(routePrefetch) && resolvedCompanyId != null) {
             const prefRows = normalizeRows(routePrefetch.rows);
@@ -334,6 +407,7 @@ export default function ProcessListPage() {
               normalizedSearch,
               showInactiveChecked,
               showAllChecked,
+              showActiveChecked,
             );
             processListCacheRef.current.set(cacheKey, {
               rows: prefRows,
@@ -342,6 +416,35 @@ export default function ProcessListPage() {
                 : null,
             });
           } else if (ungroupedBoot && resolvedCompanyId == null) {
+            setRows([]);
+            skipNextFetchRef.current = true;
+          } else if (resolvedCompanyId != null) {
+            // Acc standard: await list before opening boot (do not paint empty → fill).
+            const listOpts = {
+              search: normalizedSearch,
+              showActive: showActiveChecked,
+              showInactive: showInactiveChecked,
+              showAll: showAllChecked,
+            };
+            const slice = await resolveProcessListRouteCache(resolvedCompanyId, listOpts);
+            if (processListCacheHasEntry(slice)) {
+              const cacheKey = resolveProcessListCacheKey(
+                resolvedCompanyId,
+                normalizedSearch,
+                showInactiveChecked,
+                showAllChecked,
+                showActiveChecked,
+              );
+              processListCacheRef.current.set(cacheKey, {
+                rows: slice.rows,
+                currencyCodes: slice.currencyCodes,
+              });
+              setRows(slice.rows);
+            } else {
+              setRows([]);
+            }
+            skipNextFetchRef.current = true;
+          } else {
             setRows([]);
             skipNextFetchRef.current = true;
           }
@@ -391,13 +494,14 @@ export default function ProcessListPage() {
 
         const currentCompanyRow = cs.find((c) => Number(c.id) === Number(effectiveCompany));
         if (currentCompanyRow?.company_id) {
-          const bankOnlyHint = resolveBankOnlyCategoryHint(layoutMe, effectiveCompany);
-          const bankCategory =
-            bankOnlyHint !== null
-              ? bankOnlyHint
-              : await isBankCategoryCompany(currentCompanyRow.company_id, buildApiUrl);
+          const bankCategory = await resolveIsBankOnlyCompanyAsync(
+            currentCompanyRow,
+            layoutMe,
+            buildApiUrl,
+          );
           if (bankCategory) {
-            const warm = await prefetchBankProcessListPayload(effectiveCompany);
+            warmBankProcessListRouteCache(effectiveCompany);
+            prefetchRouteModule(spaPath("bank-process-list"));
             navigate(spaPath("bank-process-list"), {
               replace: true,
               state: {
@@ -405,8 +509,6 @@ export default function ProcessListPage() {
                   companyId: effectiveCompany,
                   companies: cs,
                   groupFilterKind: "follow",
-                  rows: warm.rows,
-                  currencyCodes: warm.currencyCodes,
                 },
               },
             });
@@ -442,8 +544,10 @@ export default function ProcessListPage() {
         setDebouncedSearch(normalizedSearch);
 
         const showAllChecked = url.searchParams.has("showAll");
+        const showActiveChecked = url.searchParams.has("showActive");
         const showInactiveChecked = url.searchParams.has("showInactive");
         setShowAll(showAllChecked);
+        setShowActive(showActiveChecked);
         setShowInactive(showInactiveChecked);
 
         void loadFormMeta(effectiveCompany);
@@ -451,6 +555,7 @@ export default function ProcessListPage() {
         if (effectiveCompany != null) {
           const slice = await resolveProcessListRouteCache(effectiveCompany, {
             search: normalizedSearch,
+            showActive: showActiveChecked,
             showInactive: showInactiveChecked,
             showAll: showAllChecked,
           });
@@ -460,14 +565,17 @@ export default function ProcessListPage() {
               normalizedSearch,
               showInactiveChecked,
               showAllChecked,
+              showActiveChecked,
             );
             processListCacheRef.current.set(cacheKey, {
               rows: slice.rows,
               currencyCodes: slice.currencyCodes,
             });
             setRows(slice.rows);
-            skipNextFetchRef.current = true;
+          } else {
+            setRows([]);
           }
+          skipNextFetchRef.current = true;
         } else if (isUngroupedBoot) {
           setRows([]);
           skipNextFetchRef.current = true;
@@ -507,7 +615,7 @@ export default function ProcessListPage() {
     (cid) => {
       const id = Number(cid);
       if (!Number.isFinite(id) || id <= 0) return false;
-      const cacheKey = resolveProcessListCacheKey(id, debouncedSearch, showInactive, showAll);
+      const cacheKey = resolveProcessListCacheKey(id, debouncedSearch, showInactive, showAll, showActive);
       const cached = processListCacheRef.current.get(cacheKey);
       if (!processListCacheHasEntry(cached)) return false;
       setRows((prev) =>
@@ -516,14 +624,14 @@ export default function ProcessListPage() {
       setAwaitingRows(false);
       return true;
     },
-    [debouncedSearch, showInactive, showAll],
+    [debouncedSearch, showActive, showInactive, showAll],
   );
 
   const warmProcessListCompanyCache = useCallback(
     (cid) => {
       const id = Number(cid);
       if (!Number.isFinite(id) || id <= 0) return null;
-      const cacheKey = resolveProcessListCacheKey(id, debouncedSearch, showInactive, showAll);
+      const cacheKey = resolveProcessListCacheKey(id, debouncedSearch, showInactive, showAll, showActive);
       if (processListCacheRef.current.has(cacheKey)) {
         return null;
       }
@@ -534,6 +642,7 @@ export default function ProcessListPage() {
         try {
           const slice = await fetchGamesProcessListSlice(id, {
             search: debouncedSearch,
+            showActive,
             showInactive,
             showAll,
           });
@@ -555,7 +664,7 @@ export default function ProcessListPage() {
       processListWarmInflightRef.current.set(cacheKey, promise);
       return promise;
     },
-    [debouncedSearch, showInactive, showAll],
+    [debouncedSearch, showActive, showInactive, showAll],
   );
 
   const hydrateProcessListCompanyCache = useCallback(
@@ -563,7 +672,7 @@ export default function ProcessListPage() {
       if (applyProcessListCache(cid)) return true;
       const id = Number(cid);
       if (!Number.isFinite(id) || id <= 0) return false;
-      const cacheKey = resolveProcessListCacheKey(id, debouncedSearch, showInactive, showAll);
+      const cacheKey = resolveProcessListCacheKey(id, debouncedSearch, showInactive, showAll, showActive);
       const inflight = processListWarmInflightRef.current.get(cacheKey);
       if (inflight) {
         try {
@@ -574,7 +683,7 @@ export default function ProcessListPage() {
       }
       return applyProcessListCache(cid);
     },
-    [applyProcessListCache, debouncedSearch, showInactive, showAll],
+    [applyProcessListCache, debouncedSearch, showActive, showInactive, showAll],
   );
 
   const fetchRows = useCallback(
@@ -595,6 +704,7 @@ export default function ProcessListPage() {
       try {
         const slice = await fetchGamesProcessListSlice(cid, {
           search: debouncedSearch,
+          showActive,
           showInactive,
           showAll,
           signal: ac.signal,
@@ -607,7 +717,7 @@ export default function ProcessListPage() {
         if (Number(activeCompanyIdRef.current) !== cid) return;
 
         const nextRows = slice.rows;
-        const cacheKey = resolveProcessListCacheKey(cid, debouncedSearch, showInactive, showAll);
+        const cacheKey = resolveProcessListCacheKey(cid, debouncedSearch, showInactive, showAll, showActive);
         processListCacheRef.current.set(cacheKey, {
           rows: nextRows,
           currencyCodes: slice.currencyCodes,
@@ -647,6 +757,7 @@ export default function ProcessListPage() {
     [
       companyId,
       debouncedSearch,
+      showActive,
       showInactive,
       showAll,
       notify,
@@ -656,6 +767,12 @@ export default function ProcessListPage() {
       t,
     ],
   );
+
+  useRealtimeDomain(REALTIME_DOMAINS.PROCESSES, () => {
+    if (!companyId) return;
+    invalidateProcessListCompanyCache(processListCacheRef, companyId);
+    void fetchRows({ silent: true, force: true });
+  });
 
   const reloadDescriptions = async () => {
     if (!companyId) return;
@@ -783,7 +900,41 @@ export default function ProcessListPage() {
   useEffect(() => {
     if (loading || !activeCompanyId) return;
     if (skipNextFetchRef.current) {
+      // Prefer module warm / in-flight from cross-route switch; silent so races never toast.
       skipNextFetchRef.current = false;
+      void (async () => {
+        const cid = Number(activeCompanyId);
+        if (applyProcessListCache(cid)) {
+          setAwaitingRows(false);
+          void fetchRows({ companyId: cid, silent: true });
+          return;
+        }
+        const slice = await resolveProcessListRouteCache(cid, {
+          search: debouncedSearch,
+          showActive,
+          showInactive,
+          showAll,
+        });
+        if (Number(activeCompanyIdRef.current) !== cid) return;
+        if (processListCacheHasEntry(slice)) {
+          const cacheKey = resolveProcessListCacheKey(
+            cid,
+            debouncedSearch,
+            showInactive,
+            showAll,
+            showActive,
+          );
+          processListCacheRef.current.set(cacheKey, {
+            rows: slice.rows,
+            currencyCodes: slice.currencyCodes,
+          });
+          setRows(slice.rows);
+          setAwaitingRows(false);
+          void fetchRows({ companyId: cid, silent: true });
+          return;
+        }
+        await fetchRows({ companyId: cid, silent: true });
+      })();
       return;
     }
     if (skipCompanyFetchEffectRef.current) {
@@ -796,7 +947,17 @@ export default function ProcessListPage() {
         await fetchRows({ companyId: activeCompanyId, silent: rowsRef.current.length > 0 });
       }
     })();
-  }, [loading, activeCompanyId, debouncedSearch, showInactive, showAll, fetchRows, hydrateProcessListCompanyCache]);
+  }, [
+    loading,
+    activeCompanyId,
+    debouncedSearch,
+    showActive,
+    showInactive,
+    showAll,
+    fetchRows,
+    hydrateProcessListCompanyCache,
+    applyProcessListCache,
+  ]);
 
   useEffect(() => {
     if (loading) return;
@@ -868,14 +1029,17 @@ export default function ProcessListPage() {
     for (const c of companyButtons) {
       warmProcessListCompanyCache(c.id);
     }
-  }, [loading, companyButtons, warmProcessListCompanyCache, debouncedSearch, showInactive, showAll]);
+  }, [loading, companyButtons, warmProcessListCompanyCache, debouncedSearch, showActive, showInactive, showAll]);
 
   const sortedDisplayRows = useMemo(
     () => sortProcessTableRows(rows, sortColumn, sortDirection),
     [rows, sortColumn, sortDirection],
   );
 
-  const showSelectColumn = showInactive || showAll;
+  const showSelectColumn = showInactive;
+  useEffect(() => {
+    if (!showInactive) setSelectedIds(new Set());
+  }, [showInactive]);
   const pageSize = useAutoListPageSize({
     listRegionRef,
     enabled: !showAll,
@@ -888,12 +1052,11 @@ export default function ProcessListPage() {
     remeasureDeps: [
       sortedDisplayRows.length,
       showAll,
+      showActive,
       showInactive,
       debouncedSearch,
       lang,
       currentPage,
-      loading,
-      awaitingRows,
       companyId,
       selectedGroup,
       groupFilterKind,
@@ -948,13 +1111,15 @@ export default function ProcessListPage() {
         const sessionCompanyId =
           sessionMeFromLayout?.company_id != null ? Number(sessionMeFromLayout.company_id) : null;
 
-        const bankCategoryPromise = isBankCategoryCompany(company.company_id, buildApiUrl);
-        void loadFormMeta(nextId);
-
         try {
-          const bankCategory = await bankCategoryPromise;
+          const bankCategory = await resolveIsBankOnlyCompanyAsync(
+            company,
+            sessionMeFromLayout,
+            buildApiUrl,
+          );
           if (bankCategory) {
-            const warm = await prefetchBankProcessListPayload(nextId);
+            warmBankProcessListRouteCache(nextId);
+            prefetchRouteModule(spaPath("bank-process-list"));
             navigate(spaPath("bank-process-list"), {
               replace: true,
               state: {
@@ -962,8 +1127,6 @@ export default function ProcessListPage() {
                   companyId: nextId,
                   companies,
                   groupFilterKind: "follow",
-                  rows: warm.rows,
-                  currencyCodes: warm.currencyCodes,
                 },
               },
             });
@@ -972,6 +1135,8 @@ export default function ProcessListPage() {
         } catch {
           /* fall through to session sync */
         }
+
+        void loadFormMeta(nextId);
 
         const runFetch = async () => {
           await hydrateProcessListCompanyCache(nextId);
@@ -1086,9 +1251,11 @@ export default function ProcessListPage() {
 
       if (nextGroup) persistDashboardGroupFilter(nextGroup);
       persistDashboardFilterState(nextGroup, nextId);
-      notifyDashboardGroupFilterChanged(nextGroup, nextId, {
-        companyCode: c.company_id,
-      });
+      notifyDashboardGroupFilterChanged(
+        nextGroup,
+        nextId,
+        buildDashboardSidebarNotifyOptions(c, nextGroup),
+      );
 
       void onSwitchCompanyRef.current?.(c, { layoutSilent: true });
     },
@@ -1306,6 +1473,7 @@ export default function ProcessListPage() {
         replace_word_to: p.replace_word_to || "",
         remark: parseRemarkForForm(p.remarks),
         status: p.status || "active",
+        enable_save_draft: Boolean(p.enable_save_draft),
         dts_modified: dtsModified,
         modified_by: p.modified_by || "",
         dts_created: dtsCreated,
@@ -1364,6 +1532,7 @@ export default function ProcessListPage() {
       fd.append("replace_word_to", toProcessFormUpperInput(form.replace_word_to || ""));
       fd.append("remark", toProcessFormUpperInput(form.remark || ""));
       fd.append("currency_id", form.currency_id);
+      fd.append("enable_save_draft", form.enable_save_draft ? "1" : "0");
       try {
         const res = await fetch(buildApiUrl("api/processes/processlist_api.php?action=update_process"), {
           method: "POST",
@@ -1397,6 +1566,7 @@ export default function ProcessListPage() {
     fd.append("replace_word_from", toProcessFormUpperInput(form.replace_word_from || ""));
     fd.append("replace_word_to", toProcessFormUpperInput(form.replace_word_to || ""));
     fd.append("remark", toProcessFormUpperInput(form.remark || ""));
+    fd.append("enable_save_draft", form.enable_save_draft ? "1" : "0");
     if (form.copy_from) fd.append("copy_from", form.copy_from);
     fd.append("permission", "Games");
     const submitCompanyId = activeCompanyId ?? companyId;
@@ -1539,7 +1709,7 @@ export default function ProcessListPage() {
         return;
       }
 
-      const shouldShow = processRowVisibleAfterStatusChange(newStatus, { showInactive, showAll });
+      const shouldShow = processRowVisibleAfterStatusChange(newStatus, { showActive, showInactive });
 
       if (!shouldShow) {
         setRows((prev) => prev.filter((r) => Number(r.id) !== Number(row.id)));
@@ -1592,21 +1762,6 @@ export default function ProcessListPage() {
               <div className="userlist-filter-chips" role="group">
                 <button
                   type="button"
-                  className={`user-filter-chip${showInactive ? " is-selected" : ""}`}
-                  aria-pressed={showInactive}
-                  onClick={() => setShowInactive((prev) => !prev)}
-                >
-                  <span className="user-filter-chip__dot" aria-hidden>
-                    {showInactive ? (
-                      <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M6 12l4 4 8-8" />
-                      </svg>
-                    ) : null}
-                  </span>
-                  <span className="user-filter-chip__label">{t("showInactive")}</span>
-                </button>
-                <button
-                  type="button"
                   className={`user-filter-chip${showAll ? " is-selected" : ""}`}
                   aria-pressed={showAll}
                   onClick={() => setShowAll((prev) => !prev)}
@@ -1620,7 +1775,37 @@ export default function ProcessListPage() {
                   </span>
                   <span className="user-filter-chip__label">{t("showAll")}</span>
                 </button>
-              </div>
+                <button
+                  type="button"
+                  className={`user-filter-chip${showActive ? " is-selected" : ""}`}
+                  aria-pressed={showActive}
+                  onClick={() => setShowActive((prev) => !prev)}
+                >
+                  <span className="user-filter-chip__dot" aria-hidden>
+                    {showActive ? (
+                      <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6 12l4 4 8-8" />
+                      </svg>
+                    ) : null}
+                  </span>
+                  <span className="user-filter-chip__label">{t("showActive")}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`user-filter-chip${showInactive ? " is-selected" : ""}`}
+                  aria-pressed={showInactive}
+                  onClick={() => setShowInactive((prev) => !prev)}
+                >
+                  <span className="user-filter-chip__dot" aria-hidden>
+                    {showInactive ? (
+                      <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6 12l4 4 8-8" />
+                      </svg>
+                    ) : null}
+                  </span>
+                  <span className="user-filter-chip__label">{t("showInactive")}</span>
+                </button>
+                </div>
             </div>
             <div className="user-toolbar-actions-right" style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
               <button

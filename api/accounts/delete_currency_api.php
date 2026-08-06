@@ -280,7 +280,7 @@ function collectCurrencyUsage(PDO $pdo, int $currencyId, array $ctx, string $cur
     }
 
     try {
-        if (tableExists($pdo, 'data_capture_details')) {
+        if ($companyId > 0 && tableExists($pdo, 'data_capture_details')) {
             $n = countDataCaptureDetailsUsage($pdo, $currencyId, $companyId);
             if ($n > 0) {
                 $usageMessages[] = $n . ' data capture detail(s)';
@@ -291,7 +291,7 @@ function collectCurrencyUsage(PDO $pdo, int $currencyId, array $ctx, string $cur
     }
 
     try {
-        if (tableExists($pdo, 'data_captures')) {
+        if ($companyId > 0 && tableExists($pdo, 'data_captures')) {
             $n = countDataCapturesUsage($pdo, $currencyId, $companyId);
             if ($n > 0) {
                 $usageMessages[] = $n . ' data capture(s)';
@@ -302,7 +302,7 @@ function collectCurrencyUsage(PDO $pdo, int $currencyId, array $ctx, string $cur
     }
 
     try {
-        if (columnExists($pdo, 'transactions', 'currency_id')) {
+        if ($companyId > 0 && columnExists($pdo, 'transactions', 'currency_id')) {
             $n = countTransactionsCurrencyUsage($pdo, $currencyId, $companyId);
             if ($n > 0) {
                 $usageMessages[] = $n . ' transaction(s)';
@@ -313,7 +313,7 @@ function collectCurrencyUsage(PDO $pdo, int $currencyId, array $ctx, string $cur
     }
 
     try {
-        if (tableExists($pdo, 'transactions_rate')) {
+        if ($companyId > 0 && tableExists($pdo, 'transactions_rate')) {
             $n = countTransactionsRateUsage($pdo, $currencyId, $companyId);
             if ($n > 0) {
                 $usageMessages[] = $n . ' rate transaction(s)';
@@ -324,7 +324,7 @@ function collectCurrencyUsage(PDO $pdo, int $currencyId, array $ctx, string $cur
     }
 
     try {
-        if (tableExists($pdo, 'transactions_rate_details') && columnExists($pdo, 'transactions_rate_details', 'currency_id')) {
+        if ($companyId > 0 && tableExists($pdo, 'transactions_rate_details') && columnExists($pdo, 'transactions_rate_details', 'currency_id')) {
             $n = countTransactionsRateDetailsUsage($pdo, $currencyId, $companyId);
             if ($n > 0) {
                 $usageMessages[] = $n . ' rate transaction detail(s)';
@@ -335,7 +335,7 @@ function collectCurrencyUsage(PDO $pdo, int $currencyId, array $ctx, string $cur
     }
 
     try {
-        if (tableExists($pdo, 'process') && columnExists($pdo, 'process', 'currency_id')) {
+        if ($companyId > 0 && tableExists($pdo, 'process') && columnExists($pdo, 'process', 'currency_id')) {
             $n = countProcessCurrencyUsage($pdo, $currencyId, $companyId);
             if ($n > 0) {
                 $usageMessages[] = $n . ' process(es)';
@@ -346,7 +346,7 @@ function collectCurrencyUsage(PDO $pdo, int $currencyId, array $ctx, string $cur
     }
 
     try {
-        if (tableExists($pdo, 'data_capture_templates') && columnExists($pdo, 'data_capture_templates', 'currency_id')) {
+        if ($companyId > 0 && tableExists($pdo, 'data_capture_templates') && columnExists($pdo, 'data_capture_templates', 'currency_id')) {
             if (columnExists($pdo, 'data_capture_templates', 'company_id')) {
                 $n = countDataCaptureTemplatesUsage($pdo, $currencyId, $companyId);
                 if ($n > 0) {
@@ -524,14 +524,21 @@ try {
     }
 
     $company_id = (int) ($currencyCtx['company_id'] ?? 0);
-    if ($company_id <= 0) {
+    $groupPk = (int) ($currencyCtx['group_pk'] ?? 0);
+    $isPureGroup = ($currencyCtx['mode'] ?? '') === 'group' && $groupPk > 0;
+    if ($company_id <= 0 && !$isPureGroup) {
         jsonResponse(false, '用户未登录或缺少公司信息', null);
         exit;
     }
 
     $groupCode = (string) ($currencyCtx['group_code'] ?? '');
-    if ($groupCode !== '' && gc_is_group_login()) {
+    if ($company_id > 0 && $groupCode !== '' && gc_is_group_login()) {
         gc_assert_company_id_allowed_for_login_scope($pdo, $company_id, $groupCode);
+    } elseif ($isPureGroup && $groupCode !== '') {
+        if (!gc_session_can_access_group_ledger($pdo, $groupCode)) {
+            jsonResponse(false, '无权限访问该集团', null);
+            exit;
+        }
     }
 
     if (!isset($input['id']) || empty($input['id'])) {
@@ -631,6 +638,11 @@ try {
             (int) ($currencyCtx['company_id'] ?? $company_id),
             (string) ($currency['code'] ?? '')
         );
+    }
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    if ($company_id > 0) {
+        realtime_publish_companies([$company_id], 'accounts', 'delete_currency');
     }
 
     jsonResponse(true, 'Currency deleted successfully', null);

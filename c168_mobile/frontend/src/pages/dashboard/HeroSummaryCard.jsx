@@ -2,6 +2,7 @@ import { formatCurrencyHero, formatPercentMagnitude, formatSignedChange } from "
 
 export default function HeroSummaryCard({
   i18n,
+  label,
   currency,
   value,
   compare,
@@ -11,8 +12,10 @@ export default function HeroSummaryCard({
   empty = false,
   emptyLabel,
   sparklineValues = [],
+  accent = "net",
 }) {
   const showCompare = !loading && !empty && compare && Number.isFinite(compare?.pct);
+  const title = label || i18n.netProfit;
 
   const sparkPath = (() => {
     if (empty || loading) return null;
@@ -33,7 +36,7 @@ export default function HeroSummaryCard({
   })();
 
   return (
-    <section className="m-dash-hero">
+    <section className={`m-dash-hero m-dash-hero--${accent}`}>
       <div className="m-dash-hero-glow" aria-hidden="true" />
 
       {sparkPath ? (
@@ -44,7 +47,7 @@ export default function HeroSummaryCard({
 
       <div className={`m-dash-hero-top${sparkPath ? " m-dash-hero-top--spark" : ""}`}>
         <div>
-          <p className="m-dash-hero-label">{i18n.netProfit}</p>
+          <p className="m-dash-hero-label">{title}</p>
           <p className="m-dash-hero-currency">{currency}</p>
         </div>
         {showCompare && (

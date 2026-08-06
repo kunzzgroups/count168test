@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useOverlayLock } from "../../hooks/useOverlayLock.js";
 import { buildAccountScopeDraft } from "../../lib/mobileAccountScope.js";
 import { formatDisplayDate } from "../../lib/dashboardDateUtils.js";
+import PasswordInput from "../../components/PasswordInput.jsx";
 import "../transaction/add-transaction-sheet.css";
 
 /* Same iOS-safe pattern as AddTransactionSheet: visible formatted row,
@@ -341,10 +342,12 @@ export function AccountFormSheet({ open, onClose, account }) {
           </select>
         </FormField>
         <FormField label={`${i18n.password}${editing ? "" : " *"}`} hint={editing ? i18n.passwordEditHint : ""}>
-          <input
-            type="password"
+          <PasswordInput
             value={form.password}
             onChange={(e) => update("password", e.target.value)}
+            showLabel={i18n.showPassword}
+            hideLabel={i18n.hidePassword}
+            autoComplete="new-password"
           />
         </FormField>
         <FormField label={i18n.remark}>

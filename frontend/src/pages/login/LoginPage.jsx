@@ -11,6 +11,7 @@ import {
 import { useAuthBackground } from "./useAuthBackground.js";
 import { safeLocal, safeSession } from "../../utils/storage/safeStorage.js";
 import { extractPlainTextFromRichText } from "../../utils/content/richTextSanitizer.js";
+import PasswordInput from "../../components/PasswordInput.jsx";
 
 const LOGIN_ASSET_RETRY_KEY = "ec_login_asset_retry";
 
@@ -220,9 +221,14 @@ export default function LoginPage() {
       "transaction-page",
       "member-winloss-page",
       "dashboard-page",
+      "dashboard-home-page",
       "account-page",
+      "account-page--show-all",
       "announcement-page",
+      "announcement-modal-open",
       "datacapture-page",
+      "datacapture-summary-page",
+      "datacapture-table-expanded",
       "report-page",
       "process-page",
       "process-page--bank",
@@ -230,6 +236,20 @@ export default function LoginPage() {
       "process-page--bank-show-all",
       "user-page",
       "user-page--show-all",
+      "auto-renew-page-body",
+      "maintenance-page",
+      "ownership-page",
+      "domain-page",
+      "deleted-log-page",
+      "transaction-payment-history-page",
+      "transaction-payment-history-page--popup",
+      "transaction-payment-history-page--popup-compact",
+      "ec-auth-shell",
+      "ec-payment-history-chromeless",
+      "ec-login-scope-group",
+      "ec-login-scope-company",
+      "sidebar-collapsed",
+      "sidebar-tablet-expanded",
       "page-ready",
     );
   }, []);
@@ -463,14 +483,16 @@ export default function LoginPage() {
 
               <div className="sc-login-input-row">
                 <i className="fas fa-lock sc-login-input-icon" />
-                <input
+                <PasswordInput
                   id="password"
-                  type="password"
                   className="sc-login-input"
                   placeholder={i18n.passwordPlaceholder}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  showLabel={i18n.showPassword}
+                  hideLabel={i18n.hidePassword}
+                  autoComplete="current-password"
                 />
               </div>
 

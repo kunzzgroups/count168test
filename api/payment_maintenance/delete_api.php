@@ -73,6 +73,13 @@ try {
     );
     $deleted = (int) ($result['deleted'] ?? 0);
 
+    require_once __DIR__ . '/../includes/realtime.php';
+    require_once __DIR__ . '/../includes/ledger_realtime.php';
+    realtime_publish_scope($listScope, 'maintenance', 'payment_delete');
+    tx_ledger_realtime_publish_scope($listScope, 'payment_delete', [
+        'deleted' => $deleted,
+    ]);
+
     jsonResponse(true, "已删除 {$deleted} 条记录", ['deleted' => $deleted]);
 } catch (Exception $e) {
     if (isset($pdo) && $pdo->inTransaction()) {

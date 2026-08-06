@@ -322,6 +322,47 @@ export default function SimpleSelect({
     pick(item.value);
   };
 
+  // mousedown preventDefault stops the trigger from receiving focus on click — without
+  // focus, Arrow/type-ahead never fire. Re-focus (no scroll) and capture document keys
+  // while open so mouse-opened menus still accept keyboard navigation.
+  useEffect(() => {
+    if (!open || disabled) return undefined;
+    const focusTrigger = () => {
+      buttonRef.current?.focus({ preventScroll: true });
+    };
+    focusTrigger();
+    const raf = requestAnimationFrame(focusTrigger);
+
+    const onDocKeyDown = (e) => {
+      if (e.target === buttonRef.current) return;
+      const target = e.target;
+      if (
+        target &&
+        target !== document.body &&
+        target !== document.documentElement &&
+        !wrapRef.current?.contains(target) &&
+        !dropdownRef.current?.contains(target)
+      ) {
+        const tag = String(target.tagName || "").toUpperCase();
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) {
+          return;
+        }
+      }
+      handleButtonKeyDown(e, {
+        isOpen: true,
+        onToggleOpen: openDropdown,
+        onClose: () => close("escape"),
+        len: selectableItems.length,
+        onSelectIndex: selectByIndex,
+      });
+    };
+    document.addEventListener("keydown", onDocKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("keydown", onDocKeyDown);
+    };
+  }, [open, disabled, handleButtonKeyDown, selectableItems, close]);
+
   const onButtonKeyDown = (e) => {
     handleButtonKeyDown(e, {
       isOpen: open,

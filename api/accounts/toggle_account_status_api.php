@@ -62,14 +62,21 @@ try {
     }
 
     $permCompanyId = (int) ($accountCtx['company_id'] ?? 0);
-    if ($permCompanyId <= 0) {
+    $groupPk = (int) ($accountCtx['group_pk'] ?? 0);
+    $isPureGroup = ($accountCtx['mode'] ?? '') === 'group' && $groupPk > 0;
+    if ($permCompanyId <= 0 && !$isPureGroup) {
         api_error('用户未登录或缺少公司信息', 401);
         exit;
     }
 
     $groupCode = (string) ($accountCtx['group_code'] ?? '');
-    if ($groupCode !== '' && gc_is_group_login()) {
+    if ($permCompanyId > 0 && $groupCode !== '' && gc_is_group_login()) {
         gc_assert_company_id_allowed_for_login_scope($pdo, $permCompanyId, $groupCode);
+    } elseif ($isPureGroup && $groupCode !== '') {
+        if (!gc_session_can_access_group_ledger($pdo, $groupCode)) {
+            api_error('无权限访问该集团', 403);
+            exit;
+        }
     }
 
     $id = (int) ($_POST['id'] ?? 0);
@@ -91,6 +98,12 @@ try {
 
     $newStatus = $current['status'] === 'active' ? 'inactive' : 'active';
     updateAccountStatus($pdo, $newStatus, $id);
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    if ($permCompanyId > 0) {
+        realtime_publish_companies([$permCompanyId], 'accounts', 'toggle_status');
+    }
+
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'success' => true,

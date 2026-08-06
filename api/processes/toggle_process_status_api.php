@@ -112,6 +112,8 @@ try {
             }
         }
 
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$companyId], 'processes', 'toggle_status');
         api_success(['newStatus' => $newStatus], '状态更新成功');
         exit;
     }
@@ -123,6 +125,8 @@ try {
     }
     $newStatus = $current['status'] === 'active' ? 'inactive' : 'active';
     updateProcessStatus($pdo, $newStatus, $id, $companyId);
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([$companyId], 'processes', 'toggle_status');
     api_success(['newStatus' => $newStatus], '状态更新成功');
 } catch (Exception $e) {
     api_error($e->getMessage(), 400);

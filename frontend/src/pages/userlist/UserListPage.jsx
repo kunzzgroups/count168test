@@ -28,12 +28,14 @@ import {
   notifyDashboardGroupFilterChanged,
   pickDefaultCompanyForGroup,
   pickDefaultSubsidiaryForGroup,
+  findOwnerGroupByCode,
   resolveCompanyWhenClosingGroup,
   resolveCompanyPickWhenSwitchingGroup,
   resolveBootCompanyId,
   resolveInitialSelectedGroupFromSession,
   sortedUniqueGroupIds,
   fetchOwnerCompaniesAll,
+  getCachedOwnerCompanies,
 } from "../../utils/company/sharedCompanyFilter.js";
 import { pathnameIs, spaPath } from "../../utils/routing/pageRoutes.js";
 import { resolveDefaultLandingPath } from "../../utils/auth/sidebarPermissions.js";
@@ -53,6 +55,8 @@ import GcInlineFilterPanel from "../../components/GcInlineFilterPanel.jsx";
 import { isPartnershipAuditReadOnlyLocked, isPartnershipAuditReadOnlyBlockingUserEdit } from "../../utils/audit/partnershipAuditReadOnly.js";
 import { buildApiUrl } from "../../utils/core/apiUrl.js";
 import { useAuthSession } from "../../context/AuthSessionContext.jsx";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
 import "../../../public/css/accountCSS.css";
 import "../../../public/css/userlist.css";
 import "../../../public/css/admin-responsive.css";
@@ -106,6 +110,14 @@ function normalizeCompanyRow(row) {
   };
 }
 
+/** Seed from the shared owner-companies cache so the Group ID/Company toolbar row
+ * doesn't render empty (then pop in) on every SPA remount, matching Acc's boot pattern. */
+function readInitialCachedCompanies() {
+  const cached = getCachedOwnerCompanies();
+  if (!cached?.length) return [];
+  return cached.map(normalizeCompanyRow);
+}
+
 function buildModalCompanyList(raw) {
   const seen = new Set();
   return (Array.isArray(raw) ? raw : []).filter((c) => {
@@ -116,7 +128,16 @@ function buildModalCompanyList(raw) {
   });
 }
 
-/** Group login add/edit user: one row per accessible group (AP, IG). Prefer group-entity id; fallback to any company in group for checkbox id. */
+/** Group login add/edit user: one row per accessible group (AP, IG). Prefer group-entity id; empty group uses synthetic negative id from groups.id. */
+function syntheticEmptyGroupPickerId(groupCode, groupPk = 0) {
+  const pk = Number(groupPk);
+  if (Number.isFinite(pk) && pk > 0) return -Math.abs(pk);
+  const g = String(groupCode || "").trim().toUpperCase();
+  let h = 0;
+  for (let i = 0; i < g.length; i += 1) h = (h * 31 + g.charCodeAt(i)) | 0;
+  return -Math.abs(h || 1);
+}
+
 function buildModalGroupOptions(companies, me) {
   const gids = resolveVisibleGroupIds(sortedUniqueGroupIds(companies), me, companies);
   const out = [];
@@ -130,8 +151,20 @@ function buildModalGroupOptions(companies, me) {
       pickDefaultCompanyForGroup(companies, g, { me, groupEntityOnly: true }) ||
       pickDefaultCompanyForGroup(companies, g, { me, nativeOnly: true }) ||
       pickDefaultCompanyForGroup(companies, g, { me });
-    const id = entity?.id != null ? Number(entity.id) : Number.NaN;
-    if (!Number.isFinite(id) || id <= 0) continue;
+    let id = entity?.id != null ? Number(entity.id) : Number.NaN;
+    if (!Number.isFinite(id) || id <= 0) {
+      // Phase 4 / 8: empty group — synthetic id so picker can select group_codes.
+      // Prefer groups.id from cache / session; fall back to stable hash of group code
+      // so Add User still works when owner-groups cache is cold or session pk missing.
+      const cached = findOwnerGroupByCode(g);
+      const pk =
+        cached?.id != null && Number(cached.id) > 0
+          ? Number(cached.id)
+          : me?.login_identifier && String(me.login_identifier).toUpperCase() === g && Number(me?.login_group_scope_id) > 0
+            ? Number(me.login_group_scope_id)
+            : 0;
+      id = syntheticEmptyGroupPickerId(g, pk);
+    }
     seen.add(g);
     out.push({
       id,
@@ -172,7 +205,7 @@ function resolveGroupEntityIdsFromCodes(modalGroupCompanies, groupCodes) {
     const code = String(row?.group_id || row?.company_id || "").trim().toUpperCase();
     if (wanted.has(code)) ids.push(Number(row.id));
   }
-  return ids.filter((id) => Number.isFinite(id) && id > 0);
+  return ids.filter((id) => Number.isFinite(id) && id !== 0);
 }
 
 function resolveGroupIdFromEntityCompanyId(companies, entityCompanyId) {
@@ -196,6 +229,32 @@ function resolveUserListCacheKey(activeCompanyId, groupOnlyUserList, selectedGro
   return `company:${String(activeCompanyId || "")}`;
 }
 
+/** Survives SPA remount (Acc/Process route-warm pattern) — avoids empty→fill flash when switching back. */
+const userListModuleCache = new Map();
+const userListModuleFetchPending = new Map();
+
+function readUserListBootScopeFromSession() {
+  try {
+    const persisted = readPersistedDashboardGcFilter();
+    const groupOnly = Boolean(persisted?.groupOnly || isDashboardGroupOnlyMode());
+    const selectedGroup = persisted?.selectedGroup || null;
+    const companyId = groupOnly ? null : (persisted?.companyId ?? readDashboardSelectedCompanyId());
+    const cid =
+      companyId != null && Number.isFinite(Number(companyId)) && Number(companyId) > 0
+        ? Number(companyId)
+        : null;
+    return { companyId: cid, selectedGroup, groupOnly };
+  } catch {
+    return { companyId: null, selectedGroup: null, groupOnly: false };
+  }
+}
+
+function peekUserListModuleCache(companyId, groupOnly, selectedGroup) {
+  const key = resolveUserListCacheKey(companyId, groupOnly, selectedGroup, false, false, false);
+  const rows = userListModuleCache.get(key);
+  return Array.isArray(rows) ? rows : null;
+}
+
 function resolveModalAccessCacheKey(scopeCompanyId, groupOnlyUserList, selectedGroup) {
   const normalizedGroupId = String(selectedGroup || "").trim().toUpperCase();
   const useGroupScopedAccounts = groupOnlyUserList && normalizedGroupId !== "";
@@ -211,15 +270,19 @@ export default function UserListPage() {
   langRef.current = lang;
   const t = useCallback((key, params) => getUserListText(lang, key, params), [lang]);
   const [bootLoading, setBootLoading] = useState(true);
-  const [companies, setCompanies] = useState([]);
-  const [companyId, setCompanyId] = useState(null);
-  const [usersRaw, setUsersRaw] = useState([]);
+  const [companies, setCompanies] = useState(() => readInitialCachedCompanies());
+  const [companyId, setCompanyId] = useState(() => readUserListBootScopeFromSession().companyId);
+  const [usersRaw, setUsersRaw] = useState(() => {
+    const scope = readUserListBootScopeFromSession();
+    return peekUserListModuleCache(scope.companyId, scope.groupOnly, scope.selectedGroup) || [];
+  });
   const [search, setSearch] = useState("");
+  const [showActive, setShowActive] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [sortColumn, setSortColumn] = useState("loginId");
   const [sortDirection, setSortDirection] = useState("asc");
-  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(() => readUserListBootScopeFromSession().selectedGroup);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedDeleteIds, setSelectedDeleteIds] = useState(new Set());
   const [selectAllUsers, setSelectAllUsers] = useState(false);
@@ -232,17 +295,32 @@ export default function UserListPage() {
   const listFetchGenRef = useRef(0);
   const companySwitchGenRef = useRef(0);
   const skipCompanyFetchEffectRef = useRef(false);
-  const bootFetchedUsersKeyRef = useRef(null);
-  const userListCacheRef = useRef(new Map());
-  const userListFetchPendingRef = useRef(new Map());
-  const userListScopeRef = useRef({
-    companyId: null,
-    selectedGroup: null,
-    groupOnlyUserList: false,
-    aggregateUserList: false,
-    groupsAllMode: false,
-    groupAllMode: false,
-  });
+  const bootFetchedUsersKeyRef = useRef((() => {
+    const scope = readUserListBootScopeFromSession();
+    if (!peekUserListModuleCache(scope.companyId, scope.groupOnly, scope.selectedGroup)) return null;
+    return resolveUserListCacheKey(
+      scope.companyId,
+      scope.groupOnly,
+      scope.selectedGroup,
+      false,
+      false,
+      false,
+    );
+  })());
+  const fetchUsersRef = useRef(null);
+  const userListCacheRef = useRef(userListModuleCache);
+  const userListFetchPendingRef = useRef(userListModuleFetchPending);
+  const userListScopeRef = useRef((() => {
+    const scope = readUserListBootScopeFromSession();
+    return {
+      companyId: scope.companyId,
+      selectedGroup: scope.selectedGroup,
+      groupOnlyUserList: scope.groupOnly,
+      aggregateUserList: false,
+      groupsAllMode: false,
+      groupAllMode: false,
+    };
+  })());
   const modalCompaniesCacheRef = useRef([]);
   const modalAccessCacheRef = useRef(new Map());
   const modalAccessPendingRef = useRef(new Map());
@@ -322,13 +400,14 @@ export default function UserListPage() {
   const filteredSorted = useMemo(() => {
     const f = applyUserFilters(usersRaw, {
       search,
+      showActive,
       showInactive,
       showAll,
       viewerRole: currentUserRole,
       viewerUserId: currentUserId,
     });
     return sortUsers(f, sortColumn, sortDirection);
-  }, [usersRaw, search, showInactive, showAll, currentUserRole, currentUserId, sortColumn, sortDirection]);
+  }, [usersRaw, search, showActive, showInactive, showAll, currentUserRole, currentUserId, sortColumn, sortDirection]);
 
   const canCreateUser = useMemo(() => getAvailableRolesForCreation(currentUserRole).length > 0, [currentUserRole]);
   const userMutationsBlocked = useMemo(() => isPartnershipAuditReadOnlyLocked(me), [me]);
@@ -352,6 +431,7 @@ export default function UserListPage() {
     remeasureDeps: [
       filteredSorted.length,
       showAll,
+      showActive,
       showInactive,
       search,
       lang,
@@ -439,7 +519,7 @@ export default function UserListPage() {
     document.body.classList.add("user-page");
     return () => {
       document.body.classList.remove("user-page", "user-page--show-all", "bg");
-      document.body.classList.add("dashboard-page");
+      // document.body.classList.add("dashboard-page");
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
@@ -679,14 +759,47 @@ export default function UserListPage() {
           if (pick?.id != null) effectiveNum = Number(pick.id);
         }
 
-        setCompanyId(groupOnlyBoot ? null : effectiveNum);
+        const bootCompanyId = groupOnlyBoot ? null : effectiveNum;
+        const bootGroupOnly = Boolean(groupOnlyBoot && bootGroup);
+        setCompanyId(bootCompanyId);
         setSelectedGroup(bootGroup);
         setSearch(String(url.searchParams.get("search") || ""));
+        setShowActive(url.searchParams.get("showActive") === "1");
         setShowInactive(url.searchParams.get("showInactive") === "1");
         setShowAll(url.searchParams.get("showAll") === "1");
 
+        // Acc standard: sync scope + await list before opening boot (avoid empty→fill flash).
+        userListScopeRef.current = {
+          companyId: bootCompanyId,
+          selectedGroup: bootGroup,
+          groupOnlyUserList: bootGroupOnly,
+          aggregateUserList: false,
+          groupsAllMode: false,
+          groupAllMode: false,
+        };
+        if (!cancelled && (bootGroupOnly || bootCompanyId != null) && fetchUsersRef.current) {
+          const bootCacheKey = resolveUserListCacheKey(
+            bootCompanyId,
+            bootGroupOnly,
+            bootGroup,
+            false,
+            false,
+            false,
+          );
+          try {
+            await fetchUsersRef.current(bootCompanyId, {
+              silent: true,
+              groupOnly: bootGroupOnly,
+              selectedGroup: bootGroup,
+            });
+            if (!cancelled) bootFetchedUsersKeyRef.current = bootCacheKey;
+          } catch {
+            /* boot list is best-effort; post-boot effect can retry */
+          }
+        }
+
         const syncCompanyId =
-          effectiveNum != null && Number.isFinite(Number(effectiveNum)) ? Number(effectiveNum) : null;
+          bootCompanyId != null && Number.isFinite(Number(bootCompanyId)) ? Number(bootCompanyId) : null;
         if (syncCompanyId != null && syncCompanyId !== Number(me.company_id)) {
           void (async () => {
             try {
@@ -709,7 +822,6 @@ export default function UserListPage() {
     })();
     return () => {
       cancelled = true;
-      bootInitializedRef.current = false;
     };
   }, [sessionReady, me, navigate]);
 
@@ -1064,6 +1176,11 @@ export default function UserListPage() {
     groupAllMode,
     applyUserListResult,
   ]);
+  fetchUsersRef.current = fetchUsers;
+
+  useRealtimeDomain(REALTIME_DOMAINS.USERS, () => {
+    void fetchUsers(null, { silent: true });
+  });
 
   const onSwitchCompany = useCallback(async (c, { viewGroup = null } = {}) => {
     const nextCompanyId = Number(c?.id);
@@ -1731,9 +1848,12 @@ export default function UserListPage() {
         : `company_id=${cid}`;
       const request = Promise.all([
         fetch(buildApiUrl(`api/accounts/accountlistapi.php?${accountQuery}`), { credentials: "include" }),
-        fetch(buildApiUrl(`api/processes/processlist_api.php?company_id=${cid}&showAll=1`), { credentials: "include" }),
+        cid != null && Number(cid) > 0
+          ? fetch(buildApiUrl(`api/processes/processlist_api.php?company_id=${cid}&showAll=1`), { credentials: "include" })
+          : Promise.resolve(null),
       ]).then(async ([accRes, procRes]) => {
-        const accJ = await accRes.json(); const procJ = await procRes.json();
+        const accJ = await accRes.json();
+        const procJ = procRes ? await procRes.json() : { data: [] };
         const accs = (accJ?.data?.accounts || []).filter((a) => String(a.status || "").toLowerCase() === "active").map((a) => ({ id: a.id, account_id: a.account_id, name: String(a.name || "").trim() }));
         const procs = (Array.isArray(procJ?.data) ? procJ.data : []).filter((p) => String(p.status || "").toLowerCase() === "active").map((p) => ({ id: p.id, process_id: p.process_name || p.process_id || "", description: p.description_name || p.description || "" }));
         return { accounts: accs, processes: procs };
@@ -1813,16 +1933,25 @@ export default function UserListPage() {
         return next;
       } catch { return cached || null; }
     }
-    const request = fetch(buildApiUrl("api/users/userlist_api.php"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ action: "get", id }),
-    }).then(async (res) => {
-      const json = await res.json();
-      if (!json.success || !json.data) throw new Error(json.message || "Load user failed");
-      return json.data;
-    });
+    const request = (() => {
+      const body = { action: "get", id: Number(id) };
+      if (groupOnlyUserList && selectedGroup) {
+        body.group_id = String(selectedGroup).trim().toUpperCase();
+        body.group_only = 1;
+      } else if (companyId != null && Number(companyId) > 0) {
+        body.company_id = Number(companyId);
+      }
+      return fetch(buildApiUrl("api/users/userlist_api.php"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      }).then(async (res) => {
+        const json = await res.json();
+        if (!json.success || !json.data) throw new Error(json.message || "Load user failed");
+        return json.data;
+      });
+    })();
     editUserDetailPendingRef.current.set(cacheKey, request);
     try {
       const next = await request;
@@ -1834,7 +1963,7 @@ export default function UserListPage() {
     } finally {
       editUserDetailPendingRef.current.delete(cacheKey);
     }
-  }, [markEditReady]);
+  }, [markEditReady, groupOnlyUserList, selectedGroup, companyId]);
 
   const applyEditDetail = useCallback((row, detail, accList, procList) => {
     let perms = []; try { perms = detail.permissions ? JSON.parse(detail.permissions) : []; } catch { perms = []; }
@@ -1906,8 +2035,16 @@ export default function UserListPage() {
       notify(t("readOnlyActionBlocked"), "danger");
       return;
     }
-    if (!mutationScopeCompanyId) return;
-    const modalCacheKey = resolveModalAccessCacheKey(mutationScopeCompanyId, groupOnlyUserList, selectedGroup);
+    const canMutate = userListHasMutationScope(mutationScopeCompanyId, {
+      groupOnly: groupOnlyUserList,
+      selectedGroup,
+    });
+    if (!canMutate) return;
+    const modalCacheKey = resolveModalAccessCacheKey(
+      mutationScopeCompanyId ?? `group:${String(selectedGroup || "").trim().toUpperCase()}`,
+      groupOnlyUserList,
+      selectedGroup,
+    );
     const hadAccessCache = modalAccessCacheRef.current.has(modalCacheKey);
     if (!hadAccessCache) {
       await fetchModalAccountsProcesses(mutationScopeCompanyId);
@@ -2000,9 +2137,17 @@ export default function UserListPage() {
       notify(t("readOnlyActionBlocked"), "danger");
       return;
     }
-    if (!scopeCompanyId) return;
+    const canMutate = userListHasMutationScope(scopeCompanyId, {
+      groupOnly: groupOnlyUserList,
+      selectedGroup,
+    });
+    if (!canMutate) return;
     if (row.is_owner_shadow && currentUserRole !== "owner") { notify(t("onlyOwnerCanEditOwner"), "danger"); return; }
-    const modalCacheKey = resolveModalAccessCacheKey(scopeCompanyId, groupOnlyUserList, selectedGroup);
+    const modalCacheKey = resolveModalAccessCacheKey(
+      scopeCompanyId ?? `group:${String(selectedGroup || "").trim().toUpperCase()}`,
+      groupOnlyUserList,
+      selectedGroup,
+    );
     const cachedDetail = editUserDetailCacheRef.current.get(String(row.id));
     const loadSeq = ++modalLoadSeqRef.current;
     const cachedAccess = modalAccessCacheRef.current.get(modalCacheKey) || { accounts: modalAccounts, processes: modalProcesses };
@@ -2015,7 +2160,10 @@ export default function UserListPage() {
       applyEditDetail(row, cachedDetail, cachedAccess.accounts, cachedAccess.processes);
     }
     setModalOpen(true);
-    void Promise.all([fetchModalAccountsProcesses(scopeCompanyId, true), fetchEditUserDetail(row.id, true)]).then(([access, detail]) => {
+    void Promise.all([
+      fetchModalAccountsProcesses(scopeCompanyId, true),
+      fetchEditUserDetail(row.id, true),
+    ]).then(([access, detail]) => {
       if (loadSeq !== modalLoadSeqRef.current || !detail) return;
       applyEditDetail(row, detail, access.accounts, access.processes);
     });
@@ -2035,9 +2183,11 @@ export default function UserListPage() {
       fd.append("id", String(row.id));
       const useGroupScopeForToggle = groupOnlyUserList && !!selectedGroup;
       const toggleCompanyId = useGroupScopeForToggle ? scopeCompanyId : (groupOnlyUserList ? scopeCompanyId : companyId);
-      if (toggleCompanyId != null) fd.append("company_id", String(toggleCompanyId));
-      if (useGroupScopeForToggle) {
-        fd.append("group_id", selectedGroup);
+      if (toggleCompanyId != null && Number(toggleCompanyId) > 0) {
+        fd.append("company_id", String(toggleCompanyId));
+      }
+      if (useGroupScopeForToggle || (isGroupLogin(me) && selectedGroup && !(toggleCompanyId > 0))) {
+        fd.append("group_id", selectedGroup || getLoginIdentifier(me) || "");
         fd.append("group_only", "1");
       }
       const res = await fetch(buildApiUrl("api/users/toggle_status_api.php"), { method: "POST", body: fd, credentials: "include" });
@@ -2141,7 +2291,8 @@ export default function UserListPage() {
       groupOnlyUserList &&
       (currentUserRole === "admin" || currentUserRole === "owner") &&
       !editingRow?.is_owner_shadow &&
-      selectedCompanyIds.length === 0
+      selectedCompanyIds.length === 0 &&
+      !String(selectedGroup || "").trim()
     ) {
       notify(t("groupNoneSelected"), "danger");
       return;
@@ -2169,7 +2320,8 @@ export default function UserListPage() {
     } else {
       const inferredGroupIdFromPicker = (() => {
         const selectedId = selectedCompanyIds[0] != null ? Number(selectedCompanyIds[0]) : Number.NaN;
-        if (!Number.isFinite(selectedId) || selectedId <= 0) return null;
+        // Synthetic empty-group picker ids are negative; still resolve via row.group_id.
+        if (!Number.isFinite(selectedId) || selectedId === 0) return null;
         const selectedOption = modalPickerCompanies.find((c) => Number(c.id) === selectedId);
         const gid = String(selectedOption?.group_id || "").trim().toUpperCase();
         return gid || null;
@@ -2180,6 +2332,7 @@ export default function UserListPage() {
         : [];
       if (forceGroup) {
         saveGroupId = String(selectedGroup || inferredGroupIdFromPicker || "").trim().toUpperCase();
+        if (!saveGroupCodes.length && saveGroupId) saveGroupCodes = [saveGroupId];
         payload.group_id = saveGroupId;
         payload.group_only = 1;
         payload.group_codes = saveGroupCodes;
@@ -2306,13 +2459,19 @@ export default function UserListPage() {
         <div className="content">
           <div className="action-buttons-container">
             <div className="action-buttons" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div className="action-controls-row user-toolbar-primary" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 {canCreateUser ? (
                 <button
                   type="button"
                   className="btn btn-add"
                   onClick={openAdd}
-                  disabled={bootLoading || userMutationsBlocked || !userListHasMutationScope(mutationScopeCompanyId)}
+                  disabled={
+                    userMutationsBlocked ||
+                    !userListHasMutationScope(mutationScopeCompanyId, {
+                      groupOnly: groupOnlyUserList,
+                      selectedGroup,
+                    })
+                  }
                 >
                   <svg className="btn-add__icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                     <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
@@ -2336,36 +2495,51 @@ export default function UserListPage() {
                   />
                 </div>
                 <div className="userlist-filter-chips" role="group">
-                  <button
-                    type="button"
-                    className={`user-filter-chip${showInactive ? " is-selected" : ""}`}
-                    aria-pressed={showInactive}
-                    onClick={() => setShowInactive((prev) => !prev)}
-                  >
-                    <span className="user-filter-chip__dot" aria-hidden>
-                      {showInactive ? (
-                        <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M6 12l4 4 8-8" />
-                        </svg>
-                      ) : null}
-                    </span>
-                    <span className="user-filter-chip__label">{t("showInactive")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`user-filter-chip${showAll ? " is-selected" : ""}`}
-                    aria-pressed={showAll}
-                    onClick={() => setShowAll((prev) => !prev)}
-                  >
-                    <span className="user-filter-chip__dot" aria-hidden>
-                      {showAll ? (
-                        <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M6 12l4 4 8-8" />
-                        </svg>
-                      ) : null}
-                    </span>
-                    <span className="user-filter-chip__label">{t("showAll")}</span>
-                  </button>
+                    <button
+                      type="button"
+                      className={`user-filter-chip${showAll ? " is-selected" : ""}`}
+                      aria-pressed={showAll}
+                      onClick={() => setShowAll((prev) => !prev)}
+                    >
+                      <span className="user-filter-chip__dot" aria-hidden>
+                        {showAll ? (
+                          <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 12l4 4 8-8" />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span className="user-filter-chip__label">{t("showAll")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`user-filter-chip${showActive ? " is-selected" : ""}`}
+                      aria-pressed={showActive}
+                      onClick={() => setShowActive((prev) => !prev)}
+                    >
+                      <span className="user-filter-chip__dot" aria-hidden>
+                        {showActive ? (
+                          <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 12l4 4 8-8" />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span className="user-filter-chip__label">{t("showActive")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`user-filter-chip${showInactive ? " is-selected" : ""}`}
+                      aria-pressed={showInactive}
+                      onClick={() => setShowInactive((prev) => !prev)}
+                    >
+                      <span className="user-filter-chip__dot" aria-hidden>
+                        {showInactive ? (
+                          <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 12l4 4 8-8" />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span className="user-filter-chip__label">{t("showInactive")}</span>
+                    </button>
                 </div>
               </div>
               <div className="user-toolbar-actions-right">

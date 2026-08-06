@@ -1,4 +1,5 @@
 import { buildApiUrl } from "../../../utils/core/apiUrl.js";
+import { dedupeCurrencyRowsByCode } from "../../transaction/lib/transactionPaymentLogic.js";
 import { formatDmyFromDate } from "../shared/maintenanceDateHelpers.js";
 
 export function formatDmy(d) {
@@ -83,13 +84,20 @@ export function toggleBankprocessMaintenanceBatchSelection(selectedIds, rows, cl
 }
 
 export async function fetchCompanyCurrencies(companyId) {
-  let url = buildApiUrl("api/transactions/get_company_currencies_api.php");
+  const params = new URLSearchParams();
   if (companyId) {
-    url += `?company_id=${encodeURIComponent(companyId)}`;
+    params.set("company_id", String(companyId));
+    // Company ledger: exclude group-scope rows that share company_id (same code, different id).
+    params.set("subsidiary_accounts_only", "1");
   }
-  const response = await fetch(url);
+  const qs = params.toString();
+  const url = buildApiUrl(
+    `api/transactions/get_company_currencies_api.php${qs ? `?${qs}` : ""}`,
+  );
+  const response = await fetch(url, { credentials: "include" });
   const data = await response.json();
-  return data.success ? (data.data || []) : [];
+  if (!data.success) return [];
+  return dedupeCurrencyRowsByCode(data.data || []);
 }
 
 export async function searchBankprocessData({

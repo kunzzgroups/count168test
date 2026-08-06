@@ -1360,7 +1360,7 @@ CREATE TABLE `transaction_entry` (
   `account_id` int(11) NOT NULL,
   `currency_id` int(11) NOT NULL,
   `amount` decimal(25,8) NOT NULL,
-  `entry_type` enum('NORMAL_FROM','NORMAL_TO','RATE_FIRST_FROM','RATE_FIRST_TO','RATE_TRANSFER_FROM','RATE_TRANSFER_TO','RATE_MIDDLEMAN','RATE_FEE') NOT NULL,
+  `entry_type` enum('NORMAL_FROM','NORMAL_TO','RATE_FIRST_FROM','RATE_FIRST_TO','RATE_TRANSFER_FROM','RATE_TRANSFER_TO','RATE_MIDDLEMAN','RATE_FEE','RATE_PLATFORM_FEE') NOT NULL,
   `description` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1376,7 +1376,7 @@ CREATE TABLE `transaction_entry_backup` (
   `account_id` int(11) NOT NULL,
   `currency_id` int(11) NOT NULL,
   `amount` decimal(18,2) NOT NULL,
-  `entry_type` enum('NORMAL_FROM','NORMAL_TO','RATE_FIRST_FROM','RATE_FIRST_TO','RATE_TRANSFER_FROM','RATE_TRANSFER_TO','RATE_MIDDLEMAN','RATE_FEE') NOT NULL,
+  `entry_type` enum('NORMAL_FROM','NORMAL_TO','RATE_FIRST_FROM','RATE_FIRST_TO','RATE_TRANSFER_FROM','RATE_TRANSFER_TO','RATE_MIDDLEMAN','RATE_FEE','RATE_PLATFORM_FEE') NOT NULL,
   `description` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `backup_created_at` timestamp NULL DEFAULT current_timestamp() COMMENT '备份创建时间，用于自动清理'

@@ -385,50 +385,59 @@ export default function TransactionAddSection({
                 searchPlaceholder={m.searchAccount}
               />
             </div>
-            <input
-              type="number"
-              step="0.0001"
-              id="rate_middleman_rate"
-              className="transaction-input"
-              placeholder={m.rateMultiplier}
-              value={rateMiddlemanRate}
-              disabled={mutationsBlocked}
-              onChange={(e) => setRateMiddlemanRate(e.target.value)}
-              aria-label={m.rateMultiplier}
-            />
-            <input
-              type="number"
-              step="0.01"
-              id="rate_middleman_input_amount"
-              className="transaction-input"
-              placeholder={m.fee}
-              disabled={mutationsBlocked}
-              value={rateMiddlemanInputAmount}
-              onChange={(e) => setRateMiddlemanInputAmount(e.target.value)}
-              aria-label={m.fee}
-            />
-            <input
-              type="number"
-              step="0.01"
-              id="rate_middleman_platform_fee"
-              className="transaction-input"
-              placeholder={m.platformFee}
-              disabled={mutationsBlocked}
-              value={rateMiddlemanPlatformFee}
-              onChange={(e) => setRateMiddlemanPlatformFee(e.target.value)}
-              aria-label={m.platformFee}
-            />
-            <input
-              type="number"
-              step="0.01"
-              id="rate_middleman_amount"
-              className="transaction-input"
-              placeholder={m.amount}
-              readOnly
-              disabled={mutationsBlocked}
-              value={rateMiddlemanAmount}
-              aria-label={m.middleMan}
-            />
+            <div className="rate-mm-rest">
+              <input
+                type="text"
+                inputMode="decimal"
+                id="rate_middleman_rate"
+                className="transaction-input"
+                placeholder={m.rateMultiplier}
+                value={rateMiddlemanRate}
+                disabled={mutationsBlocked}
+                onChange={(e) => setRateMiddlemanRate(e.target.value)}
+                aria-label={m.rateMultiplier}
+              />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                id="rate_middleman_input_amount"
+                className="transaction-input"
+                placeholder={m.fee}
+                disabled={mutationsBlocked}
+                value={rateMiddlemanInputAmount}
+                onChange={(e) => setRateMiddlemanInputAmount(e.target.value.replace(/-/g, ""))}
+                onKeyDown={(e) => {
+                  if (e.key === "-" || e.key === "Subtract") e.preventDefault();
+                }}
+                aria-label={m.fee}
+              />
+              <input
+                type="number"
+                step="0.01"
+                id="rate_middleman_platform_fee"
+                className="transaction-input"
+                placeholder={m.platformFee}
+                disabled={mutationsBlocked}
+                value={rateMiddlemanPlatformFee}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/-/g, "");
+                  setRateMiddlemanPlatformFee(digits ? `-${digits}` : "");
+                }}
+                aria-label={m.platformFee}
+              />
+              <input
+                type="number"
+                step="0.01"
+                id="rate_middleman_amount"
+                className="transaction-input"
+                placeholder={m.amount}
+                readOnly
+                disabled={mutationsBlocked}
+                value={rateMiddlemanAmount}
+                aria-label={m.middleMan}
+              />
+            </div>
           </div>
         </div>
       </div>

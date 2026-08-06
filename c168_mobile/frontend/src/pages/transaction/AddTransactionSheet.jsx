@@ -6,9 +6,12 @@ import {
   countRateDecimalPlaces,
   formatDmy,
   formatRateAmount,
+  formatAmountForStore,
   parseRateExpression,
+  RATE_STORE_MAX_DECIMALS,
+  TX_STORE_MAX_DECIMALS,
 } from "../../lib/transactionFormat.js";
-import { buildRatePayload, toNumberLike } from "../../lib/transactionSubmitHelpers.js";
+import { buildRatePayload, toNumberLike, computeRateMiddlemanProfit, positivePlatformFeeDeduction } from "../../lib/transactionSubmitHelpers.js";
 import { formatYmd, parseYmd, formatDisplayDate } from "../../lib/dashboardDateUtils.js";
 import "./add-transaction-sheet.css";
 
@@ -127,6 +130,7 @@ export default function AddTransactionSheet({
   const [rateMiddlemanRate, setRateMiddlemanRate] = useState("");
   const [rateMiddlemanAmount, setRateMiddlemanAmount] = useState("");
   const [rateMiddlemanInputAmount, setRateMiddlemanInputAmount] = useState("");
+  const [rateMiddlemanPlatformFee, setRateMiddlemanPlatformFee] = useState("");
   const [rateTransferToAccount, setRateTransferToAccount] = useState(null);
   const [rateTransferFromAccount, setRateTransferFromAccount] = useState(null);
 
@@ -159,6 +163,7 @@ export default function AddTransactionSheet({
     setRateMiddlemanRate("");
     setRateMiddlemanAmount("");
     setRateMiddlemanInputAmount("");
+    setRateMiddlemanPlatformFee("");
     setRateTransferToAccount(null);
     setRateTransferFromAccount(null);
   }, []);
@@ -237,21 +242,30 @@ export default function AddTransactionSheet({
         /* ignore */
       }
     }
-    let baseFeeDec = MoneyDecimal.toDecimal("0", 0);
-    try {
-      const fromDec = MoneyDecimal.toDecimal(clean(rateCurrencyFromAmount) || "0", 0);
-      const mmrDec = MoneyDecimal.toDecimal(clean(rateMiddlemanRate) || "0", 0);
-      if (fromDec.gt(0) && mmrDec.gt(0)) baseFeeDec = fromDec.times(mmrDec);
-    } catch {
-      /* ignore */
-    }
-    let convertedInputAmtDec = inputAmtDec;
-    if (inputAmtDec.gt(0) && rateDec.gt(0)) convertedInputAmtDec = inputAmtDec.times(rateDec);
-    const finalFeeDec = baseFeeDec.plus(convertedInputAmtDec);
+    const finalFeeDec = computeRateMiddlemanProfit({
+      fromAmount: rateCurrencyFromAmount,
+      middlemanRate: rateMiddlemanRate,
+      feeAmount: rateMiddlemanInputAmount,
+      platformFeeAmount: rateMiddlemanPlatformFee,
+    });
     let middleStr = "";
     if (!finalFeeDec.isZero()) middleStr = formatRateAmount(finalFeeDec.toString());
-    else if (finalFeeDec.isZero() && (baseFeeDec.gt(0) || !inputAmtDec.isZero())) middleStr = "0.00";
+    else if (
+      finalFeeDec.isZero() &&
+      (clean(rateMiddlemanRate) || clean(rateMiddlemanInputAmount) || clean(rateMiddlemanPlatformFee))
+    ) {
+      middleStr = "0.00";
+    }
     setRateMiddlemanAmount(middleStr);
+
+    // Rate-Mul + Service Fee, then positive PT-Fee (From realtime). Negative PT does not change amount.
+    const toAmountDeductionDec = computeRateMiddlemanProfit({
+      fromAmount: rateCurrencyFromAmount,
+      middlemanRate: rateMiddlemanRate,
+      feeAmount: rateMiddlemanInputAmount,
+      platformFeeAmount: "0",
+    });
+    const positivePtDec = positivePlatformFeeDeduction(rateMiddlemanPlatformFee);
 
     try {
       const fromDec = MoneyDecimal.toDecimal(clean(rateCurrencyFromAmount) || "0", 0);
@@ -266,7 +280,8 @@ export default function AddTransactionSheet({
       const grossDisplayStr = formatRateAmount(finalGrossForBackend.toString());
       setRateToAmountGrossStr(grossDisplayStr);
       let displayVal = finalGrossForBackend;
-      if (!finalFeeDec.isZero()) displayVal = displayVal.minus(finalFeeDec);
+      if (!toAmountDeductionDec.isZero()) displayVal = displayVal.minus(toAmountDeductionDec);
+      if (positivePtDec.gt(0)) displayVal = displayVal.minus(positivePtDec);
       setRateCurrencyToAmount(formatRateAmount(displayVal.toString()));
     } catch {
       setRateCurrencyToAmount("");
@@ -278,6 +293,7 @@ export default function AddTransactionSheet({
     rateExchangeRateRaw,
     rateMiddlemanRate,
     rateMiddlemanInputAmount,
+    rateMiddlemanPlatformFee,
   ]);
 
   const handleSubmit = async () => {
@@ -310,11 +326,11 @@ export default function AddTransactionSheet({
       if (middleId && !hasMiddleRate && !hasMiddleFee) {
         return pushToast(m.pleaseEnterMiddleManRateOrFee, "error");
       }
-      if (hasMiddleRate && (!Number.isFinite(Number(mmrNorm)) || Number(mmrNorm) <= 0)) {
+      if (hasMiddleRate && !parseRateExpression(mmrNorm).valid) {
         return pushToast(m.pleaseEnterMiddleManRate, "error");
       }
-      if (hasMiddleRate && countRateDecimalPlaces(mmrNorm) > 8) {
-        return pushToast(m.middleManRateMaxDecimals, "error");
+      if (countRateDecimalPlaces(String(rateCurrencyFromAmount ?? "").replace(/,/g, "").trim()) > RATE_STORE_MAX_DECIMALS) {
+        return pushToast(m.rateAmountMaxDecimals, "error");
       }
 
       setSubmitting(true);
@@ -338,6 +354,7 @@ export default function AddTransactionSheet({
           rateTransferToAccount,
           rateTransferFromAccount,
           rateMiddlemanInputAmount,
+          rateMiddlemanPlatformFee,
         });
         const res = await onSubmit(payload, buildClientRequestId());
         if (res?.success) onClose?.();
@@ -375,15 +392,22 @@ export default function AddTransactionSheet({
     if (!isAdjustment && !isProfitTx && amtDec.lt(0)) {
       return pushToast(m.pleaseEnterValidAmountGteZero, "error");
     }
+    if (countRateDecimalPlaces(cleanedAmt) > TX_STORE_MAX_DECIMALS) {
+      return pushToast(m.amountMaxDecimals, "error");
+    }
     if (!txCurrency) return pushToast(m.pleaseSelectCurrency, "error");
 
     setSubmitting(true);
     try {
+      const storeAmt = formatAmountForStore(
+        isProfitTx ? amtDec.abs().toString() : cleanedAmt,
+        TX_STORE_MAX_DECIMALS,
+      );
       const payload = {
         transaction_type: isProfitTx ? (amtDec.lt(0) ? "LOSE" : "WIN") : txType,
         account_id: toId,
         from_account_id: isAdjustment ? "" : fromId || "",
-        amount: isProfitTx ? MoneyDecimal.formatFixedHalfUp(amtDec.abs().toString(), 2) : txAmount,
+        amount: storeAmt,
         transaction_date: txDate,
         description: "",
         sms: String(txRemark || "").toUpperCase(),
@@ -711,14 +735,24 @@ export default function AddTransactionSheet({
                   <input
                     type="text"
                     inputMode="decimal"
-                    value={rateMiddlemanAmount}
-                    readOnly
+                    value={rateMiddlemanPlatformFee}
                     disabled={mutationsBlocked}
-                    placeholder={m.amount}
-                    className="m-tx-form-input m-tx-form-input--readonly"
-                    aria-label={m.middleMan}
+                    onChange={(e) => setRateMiddlemanPlatformFee(sanitizeAmountInput(e.target.value))}
+                    placeholder={m.platformFee}
+                    className="m-tx-form-input"
+                    aria-label={m.platformFee}
                   />
                 </div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={rateMiddlemanAmount}
+                  readOnly
+                  disabled={mutationsBlocked}
+                  placeholder={m.amount}
+                  className="m-tx-form-input m-tx-form-input--readonly"
+                  aria-label={m.middleMan}
+                />
               </div>
             </>
           ) : null}

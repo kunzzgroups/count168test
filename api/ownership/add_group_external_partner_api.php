@@ -12,6 +12,7 @@
 session_start();
 session_write_close();
 require_once '../../includes/config.php';
+require_once '../../includes/group_company_access.php';
 require_once '../includes/ownership_history.php';
 
 header('Content-Type: application/json');
@@ -32,6 +33,13 @@ $force_type      = trim($data['force_type'] ?? '');
 
 if (!$group_id || !$login_or_group_id) {
     echo json_encode(['status' => 'error', 'message' => 'Group ID and Login ID/Group ID are required']);
+    exit();
+}
+
+try {
+    gc_assert_group_ledger_access($pdo, $group_id);
+} catch (Throwable $e) {
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     exit();
 }
 
@@ -213,6 +221,8 @@ try {
 
     $savedBy = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
     ownership_history_snapshot_group_from_live_safe($pdo, $group_id, $savedBy);
+
+    ownership_realtime_publish_for_group($pdo, $group_id, 'add_group_external_partner');
 
     echo json_encode([
         'status'  => 'success',

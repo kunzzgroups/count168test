@@ -34,6 +34,8 @@ import {
   consumeAutoRenewPrefetch,
   rememberAutoRenewListCache,
 } from "./autoRenewRoutePrefetch.js";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
 import {
   useAutoRenewDateRange,
   useAutoRenewDateRangeState,
@@ -385,12 +387,17 @@ export default function AutoRenewPage() {
     if (bootLoading || !sessionReady || !me) return;
     const key = listFetchKey(statusFilter, { dateFrom, dateTo }, entityTab);
     if (bootFetchedListKeyRef.current === key) {
+      // Warm/boot may have painted; still silent-refetch so remount cannot stick on stale warm.
       bootFetchedListKeyRef.current = null;
-      setListRefreshing(false);
+      void fetchList();
       return;
     }
     void fetchList();
   }, [bootLoading, dateFrom, dateTo, entityTab, fetchList, listFetchKey, sessionReady, statusFilter]);
+
+  useRealtimeDomain(REALTIME_DOMAINS.LEDGER, () => {
+    void refreshListAfterMutation();
+  }, { enabled: sessionReady && Boolean(me) && !bootLoading });
 
   useEffect(() => {
     if (bootLoading || !sessionReady || !me) return;
@@ -468,6 +475,7 @@ export default function AutoRenewPage() {
         fromAccountId,
         toAccountId,
       });
+      invalidateTransactionListCache("auto_renew_approve");
       notify(t("approvedSuccess"), "success");
       await refreshListAfterMutation();
     } catch (err) {

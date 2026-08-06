@@ -24,7 +24,7 @@ export function buildTemplateKey(row) {
   return null;
 }
 
-export function buildTemplatePayloadFromRow(row, { processId, companyId } = {}) {
+export function buildTemplatePayloadFromRow(row, { processId, processCode, companyId } = {}) {
   const productType = row.productType === "sub" ? "sub" : "main";
   const formulaDisplay = row.formulaDisplay || "";
   const isFormulaEmpty = !formulaDisplay.trim() || formulaDisplay === "Formula";
@@ -55,6 +55,7 @@ export function buildTemplatePayloadFromRow(row, { processId, companyId } = {}) 
     template_id: row.templateId ?? null,
     formula_variant: row.formulaVariant ?? null,
     process_id: processId ?? null,
+    process_code: processId ? null : (processCode ? String(processCode).trim().toUpperCase() : null),
     row_index: row.rowIndex ?? null,
     sub_order: productType === "sub" ? row.subOrder ?? null : null,
     ...(companyId != null && Number(companyId) > 0 ? { company_id: Number(companyId) } : {}),
@@ -62,7 +63,7 @@ export function buildTemplatePayloadFromRow(row, { processId, companyId } = {}) 
 }
 
 /** POST save_template — returns API json. */
-export async function saveSummaryTemplatePure(row, { captureScope, companyId, processId } = {}) {
+export async function saveSummaryTemplatePure(row, { captureScope, companyId, processId, processCode } = {}) {
   const hasAccount = row.accountId != null && String(row.accountId).trim() !== "";
   const hasCurrency = row.currencyId != null && String(row.currencyId).trim() !== "";
   const hasFormula =
@@ -79,7 +80,7 @@ export async function saveSummaryTemplatePure(row, { captureScope, companyId, pr
     return { success: false, message: "Account is required." };
   }
 
-  const payload = buildTemplatePayloadFromRow(row, { processId, companyId });
+  const payload = buildTemplatePayloadFromRow(row, { processId, processCode, companyId });
   const url = buildTemplateUrl(captureScope);
   const response = await fetch(url, {
     method: "POST",

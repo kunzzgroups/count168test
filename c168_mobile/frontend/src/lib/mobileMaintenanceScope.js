@@ -37,11 +37,17 @@ export function maintenanceScopeKey(scope) {
 export function appendTransactionMaintenanceScope(params, scope) {
   if (!scope) return params;
   if (scope.mode === "group") {
+    params.set("report_scope", "group");
     params.set("view_group", scope.groupId);
     params.set("group_id", scope.groupId);
     params.set("group_aggregate", "1");
+    params.set("group_only", "1");
   } else if (Number(scope.companyId) > 0) {
+    params.set("report_scope", "company");
     params.set("company_id", String(scope.companyId));
+    if (scope.groupId) {
+      params.set("view_group", scope.groupId);
+    }
   }
   return params;
 }

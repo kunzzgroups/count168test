@@ -694,9 +694,14 @@ export function useMobileAccount() {
           method: "POST",
           body: JSON.stringify({ code: normalized, ...accountScopePayload(scope) }),
         });
+        const newId = Number(json?.data?.id);
+        if (!Number.isFinite(newId) || newId <= 0) {
+          await loadRolesAndCurrencies();
+          return true;
+        }
         setCurrencies((rows) => [
-          ...rows.filter((row) => Number(row.id) !== Number(json?.data?.id)),
-          { ...json.data, is_linked: false },
+          ...rows.filter((row) => Number(row.id) !== newId),
+          { ...json.data, id: newId, is_linked: false },
         ]);
         return true;
       } catch (e) {
@@ -704,7 +709,7 @@ export function useMobileAccount() {
         return false;
       }
     },
-    [canMutate, i18n.currencyError, notify, scope],
+    [canMutate, i18n.currencyError, loadRolesAndCurrencies, notify, scope],
   );
 
   const deleteCurrency = useCallback(

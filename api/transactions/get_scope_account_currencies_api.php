@@ -51,6 +51,26 @@ function dashboardResolveGroupOnlyCurrencyRows(PDO $pdo, string $viewGroup): arr
         $addMap(dashboardLoadCurrencyMap($pdo, $entityId));
     }
 
+    // 2b) Pure / empty group: scope_type=group currency ledger (company_id may be NULL).
+    if (function_exists('tenant_load_group_tenant_currency_map')) {
+        require_once __DIR__ . '/../../includes/tenant_scope.php';
+        $addMap(tenant_load_group_tenant_currency_map($pdo, $g));
+    } elseif (function_exists('tenant_fetch_currencies') && function_exists('tenant_resolve_currency_context')) {
+        require_once __DIR__ . '/../../includes/tenant_scope.php';
+        try {
+            $ctx = tenant_resolve_currency_context($pdo, null, $g, true);
+            foreach (tenant_fetch_currencies($pdo, $ctx) as $row) {
+                $id = (int) ($row['id'] ?? 0);
+                $code = strtoupper(trim((string) ($row['code'] ?? '')));
+                if ($id > 0 && $code !== '') {
+                    $addMap([$id => $code]);
+                }
+            }
+        } catch (Throwable $e) {
+            // ignore
+        }
+    }
+
     // 3) Subsidiary company currencies under this group.
     $subsidiaryIds = dashboardListGroupSubsidiaryCompanyIds($pdo, $g);
     foreach ($subsidiaryIds as $sid) {

@@ -1,10 +1,12 @@
 <?php
 /**
- * Group Earnings API — List all groups for the current owner
- * Returns group_id, total_allocation, remaining, company count
+ * Group Earnings API — List groups for the current session.
+ * Seeds from `groups` table (empty Group OK) + subsidiaries with group_id.
+ * Group login: only accessible groups (login_scope fence).
  */
 require_once '../../includes/session_check.php';
 require_once '../../includes/config.php';
+require_once '../../includes/group_company_access.php';
 require_once '../includes/money_decimal.php';
 require_once '../includes/ownership_history.php';
 require_once '../includes/ownership_schema.php';
@@ -20,57 +22,106 @@ $current_user_role = $_SESSION['role'] ?? '';
 $parsedMonth = ownership_history_parse_month_param($_GET['month'] ?? null);
 $useHistory = $parsedMonth !== null && ownership_history_is_past_month($parsedMonth['month_key']);
 
+/**
+ * Ensure a group bucket exists.
+ *
+ * @param array<string, array{group_id:string, companies:list}> $groups
+ */
+function ownership_ge_ensure_group(array &$groups, string $gid): void
+{
+    $gid = strtoupper(trim($gid));
+    if ($gid === '') {
+        return;
+    }
+    if (!isset($groups[$gid])) {
+        $groups[$gid] = [
+            'group_id'  => $gid,
+            'companies' => [],
+        ];
+    }
+}
+
 try {
     ownership_ensure_group_ownership_table($pdo);
 
-    // Get companies with groups for this user
     require_once '../get_companies_helper.php';
     $companies = [];
+    $groups = [];
 
+    $owner_id = 0;
     if (strtolower($current_user_role) === 'owner') {
-        $owner_id = (int)($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $_SESSION['user_id']);
-        $fetched = getCompaniesByOwner($pdo, $owner_id, true); // all=true to get all companies
-        foreach ($fetched as $c) {
-            if (!empty($c['group_id'])) {
-                $companies[] = [
-                    'id'       => $c['id'],
-                    'name'     => $c['company_id'],
-                    'group_id' => $c['group_id'],
-                ];
-            }
-        }
+        $owner_id = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $_SESSION['user_id']);
+        $fetched = getCompaniesByOwner($pdo, $owner_id, true);
     } else {
-        $fetched = getCompaniesByUser($pdo, (int)$_SESSION['user_id'], true);
-        foreach ($fetched as $c) {
-            if (!empty($c['group_id'])) {
-                $companies[] = [
-                    'id'       => $c['id'],
-                    'name'     => $c['company_id'],
-                    'group_id' => $c['group_id'],
-                ];
-            }
+        $fetched = getCompaniesByUser($pdo, (int) $_SESSION['user_id'], true);
+    }
+
+    foreach ($fetched as $c) {
+        $code = strtoupper(trim((string) ($c['company_id'] ?? '')));
+        if ($code === '') {
+            continue;
+        }
+        $nativeGid = strtoupper(trim((string) ($c['native_group_id'] ?? $c['group_id'] ?? '')));
+        if ($nativeGid === '') {
+            continue;
+        }
+        // Skip legacy group-entity rows (company_id === group_id).
+        if (gc_company_row_is_group_entity($code, $nativeGid)) {
+            ownership_ge_ensure_group($groups, $nativeGid);
+            continue;
+        }
+        $companies[] = [
+            'id'       => (int) $c['id'],
+            'name'     => $code,
+            'group_id' => $nativeGid,
+        ];
+        ownership_ge_ensure_group($groups, $nativeGid);
+        $groups[$nativeGid]['companies'][] = [
+            'id'   => (int) $c['id'],
+            'name' => $code,
+        ];
+    }
+
+    // Seed empty / first-class groups from `groups` table (no stub company required).
+    if ($owner_id > 0 && $pdo->query("SHOW TABLES LIKE 'groups'")->rowCount() > 0) {
+        $gStmt = $pdo->prepare(
+            'SELECT UPPER(TRIM(group_code)) AS group_code FROM `groups` WHERE owner_id = ?'
+        );
+        $gStmt->execute([$owner_id]);
+        foreach ($gStmt->fetchAll(PDO::FETCH_COLUMN) as $code) {
+            ownership_ge_ensure_group($groups, (string) $code);
         }
     }
 
-    // Group companies by group_id
-    $groups = [];
-    foreach ($companies as $comp) {
-        $gid = $comp['group_id'];
-        if (!isset($groups[$gid])) {
-            $groups[$gid] = [
-                'group_id'   => $gid,
-                'companies'  => [],
-            ];
+    // Non-owner: groups assigned via user_group_map.
+    if (strtolower($current_user_role) !== 'owner'
+        && $pdo->query("SHOW TABLES LIKE 'user_group_map'")->rowCount() > 0
+        && $pdo->query("SHOW TABLES LIKE 'groups'")->rowCount() > 0
+    ) {
+        $ugm = $pdo->prepare("
+            SELECT UPPER(TRIM(g.group_code)) AS group_code
+            FROM user_group_map ugm
+            INNER JOIN `groups` g ON g.id = ugm.group_id
+            WHERE ugm.user_id = ?
+        ");
+        $ugm->execute([(int) $_SESSION['user_id']]);
+        foreach ($ugm->fetchAll(PDO::FETCH_COLUMN) as $code) {
+            ownership_ge_ensure_group($groups, (string) $code);
         }
-        $groups[$gid]['companies'][] = [
-            'id'   => $comp['id'],
-            'name' => $comp['name'],
-        ];
+    }
+
+    // Group login: only groups the session may access.
+    if (gc_is_group_login()) {
+        foreach (array_keys($groups) as $gid) {
+            if (!gc_session_can_access_group_ledger($pdo, (string) $gid)) {
+                unset($groups[$gid]);
+            }
+        }
     }
 
     // Get per-company group equity from company_ownership (owner_type='group')
     $companyGroupEquity = [];
-    $allCompanyIds = array_map(fn($c) => $c['id'], $companies);
+    $allCompanyIds = array_map(static fn($c) => $c['id'], $companies);
     if (!empty($allCompanyIds)) {
         $in = str_repeat('?,', count($allCompanyIds) - 1) . '?';
         $stmt = $pdo->prepare("
@@ -84,7 +135,6 @@ try {
         }
     }
 
-    // Get total allocation for each group
     $groupIds = array_keys($groups);
     $totals = [];
     if (!empty($groupIds)) {
@@ -110,11 +160,9 @@ try {
         $totals = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     }
 
-    // Build result
     $result = [];
     foreach ($groups as $gid => $grp) {
         $alloc = isset($totals[$gid]) ? money_out($totals[$gid], 2) : '0';
-        // Add per-company group equity to each company entry
         $companiesWithEquity = [];
         foreach ($grp['companies'] as $comp) {
             $key = $comp['id'] . '_' . $gid;
@@ -129,22 +177,21 @@ try {
         ];
     }
 
-    // Sort by group_id
-    usort($result, function($a, $b) { return strcmp($a['group_id'], $b['group_id']); });
+    usort($result, static function ($a, $b) {
+        return strcmp($a['group_id'], $b['group_id']);
+    });
 
     echo json_encode([
         'status' => 'success',
         'data'   => $result,
         'meta'   => [
-            'is_historical' => $useHistory,
+            'is_historical'   => $useHistory,
             'effective_month' => $useHistory ? $parsedMonth['month_key'] : ownership_history_current_month_key(),
         ],
     ]);
-
 } catch (PDOException $e) {
     echo json_encode([
         'status'  => 'error',
-        'message' => 'Database error: ' . $e->getMessage()
+        'message' => 'Database error: ' . $e->getMessage(),
     ]);
 }
-?>

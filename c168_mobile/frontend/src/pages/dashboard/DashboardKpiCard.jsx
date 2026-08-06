@@ -7,14 +7,28 @@ const VARIANT_META = {
   earnings: { icon: "fa-hand-holding-dollar", accent: "earnings", iconTone: "earnings" },
 };
 
-export default function DashboardKpiCard({ variant, label, value, compare, compareLabel, loading }) {
+export default function DashboardKpiCard({
+  variant,
+  label,
+  value,
+  compare,
+  compareLabel,
+  loading,
+  selected = false,
+  onSelect,
+}) {
   const meta = VARIANT_META[variant] || VARIANT_META.net;
   const display = loading ? null : formatCurrency(value);
   const pct = compare?.pct;
   const showCompare = !loading && compare && Number.isFinite(pct);
 
   return (
-    <article className="m-dash-kpi tap-scale">
+    <button
+      type="button"
+      className="m-dash-kpi tap-scale"
+      aria-pressed={selected}
+      onClick={onSelect}
+    >
       <div className={`m-dash-kpi-accent m-dash-kpi-accent--${meta.accent}`} aria-hidden="true" />
 
       <div className="m-dash-kpi-head">
@@ -41,6 +55,6 @@ export default function DashboardKpiCard({ variant, label, value, compare, compa
       ) : (
         <p className="m-dash-kpi-compare-label">{compareLabel}</p>
       )}
-    </article>
+    </button>
   );
 }

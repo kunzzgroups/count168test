@@ -352,7 +352,11 @@ export default function TransactionSearchSection({
         })}
       </div>
 
-      {fs && (fs.snapGroupIds?.length > 0 || fs.snapCompanies?.length > 0) && (
+      {fs &&
+        (fs.snapGroupIds?.length > 0 ||
+          fs.snapCompanies?.length > 0 ||
+          Boolean(fs.selectedGroup) ||
+          currencyRowsOrdered.length > 0) && (
         <div className="transaction-bottom-filters">
           <GcInlineFilterPanel
             t={(key) => m[key] ?? key}

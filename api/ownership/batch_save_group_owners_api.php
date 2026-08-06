@@ -5,6 +5,7 @@
  */
 require_once '../../includes/session_check.php';
 require_once '../../includes/config.php';
+require_once '../../includes/group_company_access.php';
 require_once '../includes/money_decimal.php';
 require_once '../includes/ownership_history.php';
 require_once '../includes/ownership_schema.php';
@@ -32,6 +33,13 @@ $owners   = $inputData['owners'] ?? [];
 
 if (!$group_id) {
     echo json_encode(['status' => 'error', 'message' => 'Missing group_id']);
+    exit();
+}
+
+try {
+    gc_assert_group_ledger_access($pdo, (string) $group_id);
+} catch (Throwable $e) {
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     exit();
 }
 
@@ -141,6 +149,8 @@ if ($saveHistoryOnly) {
         $pdo->beginTransaction();
         ownership_history_save_group_for_month($pdo, $group_id, $owner_id, $historyRows, $savedBy, $effectiveMonth);
         $pdo->commit();
+
+        ownership_realtime_publish_for_group($pdo, (string) $group_id, 'batch_save_group_history');
 
         echo json_encode([
             'status'  => 'success',
@@ -295,6 +305,8 @@ try {
     }
 
     $pdo->commit();
+
+    ownership_realtime_publish_for_group($pdo, (string) $group_id, 'batch_save_group');
 
     echo json_encode([
         'status'  => 'success',

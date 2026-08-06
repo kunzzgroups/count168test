@@ -4,6 +4,8 @@
  * while preserving inline styles and class-driven colors from clipboard CSS.
  */
 
+import { tryMergeAllGamesIvuTables } from "./dataCaptureAllGamesPasteHelper.js";
+
 const GRID_HINT_RE =
   /mat-row|mat-cell|mat-header-row|mat-header-cell|mat-footer-cell|cdk-row|cdk-cell|role\s*=\s*["'](?:row|gridcell|columnheader|rowheader)["']/i;
 
@@ -678,6 +680,16 @@ export function normalizeClipboardHtmlToTable(html) {
       expandCollapsedTableRows(mergedDataTables);
       if (tableColumnCount(mergedDataTables) >= 2) {
         return `${styleHtml}\n${mergedDataTables.outerHTML}`;
+      }
+    }
+
+    // allGames / iView: body + ivu-table-summary are sibling tables — merge before
+    // the first-table early return drops Total(N).
+    const mergedAllGames = tryMergeAllGamesIvuTables(root);
+    if (mergedAllGames) {
+      expandCollapsedTableRows(mergedAllGames);
+      if (tableColumnCount(mergedAllGames) >= 2) {
+        return `${styleHtml}\n${mergedAllGames.outerHTML}`;
       }
     }
 

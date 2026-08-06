@@ -1234,6 +1234,26 @@ export function ensureMaintenanceDateRangePicker() {
       setActiveRangeBindingFromTrigger(pickerEl);
       clearSelection(true);
     },
+    /**
+     * Force the shared picker singleton + Capture Date DOM to a DMY range.
+     * Needed for SPA soft-refresh: remount alone does not clear module closure state.
+     */
+    commitRangeToDmy(fromDmy, toDmy, { triggerOnChange = false } = {}) {
+      const fromDate = parseDmy(fromDmy);
+      if (!fromDate) return false;
+      const toDate = parseDmy(toDmy || fromDmy) || new Date(fromDate);
+      fromDate.setHours(0, 0, 0, 0);
+      toDate.setHours(0, 0, 0, 0);
+      calendarStartDate = fromDate;
+      calendarEndDate = toDate;
+      isSelectingRange = false;
+      stashedCommittedRange = null;
+      syncToHiddenInputs();
+      updateDateRangeDisplay(activeRangeBinding.displayId || config.rangeDisplayId || "date-range-display");
+      updateQuickPresetActive(detectMatchingQuickRange());
+      if (triggerOnChange) runOnChange();
+      return true;
+    },
     getDateFrom() {
       return document.getElementById(config.dateFromId)?.value || "";
     },
@@ -1247,5 +1267,11 @@ export function ensureMaintenanceDateRangePicker() {
   bindCalendarClearFooterOnce();
 
   initialized = true;
+}
+
+/** Soft-refresh helper: pin Capture Date singleton/DOM to today (or given DMY). */
+export function commitMaintenanceDateRangeToDmy(fromDmy, toDmy, options) {
+  ensureMaintenanceDateRangePicker();
+  return window.MaintenanceDateRangePicker?.commitRangeToDmy?.(fromDmy, toDmy, options) === true;
 }
 

@@ -13,6 +13,7 @@ try {
     require_once __DIR__ . '/../includes/member_linked_closure.php';
     require_once __DIR__ . '/../../includes/expiration_status.php';
     require_once __DIR__ . '/../../includes/group_company_access.php';
+    require_once __DIR__ . '/../../includes/group_tenant_v2.php';
     require_once __DIR__ . '/../../includes/session_user_payload_cache.php';
     require_once __DIR__ . '/../../includes/auth_invalidation.php';
     require_once __DIR__ . '/../../includes/maintenance_gate.php';
@@ -68,7 +69,6 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE['remember_token']) && $pdo in
 
 if (!isset($_SESSION['user_id'])) {
     session_write_close();
-    http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Not logged in', 'data' => null], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -161,8 +161,9 @@ if ($companyId && $pdo instanceof PDO) {
         if ($hasC168AutoRenewAccess) {
             require_once __DIR__ . '/../includes/auto_renew.php';
             try {
-                auto_renew_ensure_request_table($pdo);
-                $pendingAutoRenewCount = auto_renew_count_pending($pdo);
+                // Do not call auto_renew_ensure_request_table / sync_window here:
+                // Hostinger metadata locks from ALTER/SHOW freeze the whole site.
+                $pendingAutoRenewCount = auto_renew_count_pending_fast($pdo);
             } catch (Throwable $e) {
                 error_log('current_user_api pending_auto_renew_count: ' . $e->getMessage());
             }
@@ -176,7 +177,19 @@ if ($companyId && $pdo instanceof PDO) {
                 && (!isset($_SESSION['secondary_password_verified']) || $_SESSION['secondary_password_verified'] !== true);
         }
 
-        $flags = gc_resolve_company_category_flags($pdo, (int) $companyId);
+        // Group login: fixed Games only for pure Group / group-entity.
+        // Real subsidiary (e.g. Bank C2) uses that company's category so sidebar Report hides.
+        if (
+            function_exists('gt_v2_enabled')
+            && gt_v2_enabled()
+            && function_exists('gc_is_group_login')
+            && gc_is_group_login()
+            && function_exists('gt_v2_resolve_active_category_flags')
+        ) {
+            $flags = gt_v2_resolve_active_category_flags($pdo, (int) $companyId);
+        } else {
+            $flags = gc_resolve_company_category_flags($pdo, (int) $companyId);
+        }
         $companyHasGambling = (bool) ($flags['has_gambling'] ?? false);
         $companyHasBank = (bool) ($flags['has_bank'] ?? false);
         $companyPermissionsList = is_array($flags['permissions'] ?? null)
@@ -221,6 +234,45 @@ if ($companyId && $pdo instanceof PDO) {
     } catch (Throwable $e) {
         error_log('current_user_api expiration: ' . $e->getMessage());
         $expirationHint = 'No expiration date';
+    }
+} elseif (
+    $pdo instanceof PDO
+    && function_exists('gt_v2_enabled')
+    && gt_v2_enabled()
+    && function_exists('gc_is_group_login')
+    && gc_is_group_login()
+) {
+    // Empty group login: no company_id — still expose Games flags + group expiry
+    try {
+        if ($userType === 'user') {
+            $stmtPerm = $pdo->prepare('SELECT permissions FROM user WHERE id = ?');
+            $stmtPerm->execute([$_SESSION['user_id']]);
+            $userPermissions = $stmtPerm->fetchColumn();
+            $permissions = $userPermissions ? (json_decode((string) $userPermissions, true) ?: []) : [];
+        }
+        $flags = gt_v2_fixed_games_category_flags();
+        $companyHasGambling = true;
+        $companyHasBank = false;
+        $companyPermissionsList = $flags['permissions'];
+        $ident = function_exists('gc_session_login_identifier')
+            ? (string) (gc_session_login_identifier() ?? '')
+            : (string) ($_SESSION['login_identifier'] ?? $_SESSION['company_code'] ?? '');
+        if ($companyCodeForResponse === '' && $ident !== '') {
+            $companyCodeForResponse = strtoupper(trim($ident));
+        }
+        $groupRow = gt_v2_fetch_active_group_row($pdo, $ident !== '' ? $ident : $companyCodeForResponse);
+        if ($groupRow) {
+            $expPayload = gt_v2_group_expiration_payload($groupRow);
+            $companyExpirationDateRaw = $expPayload['expiration_date'];
+            $daysUntilExpiration = $expPayload['days_until_expiration'];
+            $expirationHint = $expPayload['expiration_hint'];
+            $expirationStatus = $expPayload['expiration_status'];
+        }
+    } catch (Throwable $e) {
+        error_log('current_user_api group-only flags: ' . $e->getMessage());
+        $companyHasGambling = true;
+        $companyHasBank = false;
+        $companyPermissionsList = ['Games'];
     }
 }
 

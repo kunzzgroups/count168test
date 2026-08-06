@@ -1,13 +1,16 @@
 /**
- * Transaction Payment realtime SSE hub.
+ * App-wide realtime SSE hub (invalidate bus).
  *
  * - GET  /sse?ticket=...          → EventSource stream (ticket from PHP)
  * - POST /publish                 → PHP fanout (X-Realtime-Secret)
  * - GET  /health                  → liveness
  *
+ * Events: ledger_changed (legacy TX) | domain_changed (accounts, processes, …)
  * Optional Redis (REDIS_URL): PUBLISH on /publish + SUBSCRIBE for multi-instance.
  * Single EC2: in-memory fanout works without Redis.
  */
+
+const ALLOWED_EVENT_TYPES = new Set(["ledger_changed", "domain_changed"]);
 
 import http from "node:http";
 import { createClient } from "redis";
@@ -77,6 +80,10 @@ function writeSse(res, event, data) {
 }
 
 function fanoutLocal(channels, payload) {
+  const eventName =
+    payload?.type && ALLOWED_EVENT_TYPES.has(payload.type)
+      ? payload.type
+      : "domain_changed";
   const seen = new Set();
   for (const ch of channels) {
     const set = channelClients.get(ch);
@@ -85,7 +92,7 @@ function fanoutLocal(channels, payload) {
       if (seen.has(res)) continue;
       seen.add(res);
       try {
-        writeSse(res, "ledger_changed", payload);
+        writeSse(res, eventName, payload);
       } catch {
         /* drop broken socket on next cleanup */
       }
@@ -186,7 +193,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const raw = await readBody(req);
       const payload = JSON.parse(raw || "{}");
-      if (!payload || payload.type !== "ledger_changed") {
+      if (!payload || !ALLOWED_EVENT_TYPES.has(String(payload.type || ""))) {
         return sendJson(res, 400, { ok: false, error: "invalid payload" });
       }
       const result = await publishEvent(payload);
@@ -216,13 +223,14 @@ const server = http.createServer(async (req, res) => {
     writeSse(res, "ready", { channels: verified.channels, uid: verified.uid });
 
     addClient(verified.channels, res);
+    // Cloudflare / proxies idle-cut long streams; keep under ~20s.
     const heartbeat = setInterval(() => {
       try {
         res.write(": ping\n\n");
       } catch {
         clearInterval(heartbeat);
       }
-    }, 25000);
+    }, 15000);
 
     req.on("close", () => {
       clearInterval(heartbeat);

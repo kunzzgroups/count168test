@@ -37,45 +37,10 @@ function jsonResponse($success, $message, $data = null, $httpCode = null) {
  */
 function resolveDomainReportCaptureScope(PDO $pdo, array $resolved, array $get): array
 {
-    $groupScope = resolveDomainReportGroupScope($pdo, $resolved, (int) ($resolved['company_id'] ?? 0));
-    $scopeHint = strtolower(trim((string) ($get['report_scope'] ?? '')));
-    if ($scopeHint === 'company') {
-        $groupScope = false;
-    } elseif ($scopeHint === 'group') {
-        $groupScope = true;
-    }
-
-    $scopeResolved = [
-        'company_id' => (int) ($resolved['company_id'] ?? 0),
-        'group_id' => (string) ($resolved['group_id'] ?? ''),
-        'report_scope_hint' => $groupScope ? 'group' : 'company',
-        'is_group_scope' => $groupScope,
-    ];
-
-    $ctx = dcFinalizeDualTenantCaptureScope($pdo, $scopeResolved, $get);
-    $ctx['group_scope'] = (bool) ($ctx['is_group_scope'] ?? false);
-
-    return $ctx;
+    return resolveReportDualTenantCaptureScope($pdo, $resolved, $get);
 }
 
-/** Group entity scope: SALARY/COMMISSION/BONUS only (same rules as Data Capture). */
-function resolveDomainReportGroupScope(PDO $pdo, array $resolved, int $companyId): bool
-{
-    unset($pdo, $companyId);
-    $hint = strtolower(trim((string) ($resolved['report_scope_hint'] ?? '')));
-    if ($hint === 'company') {
-        return false;
-    }
-    if ($hint === 'group') {
-        return true;
-    }
-    if (strtolower(trim((string) ($resolved['list_scope']['mode'] ?? ''))) === 'group') {
-        return true;
-    }
-    return dcIsGroupScopeHint($resolved);
-}
-
-/** Group Domain Report: ensure SALARY + COMMISSION + BONUS on entity, then return rows. */
+/** Group Domain Report: ensure PROFIT + SALARY + COMMISSION + BONUS on entity, then return rows. */
 function fetchGroupDomainProcesses(PDO $pdo, int $company_id, string $groupId): array
 {
     $g = reportNormalizeGroupId($groupId);
@@ -349,7 +314,9 @@ try {
         dcAssertProcessIdInCaptureScope($pdo, $process_id, $processCompanyId, $groupScope);
     }
 
-    if ($groupScope && $company_id <= 0) {
+    // Pure group + dual-tenant: company_id may be 0; ledger uses scope_type/scope_id.
+    $groupPk = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+    if ($groupScope && $company_id <= 0 && (empty($scopeCtx['dual_tenant']) || $groupPk <= 0)) {
         echo json_encode([
             'success' => true,
             'message' => 'OK',
@@ -391,7 +358,12 @@ try {
         $process_id,
         $currency_codes
     );
-    $co_meta = fetchCompanyReportMeta($pdo, $company_id);
+    $co_meta = $company_id > 0
+        ? fetchCompanyReportMeta($pdo, $company_id)
+        : [
+            'company_id' => null,
+            'group_id' => reportNormalizeGroupId($resolved['group_id'] ?? ($scopeCtx['group_id'] ?? '')),
+        ];
     $currency_scope = 'ALL';
     if (!empty($currency_codes)) {
         $currency_scope = implode(', ', $currency_codes);

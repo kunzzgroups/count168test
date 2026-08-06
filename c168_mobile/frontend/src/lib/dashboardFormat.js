@@ -5,17 +5,9 @@ export function formatCurrency(value) {
   });
 }
 
-/** Hero headline — slightly tighter for long amounts */
+/** Hero headline — same full precision as Overview cards (no K/M rounding). */
 export function formatCurrencyHero(value) {
-  const n = parseFloat(value || 0);
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) {
-    return `${n < 0 ? "-" : ""}${(abs / 1_000_000).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M`;
-  }
-  if (abs >= 100_000) {
-    return `${n < 0 ? "-" : ""}${(abs / 1_000).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}K`;
-  }
-  return formatCurrency(n);
+  return formatCurrency(value);
 }
 
 export function formatSignedChange(value) {

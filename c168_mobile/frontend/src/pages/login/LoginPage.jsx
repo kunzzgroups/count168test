@@ -4,6 +4,7 @@ import { LOGIN_I18N, localizeAuthApiMessage } from "../../translateFile/authTran
 import { buildApiUrl } from "../../utils/apiUrl.js";
 import { resolveMobileLandingPath } from "../../utils/mobilePermissions.js";
 import { useAuthBackground } from "./useAuthBackground.js";
+import PasswordInput from "../../components/PasswordInput.jsx";
 
 const LOGIN_ASSET_RETRY_KEY = "ec_mobile_login_asset_retry";
 
@@ -459,9 +460,8 @@ export default function LoginPage() {
 
                 <div className="sc-login-input-row">
                   <i className="fas fa-lock sc-login-input-icon" />
-                  <input
+                  <PasswordInput
                     id="password"
-                    type="password"
                     className="sc-login-input"
                     placeholder={i18n.passwordPlaceholder}
                     required
@@ -469,6 +469,8 @@ export default function LoginPage() {
                     enterKeyHint="go"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    showLabel={i18n.showPassword}
+                    hideLabel={i18n.hidePassword}
                     onFocus={(e) => {
                       requestAnimationFrame(() => {
                         e.target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });

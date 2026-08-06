@@ -29,6 +29,7 @@ import {
   buildTransactionSearchQueryFilters,
   calculateTotals,
   mergeSearchApiDataList,
+  orderCurrencyRows,
   sanitizeSearchApiData,
   sortByRole,
 } from "../lib/transactionPaymentLogic.js";
@@ -37,6 +38,7 @@ import {
   getAccounts,
   getCategories,
   getCompanyCurrencies,
+  getUserCurrencyOrder,
   loadContraInbox,
   rejectContra,
   searchTransactions,
@@ -225,11 +227,13 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           try {
             const ids = await fetchTypeAccountSearch({
               ...scopeApi,
-              transactionType: typeSearchFormType,
+              // Same as desktop: Capture Date × all pure manual types (ignore form Type).
+              transactionType: "ALL",
               signal,
             });
             if (signal?.aborted) return;
             paramsBase.typeAccountIds = ids;
+            paramsBase.typeSearchFormType = "ALL";
           } catch {
             /* still run search without ids */
           }
@@ -293,10 +297,14 @@ export function useMobileTransaction({ listPaused = false } = {}) {
   const loadAccountsAndCurrencies = useCallback(
     async (signal) => {
       if (!scopeReady) return;
+      const orderCid = resolveTransactionCurrencyOrderCompanyId(transactionScope, companies);
       try {
-        const [accRes, curRes] = await Promise.all([
+        const [accRes, curRes, ordRes] = await Promise.all([
           getAccounts({ ...scopeApi, status: "active", signal }),
           getCompanyCurrencies({ ...scopeApi, signal }),
+          orderCid
+            ? getUserCurrencyOrder({ companyId: orderCid, signal }).catch(() => null)
+            : Promise.resolve(null),
         ]);
         if (signal?.aborted) return;
 
@@ -312,7 +320,8 @@ export function useMobileTransaction({ listPaused = false } = {}) {
         );
 
         const curRows = Array.isArray(curRes?.data) ? curRes.data : [];
-        const codes = curRows
+        const ordered = orderCurrencyRows(curRows, ordRes, orderCid);
+        const codes = ordered
           .map((r) => String(r.code || r.currency || "").trim().toUpperCase())
           .filter(Boolean);
         setFormCurrencies(codes.length ? [...new Set(codes)] : currencies);
@@ -320,7 +329,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
         if (!signal?.aborted) setFormCurrencies(currencies);
       }
     },
-    [scopeReady, scopeApi, currencies],
+    [scopeReady, scopeApi, currencies, transactionScope, companies],
   );
 
   useEffect(() => {
@@ -709,7 +718,8 @@ export function useMobileTransaction({ listPaused = false } = {}) {
       const tType = String(txType || "").toUpperCase().trim();
       if (!tType) return;
       setTypeSearchActive(true);
-      setTypeSearchFormType(tType);
+      // List ignores form Type — always ALL (Capture Date × any pure manual type).
+      setTypeSearchFormType("ALL");
       setReloadNonce((n) => n + 1);
     },
     [],

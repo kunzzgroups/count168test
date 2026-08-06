@@ -4,18 +4,21 @@ import {
   fetchMaintenanceProcesses,
 } from "../shared/maintenanceCompanyApi.js";
 import { fetchProcesses as fetchDomainReportProcesses } from "../../report/domain/domainReportApi.js";
-import { mapDomainGroupProcesses } from "../../report/domain/domainReportGroupProcesses.js";
 import {
   buildFormulaDisplayParenFromParts,
   formatSourcePercent,
   normalizeMaintenanceFormulaInput,
 } from "../../../shared/formula/index.js";
 import {
+  GROUP_PAYROLL_PROCESS_CODES,
+  mapGroupPayrollProcesses,
+} from "../../datacapture/lib/dataCaptureGroupOnlyProcesses.js";
+import {
   formulaMaintenanceScopeApiParams,
   formulaMaintenanceUsesGroupProcesses,
 } from "./formulaMaintenanceScope.js";
 
-const FORMULA_PAYROLL_PROCESS_CODES = new Set(["SALARY", "COMMISSION", "BONUS"]);
+const FORMULA_PAYROLL_PROCESS_CODES = new Set(GROUP_PAYROLL_PROCESS_CODES);
 
 /** ProcessSelect expects process_name; domain report rows use process / display_text. */
 export function mapProcessesForMaintenanceSelect(apiList, { groupPayrollShort = false } = {}) {
@@ -79,16 +82,15 @@ export { isBankOnlyCategoryCompany } from "../shared/maintenanceCompanyApi.js";
 export async function fetchProcesses(companyId, scope = null) {
   const payrollChannel = Boolean(scope?.c168Channel || scope?.companyPayrollChannel);
   if (payrollChannel) {
-    return [
-      { id: "PROFIT", process_name: "PROFIT", description: null },
-      { id: "SALARY", process_name: "SALARY", description: null },
-      { id: "COMMISSION", process_name: "COMMISSION", description: null },
-      { id: "BONUS", process_name: "BONUS", description: null },
-    ];
+    return GROUP_PAYROLL_PROCESS_CODES.map((code) => ({
+      id: code,
+      process_name: code,
+      description: null,
+    }));
   }
   if (scope && formulaMaintenanceUsesGroupProcesses(scope) && !payrollChannel) {
     const apiList = await fetchDomainReportProcesses(scope, { credentials: "include" });
-    return mapProcessesForMaintenanceSelect(mapDomainGroupProcesses(apiList), {
+    return mapProcessesForMaintenanceSelect(mapGroupPayrollProcesses(apiList), {
       groupPayrollShort: true,
     });
   }
@@ -243,11 +245,58 @@ export function createFormulaEditFormFromRow(row) {
 /** Source 列变更：同步更新 Formula 编辑框里的 * (source) 后缀。 */
 export function syncEditFormSourcePercent(form, newSourcePercent) {
   const base = normalizeMaintenanceFormulaInput(form.formula);
-  const source = formatSourcePercent(newSourcePercent);
+  // Keep the user's edit buffer intact. Values such as "", "0.", and "0.60"
+  // are valid intermediate states and must not be normalized on every keypress.
+  const sourceInput = newSourcePercent == null ? "" : String(newSourcePercent);
+  // Source accepts non-negative decimal numbers only. Reject invalid typing or
+  // pasted content while allowing intermediate states such as "." and "0.".
+  if (!/^(?:\d+(?:\.\d*)?|\.\d*)?$/.test(sourceInput)) {
+    return form;
+  }
   return {
     ...form,
-    source_percent: source,
-    formula: buildEditFormFormulaDisplay(base, source),
+    source_percent: sourceInput,
+    formula: buildEditFormFormulaDisplay(base, sourceInput),
+  };
+}
+
+function formulaLetters(value) {
+  return String(value ?? "").match(/[A-Za-z]/g) ?? [];
+}
+
+function isLetterSequenceSubset(candidateLetters, previousLetters) {
+  let previousIndex = 0;
+  for (const letter of candidateLetters) {
+    while (previousIndex < previousLetters.length && previousLetters[previousIndex] !== letter) {
+      previousIndex += 1;
+    }
+    if (previousIndex >= previousLetters.length) return false;
+    previousIndex += 1;
+  }
+  return true;
+}
+
+/** Formula edit: permit numeric/operators/reference syntax, but no newly typed letters. */
+export function syncEditFormFormulaInput(form, newFormula) {
+  const formulaInput = newFormula == null ? "" : String(newFormula);
+  if (!/^[0-9A-Za-z.$+\-*/()[\],\s]*$/.test(formulaInput)) {
+    return form;
+  }
+
+  const previousLetters = formulaLetters(form.formula);
+  const candidateLetters = formulaLetters(formulaInput);
+  if (!isLetterSequenceSubset(candidateLetters, previousLetters)) {
+    return form;
+  }
+
+  return { ...form, formula: formulaInput };
+}
+
+/** Description edit: alphabetic input is stored in uppercase. */
+export function syncEditFormDescriptionInput(form, newDescription) {
+  return {
+    ...form,
+    description: String(newDescription ?? "").toUpperCase(),
   };
 }
 

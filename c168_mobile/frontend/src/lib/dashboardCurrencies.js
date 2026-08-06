@@ -1,5 +1,6 @@
 import { buildApiUrl } from "../utils/apiUrl.js";
 import { fetchJson } from "./fetchJson.js";
+import { orderCurrencyCodesForCompany } from "./currencyOrder.js";
 import {
   companiesForPicker,
   normalizeGroupId,
@@ -69,10 +70,19 @@ async function mapPool(items, limit, mapper) {
   return results;
 }
 
+function resolveOrderCompanyId(companyId, companies, selectedGroup, groupsAllMode) {
+  const cid = Number(companyId);
+  if (Number.isFinite(cid) && cid > 0) return cid;
+  const rows = companiesForPicker(companies, { selectedGroup, groupsAllMode });
+  const first = Number(rows?.[0]?.id);
+  return Number.isFinite(first) && first > 0 ? first : null;
+}
+
 /**
  * Load currency pills like desktop: company Currency Setting (+ subsidiary scope when Group selected).
  * Company/Group "All" unions codes from visible companies.
  * Group-only uses scope account currencies (group ledger books).
+ * Final order matches desktop per-company order (not A–Z).
  */
 export async function fetchMobileCurrencyCodes({
   companyId,
@@ -85,6 +95,8 @@ export async function fetchMobileCurrencyCodes({
   const group = normalizeGroupId(selectedGroup);
   const hasCompany = Number.isFinite(Number(companyId)) && Number(companyId) > 0;
   const groupOnly = Boolean(group && !groupAllMode && !groupsAllMode && !hasCompany);
+  let codes = [];
+  let orderCompanyId = resolveOrderCompanyId(companyId, companies, selectedGroup, groupsAllMode);
 
   if (groupOnly) {
     // Prefer company Currency Setting union for the group (stable, no 403 spam).
@@ -96,45 +108,45 @@ export async function fetchMobileCurrencyCodes({
         .filter((id) => Number.isFinite(id) && id > 0)
         .slice(0, 20);
       if (ids.length) {
+        orderCompanyId = ids[0];
         const parts = await mapPool(ids, 5, async (id) => {
           if (signal?.aborted) return [];
           return fetchCompanyCurrencySettingCodes(id, group, signal);
         });
         const merged = [...new Set(parts.flat())];
-        if (merged.length) return merged;
+        if (merged.length) codes = merged;
       }
     } catch (e) {
       if (e?.name === "AbortError") throw e;
     }
 
-    try {
-      const q = new URLSearchParams({
-        view_group: group,
-        group_id: group,
-        group_only: "1",
-      });
-      const { res, json } = await fetchJson(
-        buildApiUrl(`api/transactions/get_scope_account_currencies_api.php?${q}`),
-        { signal },
-      );
-      // Soft-fail 403/5xx — browser may still log the network line; avoid retry storms.
-      if (res.ok && json?.success && Array.isArray(json.data) && json.data.length) {
-        const codes = normalizeCodes(json.data);
-        if (codes.length) return codes;
+    if (!codes.length) {
+      try {
+        const q = new URLSearchParams({
+          view_group: group,
+          group_id: group,
+          group_only: "1",
+        });
+        const { res, json } = await fetchJson(
+          buildApiUrl(`api/transactions/get_scope_account_currencies_api.php?${q}`),
+          { signal },
+        );
+        // Soft-fail 403/5xx — browser may still log the network line; avoid retry storms.
+        if (res.ok && json?.success && Array.isArray(json.data) && json.data.length) {
+          codes = normalizeCodes(json.data);
+        }
+      } catch (e) {
+        if (e?.name === "AbortError") throw e;
       }
-    } catch (e) {
-      if (e?.name === "AbortError") throw e;
     }
-    return ["MYR"];
-  }
-
-  if (groupsAllMode || groupAllMode) {
+  } else if (groupsAllMode || groupAllMode) {
     const rows = companiesForPicker(companies, { selectedGroup, groupsAllMode });
     const ids = rows
       .map((c) => Number(c.id))
       .filter((id) => Number.isFinite(id) && id > 0)
       .slice(0, 30);
     if (!ids.length) return ["MYR"];
+    orderCompanyId = ids[0];
 
     // Cap concurrency so All-mode does not stall bootstrap on weak networks.
     const parts = await mapPool(ids, 6, async (id) => {
@@ -143,10 +155,12 @@ export async function fetchMobileCurrencyCodes({
       const vg = groupsAllMode ? resolveViewGroupForCompany(row, selectedGroup) : group;
       return fetchCompanyCurrencySettingCodes(id, vg, signal);
     });
-    const merged = [...new Set(parts.flat())];
-    return merged.length ? merged : ["MYR"];
+    codes = [...new Set(parts.flat())];
+  } else {
+    codes = await fetchCompanyCurrencySettingCodes(companyId, group, signal);
+    orderCompanyId = Number(companyId);
   }
 
-  const codes = await fetchCompanyCurrencySettingCodes(companyId, group, signal);
-  return codes.length ? codes : ["MYR"];
+  if (!codes.length) return ["MYR"];
+  return orderCurrencyCodesForCompany(codes, orderCompanyId, signal);
 }

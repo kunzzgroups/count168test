@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useOverlayLock } from "../../hooks/useOverlayLock.js";
 import {
   BANK_PROCESS_CONTRACT_OPTIONS,
   BANK_PROCESS_TYPES,
   calcBankNetProfitDisplay,
+  contractBillingEndYmdForBankForm,
   EMPTY_BANK_FORM,
   fetchBankCountries,
   fetchBankPickAccounts,
   fetchBanksByCountry,
   formatBankAccountDisplay,
   formatBankMoneyFixed2,
+  parseBankContractRentalMonthsForDayEnd,
   parseProfitSharingToRows,
   profitSharingDisplayLabel,
   sanitizeBankMoneyTyping,
@@ -18,6 +20,7 @@ import {
 } from "../../lib/bankProcessApi.js";
 import { formatDisplayDate } from "../../lib/dashboardDateUtils.js";
 import { Pill } from "../dashboard/FilterSheet.jsx";
+import { BankProcessAccountQuickSheet } from "./BankProcessAccountQuickSheet.jsx";
 import { BankProcessProfitSharingSheet } from "./BankProcessProfitSharingSheet.jsx";
 
 const FREQ_OPTIONS = [
@@ -116,12 +119,17 @@ export function BankProcessFormSheet({
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [psOpen, setPsOpen] = useState(false);
   const [psSeed, setPsSeed] = useState(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountTargetField, setAccountTargetField] = useState("");
+  const contractSyncKeysRef = useRef({ day_start: "", contract: "", frequency: "" });
 
-  useOverlayLock(open && !psOpen, onClose);
+  useOverlayLock(open && !psOpen && !accountOpen, onClose);
 
   useEffect(() => {
     if (!open) {
       setPsOpen(false);
+      setAccountOpen(false);
+      contractSyncKeysRef.current = { day_start: "", contract: "", frequency: "" };
       return;
     }
     setForm(initialForm ? { ...EMPTY_BANK_FORM, ...initialForm } : { ...EMPTY_BANK_FORM });
@@ -172,11 +180,50 @@ export function BankProcessFormSheet({
     setForm((f) => (String(f.profit) === next ? f : { ...f, profit: next }));
   }, [open, form.cost, form.price, form.profit_sharing]);
 
+  useEffect(() => {
+    if (!open) {
+      contractSyncKeysRef.current = { day_start: "", contract: "", frequency: "" };
+      return;
+    }
+    const frequencyNorm = String(form.day_start_frequency || "1st_of_every_month");
+    if (frequencyNorm === "once" || frequencyNorm === "week" || frequencyNorm === "day") return;
+    if (editMode && form.day_end_monthly_cap_enabled && frequencyNorm === "1st_of_every_month") return;
+
+    const start = String(form.day_start || "").trim();
+    const contract = String(form.contract || "").trim();
+    const frequency = frequencyNorm;
+    const prev = contractSyncKeysRef.current;
+    const keysChanged =
+      prev.day_start !== start || prev.contract !== contract || prev.frequency !== frequency;
+    contractSyncKeysRef.current = { day_start: start, contract, frequency };
+    if (!keysChanged || !start) return;
+
+    const term = parseBankContractRentalMonthsForDayEnd(contract);
+    const calculated = term ? contractBillingEndYmdForBankForm(start, term, frequency) : null;
+    if (!calculated) {
+      setForm((prevForm) => {
+        const cur = String(prevForm.day_end || "").trim();
+        if (cur && cur < start) return { ...prevForm, day_end: start };
+        return prevForm;
+      });
+      return;
+    }
+    setForm((prevForm) => (prevForm.day_end === calculated ? prevForm : { ...prevForm, day_end: calculated }));
+  }, [
+    open,
+    editMode,
+    form.day_start,
+    form.contract,
+    form.day_start_frequency,
+    form.day_end_monthly_cap_enabled,
+  ]);
+
   const fq = String(form.day_start_frequency || "1st_of_every_month");
   const dayEndDisabled = fq === "once" || fq === "week" || fq === "day" || fq === "monthly";
   const contractDisabled = fq === "once" || fq === "week" || fq === "day";
   const showCap =
     editMode && fq === "1st_of_every_month" && String(form.day_end || "").trim().length > 0;
+  const dayEndLockedByCap = showCap && !!form.day_end_monthly_cap_enabled;
 
   const profitSharingRows = useMemo(
     () => parseProfitSharingToRows(form.profit_sharing, accounts),
@@ -214,6 +261,23 @@ export function BankProcessFormSheet({
     setPsOpen(false);
   };
 
+  const openAddAccount = (field) => {
+    setAccountTargetField(field);
+    setAccountOpen(true);
+  };
+
+  const handleAccountCreated = async (created) => {
+    try {
+      const list = await fetchBankPickAccounts(companyId);
+      setAccounts(list);
+    } catch {
+      /* keep existing list; still apply id */
+    }
+    if (accountTargetField) {
+      patch({ [accountTargetField]: String(created.id) });
+    }
+  };
+
   const handleSave = async () => {
     if (busy) return;
     onBusy?.(true);
@@ -239,7 +303,7 @@ export function BankProcessFormSheet({
           type="button"
           className="m-sheet-backdrop"
           onClick={() => {
-            if (!psOpen) onClose?.();
+            if (!psOpen && !accountOpen) onClose?.();
           }}
           aria-label="Close"
         />
@@ -330,19 +394,30 @@ export function BankProcessFormSheet({
             </Section>
 
             <Section title={i18n.bankSectionDetail}>
-              <Field label={i18n.bankSupplier}>
-                <select
-                  value={form.card_merchant_id || ""}
-                  onChange={(e) => patch({ card_merchant_id: e.target.value })}
+              <div className="m-bp-field-with-add">
+                <Field label={i18n.bankSupplier}>
+                  <select
+                    value={form.card_merchant_id || ""}
+                    onChange={(e) => patch({ card_merchant_id: e.target.value })}
+                  >
+                    <option value="">{i18n.bankSelectAccount}</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={String(a.id)}>
+                        {accountLabel(a)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <button
+                  type="button"
+                  className="m-bp-inline-add tap-scale"
+                  onClick={() => openAddAccount("card_merchant_id")}
+                  disabled={busy}
+                  aria-label={i18n.bankAddAccountTitle}
                 >
-                  <option value="">{i18n.bankSelectAccount}</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={String(a.id)}>
-                      {accountLabel(a)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+                  <i className="fas fa-plus" aria-hidden="true" />
+                </button>
+              </div>
               <Field label={i18n.bankBuyPrice}>
                 <input
                   type="text"
@@ -353,19 +428,30 @@ export function BankProcessFormSheet({
                   placeholder="0.00"
                 />
               </Field>
-              <Field label={i18n.bankCustomer}>
-                <select
-                  value={form.customer_id || ""}
-                  onChange={(e) => patch({ customer_id: e.target.value })}
+              <div className="m-bp-field-with-add">
+                <Field label={i18n.bankCustomer}>
+                  <select
+                    value={form.customer_id || ""}
+                    onChange={(e) => patch({ customer_id: e.target.value })}
+                  >
+                    <option value="">{i18n.bankSelectAccount}</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={String(a.id)}>
+                        {accountLabel(a)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <button
+                  type="button"
+                  className="m-bp-inline-add tap-scale"
+                  onClick={() => openAddAccount("customer_id")}
+                  disabled={busy}
+                  aria-label={i18n.bankAddAccountTitle}
                 >
-                  <option value="">{i18n.bankSelectAccount}</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={String(a.id)}>
-                      {accountLabel(a)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+                  <i className="fas fa-plus" aria-hidden="true" />
+                </button>
+              </div>
               <Field label={i18n.bankSellPrice}>
                 <input
                   type="text"
@@ -376,19 +462,30 @@ export function BankProcessFormSheet({
                   placeholder="0.00"
                 />
               </Field>
-              <Field label={i18n.bankProfitAccount}>
-                <select
-                  value={form.profit_account_id || ""}
-                  onChange={(e) => patch({ profit_account_id: e.target.value })}
+              <div className="m-bp-field-with-add">
+                <Field label={i18n.bankProfitAccount}>
+                  <select
+                    value={form.profit_account_id || ""}
+                    onChange={(e) => patch({ profit_account_id: e.target.value })}
+                  >
+                    <option value="">{i18n.bankSelectAccount}</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={String(a.id)}>
+                        {accountLabel(a)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <button
+                  type="button"
+                  className="m-bp-inline-add tap-scale"
+                  onClick={() => openAddAccount("profit_account_id")}
+                  disabled={busy}
+                  aria-label={i18n.bankAddAccountTitle}
                 >
-                  <option value="">{i18n.bankSelectAccount}</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={String(a.id)}>
-                      {accountLabel(a)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+                  <i className="fas fa-plus" aria-hidden="true" />
+                </button>
+              </div>
               <Field label={i18n.bankProfit}>
                 <input type="text" readOnly value={form.profit || ""} placeholder="0.00" />
               </Field>
@@ -409,7 +506,7 @@ export function BankProcessFormSheet({
                 label={i18n.bankDayEnd}
                 value={form.day_end || ""}
                 onChange={(v) => patch({ day_end: v })}
-                disabled={dayEndDisabled}
+                disabled={dayEndDisabled || dayEndLockedByCap}
               />
               {showCap ? (
                 <label className="m-bp-check-row">
@@ -562,6 +659,16 @@ export function BankProcessFormSheet({
         accounts={accounts}
         initialRows={psSeed}
         onConfirm={handlePsConfirm}
+      />
+      <BankProcessAccountQuickSheet
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        i18n={i18n}
+        companyId={companyId}
+        busy={busy}
+        onBusy={onBusy}
+        onCreated={(created) => void handleAccountCreated(created)}
+        onError={onError}
       />
     </>
   );

@@ -125,6 +125,7 @@ export async function fetchSummaryTemplates({
   companyId,
   idProducts,
   processId,
+  processCode = "",
   captureId = null,
 }) {
   const params = new URLSearchParams({ action: "templates" });
@@ -134,10 +135,17 @@ export async function fetchSummaryTemplates({
   );
   const url = base.includes("?") ? `${base}&${params}` : `${base}?${params}`;
 
+  const code = String(processCode || "").trim().toUpperCase();
   const body = {
     idProducts: [...new Set((idProducts || []).map((v) => String(v || "").trim()).filter(Boolean))],
-    processId,
   };
+  if (processId != null && processId !== "" && Number(processId) > 0) {
+    body.processId = Number(processId);
+  } else if (processId != null && processId !== "" && !Number.isFinite(Number(processId))) {
+    // Pure Group may pass process code as processId ("SALARY").
+    body.processCode = String(processId).trim().toUpperCase();
+  }
+  if (code) body.processCode = code;
   if (companyId != null && Number(companyId) > 0) {
     body.company_id = Number(companyId);
   }

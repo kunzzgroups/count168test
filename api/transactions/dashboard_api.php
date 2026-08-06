@@ -67,6 +67,43 @@ function dashboard_bootstrap_cache_remember(string $key, callable $fn)
     return $value;
 }
 
+/**
+ * Cross-request cache (APCu) for dashboardComputeSubsidiaryEarningsTotal()'s per-company
+ * dashboard_api_capture() calls — the recursive full-pipeline recompute that runs once per
+ * subsidiary company on every group-aggregate dashboard load. Invalidated on any ledger/
+ * ownership write via realtime_publish() (see api/includes/realtime.php); the TTL below is
+ * only a safety net for a write path that somehow doesn't go through that chokepoint.
+ * No-ops silently if the apcu extension isn't installed — caching becomes a no-op, not a fatal.
+ */
+const DASHBOARD_SUBSIDIARY_CAPTURE_CACHE_PREFIX = 'dash_cap_v1:';
+const DASHBOARD_SUBSIDIARY_CAPTURE_CACHE_TTL_SECONDS = 300;
+
+function dashboard_subsidiary_capture_cache_key(array $captureParams): string
+{
+    ksort($captureParams);
+
+    return DASHBOARD_SUBSIDIARY_CAPTURE_CACHE_PREFIX . md5((string) json_encode($captureParams));
+}
+
+function dashboard_subsidiary_capture_cache_get(string $key): ?array
+{
+    if (!function_exists('apcu_fetch')) {
+        return null;
+    }
+    $success = false;
+    $value = apcu_fetch($key, $success);
+
+    return ($success && is_array($value)) ? $value : null;
+}
+
+function dashboard_subsidiary_capture_cache_set(string $key, array $value): void
+{
+    if (!function_exists('apcu_store')) {
+        return;
+    }
+    apcu_store($key, $value, DASHBOARD_SUBSIDIARY_CAPTURE_CACHE_TTL_SECONDS);
+}
+
 
 /** When set, trend series GROUP BY month (YYYY-MM) instead of day — matches FE shouldAggregateChartByMonth. */
 function dashboard_api_chart_monthly(): bool
@@ -396,19 +433,21 @@ function dashboardEnsureGroupRowForCode(PDO $pdo, string $groupCode): void
     }
     try {
         $stmt = $pdo->prepare("
-            INSERT INTO `groups` (`group_code`, `group_name`, `owner_id`)
+            INSERT INTO `groups` (`group_code`, `group_name`, `owner_id`, `permissions`)
             SELECT DISTINCT
                 UPPER(TRIM(c.group_id)),
                 UPPER(TRIM(c.group_id)),
-                c.owner_id
+                c.owner_id,
+                ?
             FROM company c
             WHERE UPPER(TRIM(c.group_id)) = ?
               AND TRIM(COALESCE(c.group_id, '')) <> ''
             LIMIT 1
             ON DUPLICATE KEY UPDATE
-                `owner_id` = COALESCE(`groups`.`owner_id`, VALUES(`owner_id`))
+                `owner_id` = COALESCE(`groups`.`owner_id`, VALUES(`owner_id`)),
+                `permissions` = COALESCE(`groups`.`permissions`, VALUES(`permissions`))
         ");
-        $stmt->execute([$g]);
+        $stmt->execute(['["Games"]', $g]);
     } catch (Throwable $e) {
         error_log('dashboardEnsureGroupRowForCode(' . $g . '): ' . $e->getMessage());
     }
@@ -1672,9 +1711,19 @@ function dashboardComputeSubsidiaryEarningsTotal(
             if ($filterCurrencyCode !== null && trim($filterCurrencyCode) !== '') {
                 $captureParams['currency'] = $filterCurrencyCode;
             }
-            // Full company dashboard (incl. EXPENSES) — never kpi_only; group Profit = Σ company Earnings.
+            // Parent kpi_only: skip daily GROUP BY on each subsidiary capture (chart path still full).
+            if ($kpiOnly) {
+                $captureParams['kpi_only'] = '1';
+            }
 
-            $cap = dashboard_api_capture($captureParams);
+            $captureCacheKey = dashboard_subsidiary_capture_cache_key($captureParams);
+            $cap = dashboard_subsidiary_capture_cache_get($captureCacheKey);
+            if ($cap === null) {
+                $cap = dashboard_api_capture($captureParams);
+                if (!empty($cap['success']) && is_array($cap['data'] ?? null)) {
+                    dashboard_subsidiary_capture_cache_set($captureCacheKey, $cap);
+                }
+            }
             if (empty($cap['success']) || !is_array($cap['data'] ?? null)) {
                 continue;
             }
@@ -1975,6 +2024,7 @@ function dashboardBuildGroupScopedSummary(
                 $accountIds,
                 $accountIds,
                 [$groupScopeId, $dateFrom, $dateTo],
+                $accountIds,
                 $accountIds,
                 $currencyFilterParams
             );
@@ -3498,10 +3548,10 @@ try {
         } else {
             $userRole = isset($_SESSION['role']) ? strtolower($_SESSION['role']) : '';
             if ($userRole === 'owner') {
-                $owner_id = $_SESSION['owner_id'] ?? $_SESSION['user_id'];
-                $stmt = $pdo->prepare("SELECT id FROM company WHERE id = ? AND owner_id = ?");
-                $stmt->execute([$requestedCompanyId, $owner_id]);
-                if ($stmt->fetchColumn()) {
+                // Prefer real_owner_id: session owner_id is swapped to the native owner
+                // while viewing an external/partner company.
+                $owner_id = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $_SESSION['user_id'] ?? 0);
+                if (gc_owner_has_company_access($pdo, $requestedCompanyId, $owner_id)) {
                     $company_id = $requestedCompanyId;
                 } elseif (
                     $viewGroupForAccess !== null

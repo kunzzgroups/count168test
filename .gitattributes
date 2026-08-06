@@ -1,0 +1,4 @@
+# Shell scripts must stay LF on checkout/sync; CRLF breaks `set -o pipefail` on Linux EC2.
+*.sh text eol=lf
+*.bash text eol=lf
+deploy/systemd/*.service text eol=lf

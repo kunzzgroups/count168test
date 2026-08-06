@@ -4,6 +4,7 @@ import { SECONDARY_VERIFY_I18N, localizeAuthApiMessage } from "../../translateFi
 import { buildApiUrl } from "../../utils/apiUrl.js";
 import { resolveMobileLandingPath } from "../../utils/mobilePermissions.js";
 import { useAuthBackground } from "./useAuthBackground.js";
+import PasswordInput from "../../components/PasswordInput.jsx";
 
 const VARIANT_CONFIG = {
   owner: {
@@ -192,10 +193,9 @@ export default function SecondaryPasswordPage({ variant }) {
             <form className="sc-login-form" onSubmit={onSubmit}>
               <div className="sc-login-input-row">
                 <i className="fas fa-lock sc-login-input-icon" />
-                <input
+                <PasswordInput
                   id="secondary_password"
                   ref={inputRef}
-                  type="password"
                   inputMode="numeric"
                   className="sc-login-input"
                   placeholder={i18n.placeholder}
@@ -207,6 +207,8 @@ export default function SecondaryPasswordPage({ variant }) {
                   value={password}
                   onChange={onChange}
                   onPaste={onPaste}
+                  showLabel={i18n.showPassword}
+                  hideLabel={i18n.hidePassword}
                   onFocus={(e) => {
                     requestAnimationFrame(() => {
                       e.target.scrollIntoView({

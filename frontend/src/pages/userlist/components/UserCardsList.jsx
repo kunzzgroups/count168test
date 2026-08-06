@@ -61,6 +61,13 @@ function UserCardsList({
               <span
                 className={`role-badge ${normRole(r.status) === "active" ? "status-active" : "status-inactive"} ${caps.canToggleStatus && !userMutationsBlocked ? "status-clickable" : ""}`}
                 onClick={() => !userMutationsBlocked && caps.canToggleStatus && onToggleStatus(r)}
+                title={
+                  userMutationsBlocked
+                    ? t("readOnlyActionBlocked")
+                    : caps.canToggleStatus
+                      ? t("clickToggleStatus")
+                      : undefined
+                }
               >
                 {formatUserStatusDisplay(t, r.status)}
               </span>

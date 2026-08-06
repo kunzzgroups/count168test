@@ -8,8 +8,8 @@ const processListRouteWarmInflight = new Map();
 const bankProcessListRouteWarmCache = new Map();
 const bankProcessListRouteWarmInflight = new Map();
 
-function processListRouteCacheKey(companyId, { search = "", showInactive = false, showAll = false } = {}) {
-  return `${Number(companyId)}|${String(search || "").trim()}|${showInactive ? 1 : 0}|${showAll ? 1 : 0}`;
+function processListRouteCacheKey(companyId, { search = "", showActive = false, showInactive = false, showAll = false } = {}) {
+  return `${Number(companyId)}|${String(search || "").trim()}|${showActive ? 1 : 0}|${showInactive ? 1 : 0}|${showAll ? 1 : 0}`;
 }
 
 /** Sidebar hover / idle warm — consumed on ProcessListPage boot. */
@@ -31,11 +31,25 @@ export function warmProcessListRouteCache(companyId, opts = {}) {
   processListRouteWarmInflight.set(key, promise);
 }
 
+/** Sync peek for first paint — does not consume (boot still resolve/consume). */
+export function peekProcessListRouteCache(companyId, opts = {}) {
+  const key = processListRouteCacheKey(Number(companyId), opts);
+  return processListRouteWarmCache.get(key) || null;
+}
+
 export function consumeProcessListRouteCache(companyId, opts = {}) {
   const key = processListRouteCacheKey(Number(companyId), opts);
   const cached = processListRouteWarmCache.get(key) || null;
   if (cached) processListRouteWarmCache.delete(key);
   return cached;
+}
+
+/** Drop Games + Bank process list warm caches (accounts/process realtime). */
+export function clearProcessListRouteWarmCaches() {
+  processListRouteWarmCache.clear();
+  processListRouteWarmInflight.clear();
+  bankProcessListRouteWarmCache.clear();
+  bankProcessListRouteWarmInflight.clear();
 }
 
 /** Use sidebar warm cache, in-flight warm, or fetch once. */
@@ -62,7 +76,7 @@ export async function resolveProcessListRouteCache(companyId, opts = {}) {
 /** Games process list row + currency pill payload (company switch cache / hover warm). */
 export async function fetchGamesProcessListSlice(
   companyId,
-  { search = "", showInactive = false, showAll = false, signal } = {},
+  { search = "", showActive = false, showInactive = false, showAll = false, signal } = {},
 ) {
   const cid = Number(companyId);
   if (!Number.isFinite(cid) || cid <= 0) {
@@ -74,10 +88,15 @@ export async function fetchGamesProcessListSlice(
   listUrl.searchParams.set("company_id", String(cid));
   const q = String(search || "").trim();
   if (q) listUrl.searchParams.set("search", q);
+  if (showActive) listUrl.searchParams.set("showActive", "1");
   if (showInactive) listUrl.searchParams.set("showInactive", "1");
   if (showAll) listUrl.searchParams.set("showAll", "1");
 
-  const curUrl = buildApiUrl(`api/transactions/get_company_currencies_api.php?company_id=${cid}`);
+  const curQs = new URLSearchParams({
+    company_id: String(cid),
+    subsidiary_accounts_only: "1",
+  });
+  const curUrl = buildApiUrl(`api/transactions/get_company_currencies_api.php?${curQs}`);
   const ordUrl = buildApiUrl(
     `api/transactions/user_currency_order_api.php?company_id=${cid}&_t=${Date.now()}`,
   );
@@ -99,7 +118,7 @@ export async function fetchGamesProcessListSlice(
 
     let currencyCodes = null;
     if (curRes.ok && curJson?.success && Array.isArray(curJson.data)) {
-      const codes = curJson.data.map((r) => String(r.code).toUpperCase());
+      const codes = curJson.data.map((r) => String(r.code || "").toUpperCase()).filter(Boolean);
       let savedOrder = null;
       if (ordRes) {
         try {
@@ -175,7 +194,7 @@ export async function resolveBankProcessListRouteCache(companyId, opts = {}) {
 }
 
 /** Warm Bank Process List data before route swap (Games → Bank). */
-export async function prefetchBankProcessListPayload(companyId, { search = "" } = {}) {
+export async function prefetchBankProcessListPayload(companyId, { search = "", signal } = {}) {
   const cid = Number(companyId);
   if (!cid) return { rows: null, currencyCodes: null };
 
@@ -186,17 +205,23 @@ export async function prefetchBankProcessListPayload(companyId, { search = "" } 
   const q = String(search || "").trim();
   if (q) listUrl.searchParams.set("search", q);
 
-  const curUrl = buildApiUrl(`api/transactions/get_company_currencies_api.php?company_id=${cid}`);
+  const curQs = new URLSearchParams({
+    company_id: String(cid),
+    subsidiary_accounts_only: "1",
+  });
+  const curUrl = buildApiUrl(`api/transactions/get_company_currencies_api.php?${curQs}`);
   const ordUrl = buildApiUrl(
     `api/transactions/user_currency_order_api.php?company_id=${cid}&_t=${Date.now()}`,
   );
 
   try {
+    const fetchOpts = { credentials: "include", signal };
     const [listRes, curRes, ordRes] = await Promise.all([
-      fetch(listUrl.toString(), { credentials: "include" }),
-      fetch(curUrl, { credentials: "include" }),
-      fetch(ordUrl, { credentials: "include" }).catch(() => null),
+      fetch(listUrl.toString(), fetchOpts),
+      fetch(curUrl, fetchOpts),
+      fetch(ordUrl, fetchOpts).catch(() => null),
     ]);
+    if (signal?.aborted) return { rows: null, currencyCodes: null };
     const listJson = await listRes.json();
     const curJson = await curRes.json();
 
@@ -207,7 +232,7 @@ export async function prefetchBankProcessListPayload(companyId, { search = "" } 
 
     let currencyCodes = null;
     if (curRes.ok && curJson?.success && Array.isArray(curJson.data)) {
-      const codes = curJson.data.map((r) => String(r.code).toUpperCase());
+      const codes = curJson.data.map((r) => String(r.code || "").toUpperCase()).filter(Boolean);
       let savedOrder = null;
       if (ordRes) {
         try {
@@ -221,7 +246,10 @@ export async function prefetchBankProcessListPayload(companyId, { search = "" } 
     }
 
     return { rows, currencyCodes };
-  } catch {
+  } catch (err) {
+    if (err?.name === "AbortError" || signal?.aborted) {
+      return { rows: null, currencyCodes: null };
+    }
     return { rows: null, currencyCodes: null };
   }
 }

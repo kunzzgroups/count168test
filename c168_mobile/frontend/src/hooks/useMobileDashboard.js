@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildApiUrl } from "../utils/apiUrl.js";
 import { buildChartRows, resolveDailyChartXAxisTicks } from "../lib/dashboardChart.js";
+import { shouldAggregateChartByMonth } from "../lib/dashboardDateUtils.js";
 import { DASHBOARD_PROFIT_COLOR } from "../lib/dashboardConstants.js";
 import {
   defaultDashboardDateRange,
@@ -110,7 +111,7 @@ export function useMobileDashboard() {
   const [currenciesReady, setCurrenciesReady] = useState(false);
   const [dateFrom, setDateFrom] = useState(defaults.dateFrom);
   const [dateTo, setDateTo] = useState(defaults.dateTo);
-  const [activePreset, setActivePreset] = useState("thisYear");
+  const [activePreset, setActivePreset] = useState("thisMonth");
   const [bootstrap, setBootstrap] = useState(null);
   const [loadedScopeKey, setLoadedScopeKey] = useState("");
   const loadedScopeKeyRef = useRef("");
@@ -290,6 +291,7 @@ export function useMobileDashboard() {
             groupAllMode,
             groupsAllMode,
             companies,
+            me,
           },
           ac.signal,
         );
@@ -331,6 +333,7 @@ export function useMobileDashboard() {
     loadBootstrap,
     i18n.loadError,
     scopeKey,
+    me,
   ]);
 
   const useConvertedEarnings = currencies.length > 1;
@@ -430,8 +433,8 @@ export function useMobileDashboard() {
   }, [activePreset, bootstrap, i18n]);
 
   const chartRows = useMemo(
-    () => buildChartRows(bootstrap?.current, dateFrom, dateTo),
-    [bootstrap, dateFrom, dateTo],
+    () => buildChartRows(bootstrap?.current, dateFrom, dateTo, kpiOwnershipOpts),
+    [bootstrap, dateFrom, dateTo, kpiOwnershipOpts],
   );
 
   const chartSeries = useMemo(() => {
@@ -446,9 +449,14 @@ export function useMobileDashboard() {
     return series;
   }, [i18n, kpi?.showEarnings]);
 
+  const chartIsMonthly = useMemo(
+    () => shouldAggregateChartByMonth(dateFrom, dateTo),
+    [dateFrom, dateTo],
+  );
+
   const chartXAxisLayout = useMemo(() => {
-    return resolveDailyChartXAxisTicks(chartRows.length);
-  }, [chartRows.length]);
+    return resolveDailyChartXAxisTicks(chartRows.length, { monthly: chartIsMonthly });
+  }, [chartRows.length, chartIsMonthly]);
 
   const panelMetric = kpi?.netProfit ?? null;
 
@@ -846,6 +854,7 @@ export function useMobileDashboard() {
     chartSeries,
     chartVisible,
     chartXAxisLayout,
+    chartIsMonthly,
     toggleChartSeries,
     earningsCurrencyRows,
     summaryValue,

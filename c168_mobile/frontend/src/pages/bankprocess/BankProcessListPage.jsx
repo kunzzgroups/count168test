@@ -18,6 +18,7 @@ import {
   matchesBankProcessStatusFilters,
   postAccountingDueRows,
   resendAccountingDue,
+  deleteBankProcesses,
   updateBankRemark,
 } from "../../lib/bankProcessApi.js";
 import { periodPresetRange } from "../../lib/dashboardDateUtils.js";
@@ -356,6 +357,22 @@ export default function BankProcessListPage() {
     }
   };
 
+  const handleDeleteProcess = async (row) => {
+    if (!row?.id || busy) return;
+    setBusy(true);
+    try {
+      await deleteBankProcesses([row.id]);
+      notify(i18n.bankDeleteOk);
+      setActionRow(null);
+      void loadList();
+      void loadDue({ silent: true });
+    } catch (e) {
+      notify(e?.message || i18n.bankDeleteFailed, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const stickyBar = (
     <div className="m-mt-sticky">
       <MaintenanceFilterBar
@@ -504,6 +521,7 @@ export default function BankProcessListPage() {
             onOpenRemark={() => setRemarkOpen(true)}
             onOpenResend={() => setResendOpen(true)}
             onOpenEdit={() => void openEditForm()}
+            onDelete={(row) => void handleDeleteProcess(row)}
           />
           <BankProcessRemarkSheet
             open={remarkOpen}

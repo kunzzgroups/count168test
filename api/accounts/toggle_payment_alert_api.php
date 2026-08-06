@@ -91,6 +91,10 @@ try {
 
     $newPaymentAlert = $current['payment_alert'] == 1 ? 0 : 1;
     updateAccountPaymentAlert($pdo, $newPaymentAlert, $id);
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([$permCompanyId], 'accounts', 'toggle_payment_alert');
+
     api_success(['newPaymentAlert' => $newPaymentAlert], 'Payment alert 更新成功');
 } catch (Exception $e) {
     api_error($e->getMessage(), 400);

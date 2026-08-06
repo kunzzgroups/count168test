@@ -138,12 +138,29 @@ function shouldMergeRowTailFromResolvedSourcesPhp($effectiveSource) {
     return isSourceOnePhp($effectiveSource);
 }
 
+/**
+ * A trailing "* (X)" is only a genuine Source coefficient when X is a plain numeric literal
+ * (e.g. "0.95", "1.71625"). Formulas whose own last term is a parenthesized sub-expression
+ * (e.g. "3232*(5555/3232-0.0025)") also match the trailing-paren regex, but X there is an
+ * unevaluated expression, not a coefficient - accepting it would eval the formula's own
+ * arithmetic and misreport its result as "Source". Mirrors JS's isValidEffectiveSourceFromParen,
+ * which relies on Number()/isFinite() to reject non-literal expressions the same way.
+ */
+function isPlainNumericSourceValuePhp($value) {
+    if ($value === null) {
+        return false;
+    }
+    $v = trim(str_replace('%', '', (string) $value));
+
+    return $v !== '' && is_numeric($v);
+}
+
 function resolveEffectiveSourcePercentForRow(array $row) {
     $enableDb = isset($row['enable_source_percent']) ? (int) $row['enable_source_percent'] : 0;
 
     $formulaDisplay = isset($row['formula_display']) ? (string) $row['formula_display'] : '';
     $fromDisplay = parseTrailingSourceParenValuePhp($formulaDisplay);
-    if ($fromDisplay !== null && !isSourceOnePhp($fromDisplay) && !isDuplicateCoefficientAsSourcePhp($fromDisplay, $formulaDisplay)) {
+    if ($fromDisplay !== null && isPlainNumericSourceValuePhp($fromDisplay) && !isSourceOnePhp($fromDisplay) && !isDuplicateCoefficientAsSourcePhp($fromDisplay, $formulaDisplay)) {
         return [
             'source' => formatSourcePercentForMaintenanceList($fromDisplay),
             'enable' => $enableDb ? 1 : 1,
@@ -152,7 +169,7 @@ function resolveEffectiveSourcePercentForRow(array $row) {
 
     $lastSourceValue = isset($row['last_source_value']) ? (string) $row['last_source_value'] : '';
     $fromLsv = parseTrailingSourceParenValuePhp($lastSourceValue);
-    if ($fromLsv !== null && !isSourceOnePhp($fromLsv) && !isDuplicateCoefficientAsSourcePhp($fromLsv, $lastSourceValue)) {
+    if ($fromLsv !== null && isPlainNumericSourceValuePhp($fromLsv) && !isSourceOnePhp($fromLsv) && !isDuplicateCoefficientAsSourcePhp($fromLsv, $lastSourceValue)) {
         return [
             'source' => formatSourcePercentForMaintenanceList($fromLsv),
             'enable' => $enableDb ? 1 : 1,

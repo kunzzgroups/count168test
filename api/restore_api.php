@@ -132,6 +132,22 @@ try {
     }
 
     $logCompanyOut = trim((string) ($logRow['company_id'] ?? ''));
+    $restoreCompanyId = (int) $logCompanyOut;
+    require_once __DIR__ . '/includes/realtime.php';
+    require_once __DIR__ . '/includes/ledger_realtime.php';
+    if ($restoreCompanyId > 0) {
+        $listScope = [
+            'mode' => 'company',
+            'company_id' => $restoreCompanyId,
+            'group_scope_id' => 0,
+        ];
+        realtime_publish_scope($listScope, 'maintenance', 'restore');
+        // Restored rows may be accounts, transactions, captures, etc.
+        realtime_publish_companies([$restoreCompanyId], 'accounts', 'restore');
+        tx_ledger_realtime_publish_scope($listScope, 'restore');
+        realtime_publish_companies([$restoreCompanyId], 'datacapture', 'restore');
+    }
+
     api_success([
         'log_id' => $logId,
         'log_company_id' => $logCompanyOut,

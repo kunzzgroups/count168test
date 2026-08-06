@@ -1143,11 +1143,17 @@ try {
         $search_dcd_process_filter = dcSqlGroupProcessFilter('p');
     }
 
-    // Member：target_account_id 仅可为当前会话账号在同公司的关联闭包内 id，防止越权查询他人余额
+    // Member：target_account_id 仅可为当前会话账号在同公司/集团账本的关联闭包内 id，防止越权查询他人余额
     if ($isMemberUser && !empty($target_account_ids)) {
         $pivotId = member_session_canonical_account_id();
         if ($pivotId > 0) {
-            $allowed = member_linked_member_closure_ids($pdo, $pivotId, (int) $search_perm_company_id);
+            $allowed = (($search_list_scope['mode'] ?? '') === 'group')
+                ? member_linked_member_closure_ids_in_scope($pdo, $pivotId, [
+                    'mode' => 'group',
+                    'group_pk' => (int) ($search_list_scope['group_scope_id'] ?? 0),
+                    'company_id' => 0,
+                ])
+                : member_linked_member_closure_ids($pdo, $pivotId, (int) $search_perm_company_id);
             $allowedMap = [];
             foreach ($allowed as $cid) {
                 $allowedMap[(int) $cid] = true;
@@ -1177,14 +1183,16 @@ try {
     $date_to_db = date('Y-m-d 23:59:59', $to_ts);
 
     // 超短时微缓存（按用户 + 查询条件），用于吸收短时间内重复请求，减轻数据库压力。
-    // 仅缓存极短时间，兼顾实时性与加载速度。
+    // forceRefresh / skip_cache=1 必须绕过，否则 SSE 立刻重拉仍会吃到最多 TTL 秒的陈旧结果。
     $cache_file = null;
-    $cache_ttl_seconds = 20;
+    $cache_ttl_seconds = 2;
+    $skip_cache = !empty($_GET['skip_cache']) || !empty($_GET['force_refresh'])
+        || (isset($_GET['nocache']) && (string) $_GET['nocache'] !== '0');
     $cache_dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'count168_tx_search_cache';
     if (!is_dir($cache_dir)) {
         @mkdir($cache_dir, 0777, true);
     }
-    if (!$debug_wl_total && !$type_search_active && is_dir($cache_dir)) {
+    if (!$skip_cache && !$debug_wl_total && !$type_search_active && is_dir($cache_dir)) {
         $cache_key_payload = [
             'user_id' => (int) ($_SESSION['user_id'] ?? 0),
             'user_type' => strtolower((string) ($_SESSION['user_type'] ?? '')),

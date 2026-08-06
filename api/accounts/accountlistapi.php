@@ -205,18 +205,15 @@ function accountListTableExists(PDO $pdo, string $table): bool
 }
 
 /**
- * 与 processlist 一致的状态筛选：
- * - 默认 / 仅分页：active
- * - showInactive：inactive（分页）
- * - showAll：全部 active（不分页由前端控制）
- * - showAll + showInactive：全部 inactive
+ * 与 processlist / bank process 一致的状态筛选（showAll 只影响前端分页，不参与 SQL）：
+ * - 默认 / showActive：active
+ * - showInactive：inactive
+ * - showActive + showInactive：active OR inactive
  */
-function appendAccountStatusSqlFilter(string &$sql, bool $showInactive, bool $showAll): void
+function appendAccountStatusSqlFilter(string &$sql, bool $showActive, bool $showInactive): void
 {
-    if ($showAll && $showInactive) {
-        $sql .= " AND a.status = 'inactive'";
-    } elseif ($showAll) {
-        $sql .= " AND a.status = 'active'";
+    if ($showActive && $showInactive) {
+        $sql .= " AND a.status IN ('active','inactive')";
     } elseif ($showInactive) {
         $sql .= " AND a.status = 'inactive'";
     } else {
@@ -228,8 +225,8 @@ function fetchAccountsForGroupScope(
     PDO $pdo,
     int $groupScopePk,
     string $searchTerm,
+    bool $showActive,
     bool $showInactive,
-    bool $showAll,
     ?array $accountIdFilter,
     ?array $rolesFilter = null
 ): array {
@@ -298,7 +295,7 @@ function fetchAccountsForGroupScope(
         $params[] = $searchParam;
     }
 
-    appendAccountStatusSqlFilter($sql, $showInactive, $showAll);
+    appendAccountStatusSqlFilter($sql, $showActive, $showInactive);
 
     $sql .= ' ORDER BY a.account_id ASC, a.id ASC';
     $stmt = $pdo->prepare($sql);
@@ -395,7 +392,7 @@ function shouldFormatAsCompanyId(string $rawAccountId): bool {
     return false;
 }
 
-function fetchAccountsForCompany(PDO $pdo, int $company_id, string $searchTerm, bool $showInactive, bool $showAll, ?array $accountIdFilter, ?array $rolesFilter = null): array {
+function fetchAccountsForCompany(PDO $pdo, int $company_id, string $searchTerm, bool $showActive, bool $showInactive, ?array $accountIdFilter, ?array $rolesFilter = null): array {
     $hasCreatedSource = hasAccountCreatedSourceColumn($pdo);
     $selectCreatedSource = $hasCreatedSource ? ", a.created_source" : ", NULL AS created_source";
     $sql = "SELECT DISTINCT a.id, a.account_id, a.name, a.status, a.last_login, a.role,
@@ -433,7 +430,7 @@ function fetchAccountsForCompany(PDO $pdo, int $company_id, string $searchTerm, 
         $params[] = $searchParam;
     }
 
-    appendAccountStatusSqlFilter($sql, $showInactive, $showAll);
+    appendAccountStatusSqlFilter($sql, $showActive, $showInactive);
 
     $sql .= " ORDER BY a.account_id ASC, a.id ASC";
     $stmt = $pdo->prepare($sql);
@@ -515,6 +512,7 @@ try {
     }
 
     $searchTerm = isset($_GET['search']) ? trim($_GET['search']) : '';
+    $showActive = isset($_GET['showActive']) ? filter_var($_GET['showActive'], FILTER_VALIDATE_BOOLEAN) : false;
     $showInactive = isset($_GET['showInactive']) ? filter_var($_GET['showInactive'], FILTER_VALIDATE_BOOLEAN) : false;
     $showAll = isset($_GET['showAll']) ? filter_var($_GET['showAll'], FILTER_VALIDATE_BOOLEAN) : false;
 
@@ -543,6 +541,7 @@ try {
                         'accounts' => [],
                         'count' => 0,
                         'searchTerm' => $searchTerm,
+                        'showActive' => $showActive,
                         'showInactive' => $showInactive,
                         'showAll' => $showAll,
                         'company_id' => null,
@@ -597,8 +596,8 @@ try {
             $pdo,
             $groupScopePk,
             $searchTerm,
+            $showActive,
             $showInactive,
-            $showAll,
             $accountIdFilter,
             $rolesFilter
         );
@@ -608,13 +607,13 @@ try {
             $pdo,
             $company_id,
             $searchTerm,
+            $showActive,
             $showInactive,
-            $showAll,
             $accountIdFilter,
             $rolesFilter
         );
     } else {
-        $accounts = fetchAccountsForCompany($pdo, $company_id, $searchTerm, $showInactive, $showAll, $accountIdFilter, $rolesFilter);
+        $accounts = fetchAccountsForCompany($pdo, $company_id, $searchTerm, $showActive, $showInactive, $accountIdFilter, $rolesFilter);
     }
     $accounts = computeAlertStatus($accounts);
 
@@ -625,6 +624,7 @@ try {
             'accounts' => $accounts,
             'count' => count($accounts),
             'searchTerm' => $searchTerm,
+            'showActive' => $showActive,
             'showInactive' => $showInactive,
             'showAll' => $showAll,
             'company_id' => $company_id,

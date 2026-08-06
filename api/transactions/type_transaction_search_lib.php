@@ -240,6 +240,7 @@ function typeTxSearchFetchRateTransactions(PDO $pdo, array $listScope, array $cu
                 h.id AS transaction_id,
                 h.transaction_date AS transaction_date_raw,
                 'RATE' AS transaction_type,
+                e.entry_type,
                 e.amount,
                 COALESCE(e.description, '') AS description,
                 COALESCE(h.sms, '') AS sms,
@@ -256,7 +257,7 @@ function typeTxSearchFetchRateTransactions(PDO $pdo, array $listScope, array $cu
             LEFT JOIN currency c ON e.currency_id = c.id
             WHERE {$hFilter['sql']}
               AND h.transaction_type = 'RATE'
-              AND e.entry_type IN ('RATE_FIRST_FROM', 'RATE_FIRST_TO', 'RATE_TRANSFER_FROM', 'RATE_TRANSFER_TO')";
+              AND e.entry_type IN ('RATE_FIRST_FROM', 'RATE_FIRST_TO', 'RATE_TRANSFER_FROM', 'RATE_TRANSFER_TO', 'RATE_FEE', 'RATE_PLATFORM_FEE')";
 
     $params = [(int) $hFilter['bind']];
     if (!$isGroup) {
@@ -278,7 +279,12 @@ function typeTxSearchFetchRateTransactions(PDO $pdo, array $listScope, array $cu
         }
         $grid = typeTxSearchRowToGrid($r);
         // Align with history_api / search_api: RATE_FIRST_* and RATE_TRANSFER_* rows use -amount.
-        $signedAmount = searchMoneyNeg(money_out($r['amount'] ?? '0'));
+        // Fee rows keep their stored sign; current RATE_PLATFORM_FEE rows are negative.
+        $entryType = strtoupper(trim((string) ($r['entry_type'] ?? '')));
+        $rawAmt = money_out($r['amount'] ?? '0');
+        $signedAmount = in_array($entryType, ['RATE_FEE', 'RATE_PLATFORM_FEE'], true)
+            ? $rawAmt
+            : searchMoneyNeg($rawAmt);
         $grid['cr_dr'] = searchMoneyHalfUp2($signedAmount);
         $grid['balance'] = $grid['cr_dr'];
         $grid['balance_full'] = searchMoney2($signedAmount);

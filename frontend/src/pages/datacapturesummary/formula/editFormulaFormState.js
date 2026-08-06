@@ -10,7 +10,7 @@ import {
   roundProcessedAmountTo2Decimals,
 } from "../table/summaryRowAmount.js";
 import { formatNegativeNumbersInFormula, parseIdProductColumnRef } from "./summaryFormulaParseUtils.js";
-import { normalizeSummaryIdProductText } from "../lib/summaryIdProductUtils.js";
+import { normalizeSummaryIdProductText, summaryIdProductsEqual } from "../lib/summaryIdProductUtils.js";
 import { getProcessValueFromSummaryRow } from "../lib/summaryIdProductDisplay.js";
 
 function normalizeSpaces(text) {
@@ -83,11 +83,7 @@ function capturedRowMatchesIdProduct(rowData, targetIdProduct) {
   const rowValue = String(rowData[1].value || "").trim();
   const target = String(targetIdProduct || "").trim();
   if (!rowValue || !target) return false;
-  return (
-    rowValue === target ||
-    normalizeSpaces(rowValue) === normalizeSpaces(target) ||
-    normalizeSummaryIdProductText(rowValue) === normalizeSummaryIdProductText(target)
-  );
+  return summaryIdProductsEqual(rowValue, target);
 }
 
 function resolveCapturedRowForFormulaGrid(tableData, anchorRow) {

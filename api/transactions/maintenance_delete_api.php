@@ -30,7 +30,15 @@ try {
 
     if ($hasExplicitScope) {
         $scopeResolved = resolveDataCaptureRequestScope($pdo, $payload);
-        $scopeCtx = dcFinalizeCaptureMaintenanceScope($pdo, $scopeResolved, $payload);
+        $finalizeParams = $payload;
+        $scopeHint = strtolower(trim((string) ($payload['report_scope'] ?? $payload['capture_scope'] ?? '')));
+        if ($scopeHint === 'group' || !empty($scopeResolved['is_group_scope'])) {
+            unset($finalizeParams['company_id']);
+            if (!isset($finalizeParams['group_aggregate']) || trim((string) $finalizeParams['group_aggregate']) === '') {
+                $finalizeParams['group_aggregate'] = '1';
+            }
+        }
+        $scopeCtx = dcFinalizeCaptureMaintenanceScope($pdo, $scopeResolved, $finalizeParams);
         $company_id = (int) $scopeCtx['company_id'];
         $maintenance_scope_group = (bool) $scopeCtx['is_group_scope'];
         $viewGroupForAccess = dcNormalizeGroupId(
@@ -238,6 +246,25 @@ try {
     $totalDeleted = $deleteStmt->rowCount();
 
     $pdo->commit();
+
+    require_once __DIR__ . '/../includes/payment_delete_shared.php';
+    payment_delete_clear_tx_search_cache();
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    require_once __DIR__ . '/../includes/ledger_realtime.php';
+    $groupScopeId = 0;
+    if ($maintenance_scope_group && isset($scopeCtx) && is_array($scopeCtx)) {
+        $groupScopeId = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+    }
+    $listScope = [
+        'mode' => ($maintenance_scope_group && $groupScopeId > 0) ? 'group' : 'company',
+        'company_id' => (int) $company_id,
+        'group_scope_id' => $groupScopeId,
+    ];
+    realtime_publish_scope($listScope, 'maintenance', 'transaction_delete');
+    tx_ledger_realtime_publish_scope($listScope, 'transaction_delete', [
+        'deleted' => (int) $totalDeleted,
+    ]);
 
     echo json_encode([
         'success' => true,

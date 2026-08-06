@@ -6,6 +6,7 @@ import {
   rejectContra as rejectContraApi,
   transactionQueryKeys,
 } from "../lib/transactionApi.js";
+import { notifyTransactionListInvalidated } from "../lib/transactionPaymentLogic.js";
 import { buildPaymentHistoryUrl } from "../lib/transactionPaymentHistoryUrl.js";
 import { buildPaymentHistoryPopupFeatures } from "../lib/transactionPaymentHistoryPopup.js";
 
@@ -96,6 +97,7 @@ export function useTransactionUI() {
       try {
         const res = await approveContraMutation.mutateAsync({ id, scopeApi });
         if (res?.success) {
+          notifyTransactionListInvalidated("contra_approve");
           pushToast("Contra approved", "success");
           await refreshContraInboxBadge(scopeApi);
         } else {
@@ -116,6 +118,7 @@ export function useTransactionUI() {
       try {
         const res = await rejectContraMutation.mutateAsync({ id, scopeApi });
         if (res?.success) {
+          notifyTransactionListInvalidated("contra_reject");
           pushToast("Contra rejected", "success");
           await refreshContraInboxBadge(scopeApi);
           if (onSearch) await onSearch({ forceRefresh: true, silent: true });

@@ -6,7 +6,6 @@ import { useSubmitGuard } from "../../../hooks/useSubmitGuard.js";
 import CompanySettingsModal from "./CompanySettingsModal.jsx";
 import GroupSettingsModal from "./GroupSettingsModal.jsx";
 import {
-  calculateExpirationDate,
   formatDate,
   defaultFeeShareAllocations,
   normalizeFeeShareFromServer,
@@ -19,6 +18,7 @@ import {
   forceUppercaseValue,
   forceNumericValue,
   findChargeMissingStartDate,
+  findMissingExpirationDate,
 } from "../domainHelpers.js";
 import { sanitizeEmailInput, validateEmail } from "../../../utils/input/emailValidation.js";
 import { getDomainText } from "../../../translateFile/pages/domainTranslate.js";
@@ -236,17 +236,15 @@ export default function DomainFormModal({
       return;
     }
     if (!(await validateCodeGlobally(cid))) return;
-    const isC168 = cid === "C168";
     const today = new Date().toISOString().split("T")[0];
-    const newExpDate = isC168 ? null : calculateExpirationDate("1month", today);
     const newCo = {
       company_id: cid,
-      expiration_date: newExpDate,
-      originalExpirationDate: newExpDate,
+      expiration_date: null,
+      originalExpirationDate: null,
       startDate: today,
       isExtending: false,
       group_id: selectedGroupId || null,
-      permissions: [],
+      permissions: ["Games"],
       fee_share_allocations: defaultFeeShareAllocations(),
     };
     ensureCompanyFeeShare(newCo);
@@ -415,6 +413,11 @@ export default function DomainFormModal({
       toastDanger(t("chargeRequiresStartDate", { id: missingStart.id }));
       return;
     }
+    const missingExp = findMissingExpirationDate(tempCompanies, tempGroups);
+    if (missingExp) {
+      toastDanger(t("expirationRequiredBeforeConfirm", { id: missingExp.id }));
+      return;
+    }
     const data = {
       action: isEditMode ? "update" : "create",
       owner_code: ownerCode,
@@ -565,6 +568,9 @@ export default function DomainFormModal({
   const gsGroup = gsModalGroupCode
     ? tempGroups.find((g) => tempGroupCode(g) === gsModalGroupCode)
     : null;
+
+  const missingExpiration = findMissingExpirationDate(tempCompanies, tempGroups);
+  const confirmBlockedByExpiration = Boolean(missingExpiration);
 
   function renderSelectedGroupsList() {
     if (tempGroups.length === 0) {
@@ -869,7 +875,16 @@ export default function DomainFormModal({
               </section>
             </div>
             <div className="dfm-footer-actions">
-              <button type="submit" className="btn btn-save" disabled={submitting}>
+              <button
+                type="submit"
+                className="btn btn-save"
+                disabled={submitting || confirmBlockedByExpiration}
+                title={
+                  confirmBlockedByExpiration
+                    ? t("expirationRequiredBeforeConfirm", { id: missingExpiration.id })
+                    : undefined
+                }
+              >
                 {submitting ? t("saving") : t("confirm")}
               </button>
               <button type="button" className="btn btn-cancel" onClick={onClose}>{t("cancel")}</button>

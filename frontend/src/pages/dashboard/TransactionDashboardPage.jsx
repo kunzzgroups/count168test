@@ -26,6 +26,24 @@ export default function TransactionDashboardPage() {
     setDateTo,
   });
 
+  // While a new scope is loading, show 0.00 instead of the outgoing scope's real
+  // numbers — keep `showEarnings` as-is so the card count doesn't flicker 3↔4.
+  const kpiForDisplay = page.scopeDataPending
+    ? {
+        profit: 0,
+        expenses: 0,
+        earnings: 0,
+        netProfit: 0,
+        showEarnings: page.kpi.showEarnings,
+        comparisons: null,
+      }
+    : page.kpi;
+
+  // Same readiness the KPI cards reveal on — pins the Currency card to always
+  // appear after KPI/chart instead of racing them on however fast its own
+  // (independent) earnings-by-currency fetch happens to resolve.
+  const kpiChartReady = !(page.loading || page.scopeDataPending);
+
   return (
     <>
       <div className="dashboard-container">
@@ -44,22 +62,17 @@ export default function TransactionDashboardPage() {
         <div id="app" className="dashboard-content">
           <DashboardFilterPanel
             i18n={i18n}
-            effectiveDateRangeText={
-              page.displayEffectiveDateRangeText ?? effectiveDateRangeText
-            }
+            /* Live selection highlight — do not freeze pills while KPI/chart/pie catch up. */
+            effectiveDateRangeText={effectiveDateRangeText}
             groupIds={page.groupIds}
             selectedGroup={page.selectedGroup}
-            displaySelectedGroup={page.displaySelectedGroup}
             groupsAllMode={page.groupsAllMode}
-            displayGroupsAllMode={page.displayGroupsAllMode}
             groupAllMode={page.groupAllMode}
-            displayGroupAllMode={page.displayGroupAllMode}
             companiesForPicker={page.companiesForPicker}
             companyId={page.companyId}
-            displayCompanyId={page.displayCompanyId}
             mergedSubsetIds={page.mergedSubsetIds}
-            currencies={page.displayCurrencies ?? page.currencies}
-            currencyCode={page.displayFilterCurrencyCode ?? page.currencyCode}
+            currencies={page.currencies}
+            currencyCode={page.currencyCode}
             onPickGroup={page.handlePickGroup}
             onPickAllGroups={page.handlePickAllGroups}
             onPickCompany={page.handlePickCompany}
@@ -68,51 +81,62 @@ export default function TransactionDashboardPage() {
             onCurrencyDropOn={page.handleCurrencyDropOn}
           />
 
-          <DashboardKpiGrid
-            i18n={i18n}
-            kpi={page.kpi}
-            kpiCompareLabel={page.kpiCompareLabel}
-            kpiFooter={page.kpiFooter}
-            loading={page.loading}
-          />
-
           <div
-            className={`dashboard-panels-row${
-              page.showSummaryPanelTabs ? " dashboard-panels-row--with-summary-tabs" : ""
-            }`}
+            className="dashboard-data-surface"
+            aria-busy={page.scopeDataPending ? "true" : undefined}
           >
-            <DashboardTrendChart
-              i18n={i18n}
-              chartRows={page.chartRows}
-              chartSeries={page.chartSeries}
-              chartVisible={page.chartVisible}
-              onToggleSeries={page.toggleChartSeries}
-              chartDateRangeText={page.chartDateRangeText}
-              chartXAxisLayout={page.chartXAxisLayout}
-              chartScopeKey={page.displayScopeKey || page.dashboardScopeKey}
-            />
-            <DashboardEarningsSummary
-              i18n={i18n}
-              currencyCode={page.displayFilterCurrencyCode ?? page.currencyCode}
-              currencies={page.displayCurrencies ?? page.currencies}
-              panelCurrencyRows={page.panelCurrencyRows}
-              useConvertedEarnings={page.useConvertedEarnings}
-              earningsBreakdownShowsRate={page.earningsBreakdownShowsRate}
-              summaryPanelLabel={page.summaryPanelLabel}
-              summaryEarningsValue={page.summaryEarningsValue}
-              summaryConversionNote={page.summaryConversionNote}
-              summaryEarningsLoading={page.summaryEarningsLoading}
-              earningsPanelStable={page.earningsPanelStable}
-              earningsByCurrencyLoading={page.earningsByCurrencyLoading}
-              exchangeRates={page.exchangeRates}
-              exchangeRatesLoading={page.exchangeRatesLoading}
-              exchangeRateScopeKey={page.exchangeRateScopeKey}
-              showSummaryPanelTabs={page.showSummaryPanelTabs}
-              showEarningPanelTab={page.showEarningPanelTab}
-              showNetProfitForTab={page.showNetProfitForTab}
-              earningsPanelView={page.earningsPanelView}
-              onEarningsPanelViewChange={page.setEarningsPanelView}
-            />
+            {/* No skeleton — KPI/chart/currency stay mounted and self-represent their own
+                loading state (0.00 defaults, chart placeholder, currency shimmer) instead of
+                being hidden behind a full-surface placeholder. */}
+            <div className="dashboard-data-surface__live">
+              <DashboardKpiGrid
+                i18n={i18n}
+                kpi={kpiForDisplay}
+                kpiCompareLabel={page.kpiCompareLabel}
+                kpiFooter={page.kpiFooter}
+                loading={page.loading || page.scopeDataPending}
+              />
+
+              <div
+                className={`dashboard-panels-row${
+                  page.showSummaryPanelTabs ? " dashboard-panels-row--with-summary-tabs" : ""
+                }`}
+              >
+                <DashboardTrendChart
+                  i18n={i18n}
+                  chartRows={page.scopeDataPending ? [] : page.chartRows}
+                  chartSeries={page.chartSeries}
+                  chartVisible={page.chartVisible}
+                  onToggleSeries={page.toggleChartSeries}
+                  chartDateRangeText={page.chartDateRangeText}
+                  chartXAxisLayout={page.chartXAxisLayout}
+                  chartScopeKey={page.displayScopeKey || page.dashboardScopeKey}
+                />
+                <DashboardEarningsSummary
+                  i18n={i18n}
+                  currencyCode={page.displayFilterCurrencyCode ?? page.currencyCode}
+                  currencies={page.displayCurrencies ?? page.currencies}
+                  panelCurrencyRows={page.panelCurrencyRows}
+                  useConvertedEarnings={page.useConvertedEarnings}
+                  earningsBreakdownShowsRate={page.earningsBreakdownShowsRate}
+                  summaryPanelLabel={page.summaryPanelLabel}
+                  summaryEarningsValue={page.summaryEarningsValue}
+                  summaryConversionNote={page.summaryConversionNote}
+                  summaryEarningsLoading={page.summaryEarningsLoading || page.scopeDataPending}
+                  earningsPanelStable={page.earningsPanelStable}
+                  earningsByCurrencyLoading={page.earningsByCurrencyLoading || page.scopeDataPending}
+                  exchangeRates={page.exchangeRates}
+                  exchangeRatesLoading={page.exchangeRatesLoading}
+                  exchangeRateScopeKey={page.exchangeRateScopeKey}
+                  showSummaryPanelTabs={page.showSummaryPanelTabs}
+                  showEarningPanelTab={page.showEarningPanelTab}
+                  showNetProfitForTab={page.showNetProfitForTab}
+                  earningsPanelView={page.earningsPanelView}
+                  onEarningsPanelViewChange={page.setEarningsPanelView}
+                  kpiChartReady={kpiChartReady}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>

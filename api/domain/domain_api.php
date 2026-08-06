@@ -912,6 +912,31 @@ function feeShareAllocationsToJson(?array $normalized): ?string {
 }
 
 /**
+ * Encode company.permissions for INSERT/UPDATE.
+ * Empty/null → ["Games"] so Process List / Data Capture category checks pass.
+ */
+function domainApiEncodeCompanyPermissions($permissions): string
+{
+    $valid = ['Games', 'Bank', 'Loan', 'Rate', 'Money'];
+    if (is_array($permissions) && $permissions !== []) {
+        $filtered = [];
+        foreach ($permissions as $p) {
+            $p = trim((string) $p);
+            if ($p === 'Gambling') {
+                $p = 'Games';
+            }
+            if (in_array($p, $valid, true) && !in_array($p, $filtered, true)) {
+                $filtered[] = $p;
+            }
+        }
+        if ($filtered !== []) {
+            return json_encode($filtered);
+        }
+    }
+    return json_encode(['Games']);
+}
+
+/**
  * 读取某来源公司 Share% 中的 Profit 目标账号（必须是 C168 下 role=profit）。
  */
 function resolveShareProfitTargetAccountId(PDO $pdo, string $sourceCompanyCode): ?int
@@ -1078,7 +1103,8 @@ function domainApiResolveFeeShareC168CompanyPk(PDO $pdo): ?int
 }
 
 /**
- * Share % 下拉数据：始终仅列出 C168 公司本体 Account（排除 Group 账本账户），role 只能是 staff/agent。
+ * Share % 下拉数据：始终仅列出 C168 公司本体 Account（排除 Group 账本账户），role 为 staff/agent/partner。
+ * 用于 Domain Company Setting 与 Auto Renew Commission Setting（Sales/CS/IT）。
  */
 function fetchFeeSharePickerAccounts(PDO $pdo): array {
     $rows = [];
@@ -1092,7 +1118,7 @@ function fetchFeeSharePickerAccounts(PDO $pdo): array {
             INNER JOIN account_company ac ON ac.account_id = a.id
             WHERE ac.company_id = ?
               {$subsidiaryOnly}
-              AND LOWER(TRIM(COALESCE(a.role, ''))) IN ('staff', 'agent')
+              AND LOWER(TRIM(COALESCE(a.role, ''))) IN ('staff', 'agent', 'partner')
               {$excludeNonC168}
               AND (a.status IS NULL OR LOWER(TRIM(a.status)) = 'active')
             ORDER BY a.account_id ASC
@@ -1189,7 +1215,7 @@ function applyDefaultProfitAllocationIfEmpty(PDO $pdo, array $normalized): array
 }
 
 /**
- * 校验：C168 旗下；Profit 池仅 profit role；Sales/CS/IT 仅 staff/agent。
+ * 校验：C168 旗下；Profit 池仅 profit role；Sales/CS/IT 仅 staff/agent/partner。
  */
 function feeShareAllocationsTargetsValid(PDO $pdo, array $normalized): bool {
     $c168Pk = domainApiResolveFeeShareC168CompanyPk($pdo);
@@ -1257,7 +1283,7 @@ function feeShareAllocationsTargetsValid(PDO $pdo, array $normalized): bool {
               {$subsidiaryOnly}
               {$excludeNonC168}
               AND a.id IN ($placeholders)
-              AND LOWER(TRIM(COALESCE(a.role, ''))) IN ('staff', 'agent')
+              AND LOWER(TRIM(COALESCE(a.role, ''))) IN ('staff', 'agent', 'partner')
         ";
         $stmt = $pdo->prepare($sql);
         $stmt->execute(array_merge([$c168Pk], $otherIds));
@@ -2287,7 +2313,7 @@ function createDomainShareCommissionPayments(
                 continue;
             }
 
-            $roleSql = "LOWER(TRIM(COALESCE(a.role, ''))) IN ('staff', 'agent')";
+            $roleSql = "LOWER(TRIM(COALESCE(a.role, ''))) IN ('staff', 'agent', 'partner')";
             $chk = $pdo->prepare("
                 SELECT COUNT(*)
                 FROM account_company ac
@@ -2929,7 +2955,7 @@ function domainApiNormalizeCompaniesPayload($companies): array {
         $out[] = [
             'company_id' => strtoupper($cid),
             'expiration_date' => null,
-            'permissions' => [],
+            'permissions' => ['Games'],
             'group_id' => null,
             'fee_share_allocations' => null,
         ];
@@ -3714,7 +3740,7 @@ try {
                             continue;
                         }
                         $expiration_date = !empty($company['expiration_date']) ? $company['expiration_date'] : null;
-                        $permissions = (isset($company['permissions']) && is_array($company['permissions'])) ? json_encode($company['permissions']) : null;
+                        $permissions = domainApiEncodeCompanyPermissions($company['permissions'] ?? null);
                         $group_id = !empty($company['group_id']) ? strtoupper(trim((string) $company['group_id'])) : null;
                         $fee_share_json = feeShareAllocationsToJson(normalizeFeeShareAllocationsInput($company['fee_share_allocations'] ?? null));
                         $detachedPk = domainApiFindDetachedCompanyPk($pdo, $company_id);
@@ -3753,6 +3779,16 @@ try {
                 domainApiApplyGroupDomainListFeePaymentsFromPayload($pdo, $groups, $hasC168Context, $canUseC168DomainActions);
 
                 $pdo->commit();
+
+                require_once __DIR__ . '/../includes/realtime.php';
+                require_once __DIR__ . '/../includes/ledger_realtime.php';
+                realtime_publish_companies([(int) $company_id], 'domain', 'create');
+                // Domain list fee writes transactions — TX/Dashboard need ledger_changed.
+                tx_ledger_realtime_publish_scope([
+                    'mode' => 'company',
+                    'company_id' => (int) $company_id,
+                    'group_scope_id' => 0,
+                ], 'domain_fee_create');
 
                 $owner = getOwnerWithCompanies($pdo, $owner_id);
                 echo json_encode([
@@ -3956,7 +3992,7 @@ try {
                     $reattach = $pdo->prepare("UPDATE company SET owner_id = ?, expiration_date = ?, permissions = ?, group_id = ?, fee_share_allocations = ? WHERE id = ? AND owner_id IS NULL");
 
                     foreach ($companies_to_add as $company_data) {
-                        $permissions_json = !empty($company_data['permissions']) && is_array($company_data['permissions']) ? json_encode($company_data['permissions']) : null;
+                        $permissions_json = domainApiEncodeCompanyPermissions($company_data['permissions'] ?? null);
                         $fee_share_json = feeShareAllocationsToJson(normalizeFeeShareAllocationsInput($company_data['fee_share_allocations'] ?? null));
                         $detachedPk = domainApiFindDetachedCompanyPk($pdo, $company_data['company_id']);
                         if ($detachedPk !== null) {
@@ -4011,7 +4047,7 @@ try {
                         foreach ($existing_companies as $existing) {
                             $existing_key = strtoupper(trim((string) ($existing['company_id'] ?? '')));
                             if ($existing_key === $new_company['key']) {
-                                $permissions_json = !empty($new_company['permissions']) && is_array($new_company['permissions']) ? json_encode($new_company['permissions']) : null;
+                                $permissions_json = domainApiEncodeCompanyPermissions($new_company['permissions'] ?? null);
                                 $fee_share_json = feeShareAllocationsToJson(normalizeFeeShareAllocationsInput($new_company['fee_share_allocations'] ?? null));
                                 $updateStmt = $pdo->prepare("UPDATE company SET expiration_date = ?, permissions = ?, group_id = ?, fee_share_allocations = ? WHERE id = ?");
                                 $updateStmt->execute([$new_company['expiration_date'], $permissions_json, $new_company['group_id'], $fee_share_json, $existing['id']]);
@@ -4029,6 +4065,15 @@ try {
                 
                 $pdo->commit();
                 domain_api_clear_session_user_cache();
+
+                require_once __DIR__ . '/../includes/realtime.php';
+                require_once __DIR__ . '/../includes/ledger_realtime.php';
+                realtime_publish_companies([(int) $company_id], 'domain', 'update');
+                tx_ledger_realtime_publish_scope([
+                    'mode' => 'company',
+                    'company_id' => (int) $company_id,
+                    'group_scope_id' => 0,
+                ], 'domain_fee_update');
 
                 $owner = getOwnerWithCompanies($pdo, $id);
                 echo json_encode([
@@ -4122,6 +4167,9 @@ try {
                 
                 $pdo->commit();
                 domain_api_clear_session_user_cache();
+
+                require_once __DIR__ . '/../includes/realtime.php';
+                realtime_publish_companies([(int) $company_id], 'domain', 'delete');
                 
                 echo json_encode([
                     'success' => true,
@@ -4323,6 +4371,14 @@ try {
                     $stmt->execute([$permissions_json, strtoupper($company_id)]);
                 }
 
+                require_once __DIR__ . '/../includes/realtime.php';
+                $permPkStmt = $pdo->prepare('SELECT id FROM company WHERE UPPER(TRIM(company_id)) = ? LIMIT 1');
+                $permPkStmt->execute([strtoupper(trim((string) $company_id))]);
+                $permCompanyPk = (int) ($permPkStmt->fetchColumn() ?: 0);
+                if ($permCompanyPk > 0) {
+                    realtime_publish_companies([$permCompanyPk], 'domain', 'update_company_permissions');
+                }
+
                 echo json_encode([
                     'success' => true,
                     'message' => 'Permissions updated successfully',
@@ -4401,7 +4457,7 @@ try {
                 }
                 $saveCompanyPk = (int) $saveRow['id'];
                 if (!feeShareAllocationsTargetsValid($pdo, $saveNormalized)) {
-                    jsonResponse(false, 'Share %: Profit rows must use profit-role accounts under C168; Sales/CS/IT must use staff or agent under C168.', null);
+                    jsonResponse(false, 'Share %: Profit rows must use profit-role accounts under C168; Sales/CS/IT must use staff, agent, or partner under C168.', null);
                     exit;
                 }
                 $saveJson = feeShareAllocationsToJson($saveNormalized);
@@ -4416,6 +4472,9 @@ try {
                     }
                     throw $e;
                 }
+
+                require_once __DIR__ . '/../includes/realtime.php';
+                realtime_publish_companies([$saveCompanyPk], 'domain', 'save_company_share');
 
                 jsonResponse(true, 'Share settings saved', [
                     'fee_share_allocations' => $saveNormalized,
@@ -4466,7 +4525,7 @@ try {
                     exit;
                 }
                 if (!feeShareAllocationsTargetsValid($pdo, $saveNormalized)) {
-                    jsonResponse(false, 'Share %: Profit rows must use profit-role accounts under C168; Sales/CS/IT must use staff or agent under C168.', null);
+                    jsonResponse(false, 'Share %: Profit rows must use profit-role accounts under C168; Sales/CS/IT must use staff, agent, or partner under C168.', null);
                     exit;
                 }
                 $feeJson = feeShareAllocationsToJson($saveNormalized);
@@ -4481,6 +4540,8 @@ try {
                     }
                     throw $e;
                 }
+                require_once __DIR__ . '/../includes/realtime.php';
+                realtime_publish_companies([(int) $company_id], 'domain', 'save_group_share');
                 jsonResponse(true, 'Share settings saved', [
                     'fee_share_allocations' => $saveNormalized,
                 ]);
@@ -4519,14 +4580,14 @@ try {
                     exit;
                 }
                 if (!feeShareAllocationsTargetsValid($pdo, $saveNormalized)) {
-                    jsonResponse(false, 'Share %: Profit rows must use profit-role accounts under C168; Sales/CS/IT must use staff or agent under C168.', null);
+                    jsonResponse(false, 'Share %: Profit rows must use profit-role accounts under C168; Sales/CS/IT must use staff, agent, or partner under C168.', null);
                     exit;
                 }
                 $feeJson = feeShareAllocationsToJson($saveNormalized);
                 $pdo->beginTransaction();
                 try {
-                    $up = $pdo->prepare('UPDATE `groups` SET expiration_date = ?, fee_share_allocations = ? WHERE id = ?');
-                    $up->execute([$expDate, $feeJson, (int) $groupRow['id']]);
+                    $up = $pdo->prepare('UPDATE `groups` SET expiration_date = ?, fee_share_allocations = ?, permissions = ? WHERE id = ?');
+                    $up->execute([$expDate, $feeJson, domainApiFixedGamesPermissionsJson(), (int) $groupRow['id']]);
                     $pdo->commit();
                 } catch (Exception $e) {
                     if ($pdo->inTransaction()) {
@@ -4534,6 +4595,8 @@ try {
                     }
                     throw $e;
                 }
+                require_once __DIR__ . '/../includes/realtime.php';
+                realtime_publish_companies([(int) $company_id], 'domain', 'save_group_tenant');
                 if ($applyCommission) {
                     $chargeStartDate = domainApiNormalizeFeeTransactionDate(
                         isset($data['startDate']) ? (string) $data['startDate'] : (
@@ -4549,7 +4612,7 @@ try {
                         'expiration_date' => $expDate,
                         'selectedPeriod' => $data['selectedPeriod'] ?? $data['period'] ?? null,
                         'startDate' => $chargeStartDate,
-                        'permissions' => [],
+                        'permissions' => ['Games'],
                         'fee_share_allocations' => $saveNormalized,
                         'apply_commission_payments_on_domain_save' => true,
                     ]], $hasC168Context, $canUseC168DomainActions);
@@ -4632,6 +4695,8 @@ try {
                     $groupPeriodJson,
                     $unifiedPeriodJson,
                 ]);
+                require_once __DIR__ . '/../includes/realtime.php';
+                realtime_publish_companies([(int) $company_id], 'domain', 'save_domain_fee');
                 jsonResponse(true, 'Saved successfully', [
                     'price' => $companyPrice !== null ? money_out($companyPrice) : null,
                     'group_price' => $groupPrice !== null ? money_out($groupPrice) : null,

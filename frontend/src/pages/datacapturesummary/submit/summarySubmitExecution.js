@@ -1,5 +1,8 @@
 import { fetchGroupProcessIdByCode } from "../../datacapture/lib/dataCaptureApi.js";
-import { normalizeGroupCaptureScope } from "../../datacapture/lib/dataCaptureScope.js";
+import {
+  isPureGroupCaptureScope,
+  normalizeGroupCaptureScope,
+} from "../../datacapture/lib/dataCaptureScope.js";
 import { isGroupLedgerCapture } from "../../../utils/company/c168CaptureChannel.js";
 import { submitSummaryPayload } from "../lib/summaryApi.js";
 import { SUMMARY_SUBMIT_MAX_ROWS_PER_BATCH } from "./summarySubmitTotalPure.js";
@@ -10,11 +13,25 @@ function buildSummarySubmitPayload(processData, summaryRows) {
   const groupPayrollCapture = processData.groupPayrollCapture === true;
   const groupLedger =
     processData.groupOnlyCapture === true && !groupPayrollCapture;
+  const processCode = String(
+    processData.processCode || processData.process_code || "",
+  )
+    .trim()
+    .toUpperCase();
+  const rawProcess = processData.process;
+  const numericProcess =
+    rawProcess != null && rawProcess !== "" && Number.isFinite(Number(rawProcess))
+      ? Number(rawProcess)
+      : null;
   return {
     captureDate: processData.date,
-    processId: processData.process,
-    processName: processData.processName,
-    processCode: processData.processCode || processData.process_code || "",
+    processId: numericProcess != null && numericProcess > 0 ? numericProcess : null,
+    processName: processData.processName || processCode || rawProcess,
+    processCode:
+      processCode ||
+      (typeof rawProcess === "string" && !Number.isFinite(Number(rawProcess))
+        ? String(rawProcess).trim().toUpperCase()
+        : ""),
     currencyId: processData.currency,
     currencyName: processData.currencyName,
     remark: processData.remark || "",
@@ -97,6 +114,29 @@ function notify(title, message, type = "success") {
 async function ensureGroupSubmitProcessId(effectiveScope, parsedProcessData, baseData) {
   if (!baseData || !isGroupLedgerCapture(effectiveScope, parsedProcessData)) return baseData;
 
+  // Pure / empty group: keep fixed processCode — no process table ensure.
+  if (isPureGroupCaptureScope(effectiveScope, parsedProcessData)) {
+    const processCode = String(
+      baseData.processCode ||
+        parsedProcessData?.processCode ||
+        parsedProcessData?.process_code ||
+        parsedProcessData?.processName ||
+        parsedProcessData?.process ||
+        "",
+    )
+      .trim()
+      .toUpperCase();
+    if (!processCode) {
+      throw new Error("Missing process code for group submit");
+    }
+    return {
+      ...baseData,
+      processId: null,
+      processCode,
+      processName: processCode,
+    };
+  }
+
   const processCode = String(
     parsedProcessData?.processCode ||
       parsedProcessData?.process_code ||
@@ -122,6 +162,7 @@ async function ensureGroupSubmitProcessId(effectiveScope, parsedProcessData, bas
     ...baseData,
     processId: resolvedProcessId,
     processName: processCode,
+    processCode,
   };
 }
 

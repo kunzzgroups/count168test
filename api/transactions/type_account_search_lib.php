@@ -89,7 +89,7 @@ function typeAccountSearchResolveQueryMode(string $formType): array
         case 'CLEAR':
             return ['mode' => 'transactions', 'types' => ['CLEAR']];
         case 'ALL':
-            return ['mode' => 'transactions', 'types' => ['CONTRA', 'PAYMENT', 'CLAIM', 'ADJUSTMENT', 'CLEAR']];
+            return ['mode' => 'transactions', 'types' => ['CONTRA', 'PAYMENT', 'CLAIM', 'ADJUSTMENT', 'CLEAR', 'RATE']];
         case 'PROFIT':
             return ['mode' => 'transactions', 'types' => ['WIN', 'LOSE']];
         case 'RATE':
@@ -162,6 +162,7 @@ function typeAccountSearchFetchAccountIds(PDO $pdo, array $listScope, string $fo
 
 /**
  * RATE accounts from transaction_entry (PM fetchRateTransactionItems alignment).
+ * Includes RATE_MIDDLEMAN (Middle-Man / MARKUP Win-Loss legs).
  *
  * @return int[]
  */
@@ -182,7 +183,13 @@ function typeAccountSearchFetchRateAccountIds(PDO $pdo, array $listScope): array
             {$companyJoin}
             WHERE {$hFilter['sql']}
               AND h.transaction_type = 'RATE'
-              AND e.entry_type IN ('RATE_FIRST_FROM', 'RATE_FIRST_TO', 'RATE_TRANSFER_FROM', 'RATE_TRANSFER_TO')
+              AND e.entry_type IN (
+                    'RATE_FIRST_FROM', 'RATE_FIRST_TO',
+                    'RATE_TRANSFER_FROM', 'RATE_TRANSFER_TO',
+                    'RATE_MIDDLEMAN',
+                    'RATE_FEE',
+                    'RATE_PLATFORM_FEE'
+              )
               AND e.account_id IS NOT NULL
               AND e.account_id > 0";
 

@@ -107,11 +107,12 @@ function typePeriodSearchFilterByPeriodActivityOnly(string $formType): bool
  * Type Search grid metrics from full account ledger (aligned with Payment History).
  * B/F, Win/Loss, Cr/Dr use calculateBFByCurrency + history-column alignment.
  * RATE (−amount) / ADJUSTMENT (+amount) sign rules in typePeriodSearchBulk*Metrics remain for period_txn_count only.
- * List visibility still requires pure type activity in Capture Date (per form type).
+ * List visibility uses Capture Date union of all pure manual types (see BulkUnionPeriodActivityMetrics).
+ * ALL = Type Search ignores right-side form type for metrics (same native ledger path).
  */
 function typePeriodSearchUsesAccountNativeBf(string $formType): bool
 {
-    return in_array(strtoupper(trim($formType)), ['PAYMENT', 'CONTRA', 'CLAIM', 'CLEAR', 'RATE', 'ADJUSTMENT', 'PROFIT'], true);
+    return in_array(strtoupper(trim($formType)), ['PAYMENT', 'CONTRA', 'CLAIM', 'CLEAR', 'RATE', 'ADJUSTMENT', 'PROFIT', 'ALL'], true);
 }
 
 /**
@@ -189,10 +190,15 @@ function typePeriodSearchFetchEligibleAccountIds(PDO $pdo, array $listScope, str
 
     $result = array_map('intval', array_keys($ids));
     if ($formType === 'ALL') {
-        $profitIds = typePeriodSearchFetchEligibleAccountIds($pdo, $listScope, 'PROFIT');
-        if ($profitIds !== []) {
+        // PROFIT (WIN/LOSE) + RATE (transaction_entry) are not covered by the ALL
+        // description filter on transactions — merge like dedicated type fetches.
+        $extraIds = array_merge(
+            typePeriodSearchFetchEligibleAccountIds($pdo, $listScope, 'PROFIT'),
+            typePeriodSearchFetchRateEligibleAccountIds($pdo, $listScope)
+        );
+        if ($extraIds !== []) {
             $merged = [];
-            foreach (array_merge($result, $profitIds) as $id) {
+            foreach (array_merge($result, $extraIds) as $id) {
                 $merged[(int) $id] = true;
             }
             $result = array_map('intval', array_keys($merged));
@@ -556,6 +562,7 @@ function typePeriodSearchFetchRateEligibleAccountIds(PDO $pdo, array $listScope)
         : ' INNER JOIN account_company ac ON ac.account_id = e.account_id AND ac.company_id = ?';
     $pureRateSql = typeTxSearchPureRateEntrySqlFragment('e');
 
+    // Exchange legs need pure RATE description; Middle-Man (MARKUP) is RATE_MIDDLEMAN.
     $sql = "SELECT DISTINCT e.account_id AS account_id
             FROM transaction_entry e
             JOIN transactions h ON e.header_id = h.id
@@ -563,10 +570,15 @@ function typePeriodSearchFetchRateEligibleAccountIds(PDO $pdo, array $listScope)
             {$companyJoin}
             WHERE {$hFilter['sql']}
               AND h.transaction_type = 'RATE'
-              AND e.entry_type IN ('RATE_FIRST_FROM', 'RATE_FIRST_TO', 'RATE_TRANSFER_FROM', 'RATE_TRANSFER_TO')
               AND e.account_id IS NOT NULL
               AND e.account_id > 0
-              {$pureRateSql}";
+              AND (
+                    (
+                      e.entry_type IN ('RATE_FIRST_FROM', 'RATE_FIRST_TO', 'RATE_TRANSFER_FROM', 'RATE_TRANSFER_TO')
+                      {$pureRateSql}
+                    )
+                    OR e.entry_type = 'RATE_MIDDLEMAN'
+              )";
 
     $params = [(int) $hFilter['bind']];
     if (!$isGroup) {
@@ -741,6 +753,7 @@ function typePeriodSearchBulkRateMetrics(
     $signedAmt = dcd_processed_amount_sql_quant2('(-e.amount)');
     $dateExpr = 'DATE(h.transaction_date)';
     $accPh = implode(',', array_fill(0, count($accountIds), '?'));
+    $exchangeLeg = "e.entry_type IN ('RATE_FIRST_FROM', 'RATE_FIRST_TO', 'RATE_TRANSFER_FROM', 'RATE_TRANSFER_TO')";
 
     $sql = "SELECT
                 e.account_id AS account_id,
@@ -751,8 +764,14 @@ function typePeriodSearchBulkRateMetrics(
                     WHERE c2.id = e.currency_id
                     LIMIT 1
                 ), '') AS currency_code,
-                COALESCE(SUM(CASE WHEN {$dateExpr} < ? THEN {$signedAmt} ELSE 0 END), 0) AS bf_total,
-                COALESCE(SUM(CASE WHEN {$dateExpr} BETWEEN ? AND ? THEN {$signedAmt} ELSE 0 END), 0) AS cr_dr_total,
+                COALESCE(SUM(CASE
+                    WHEN {$dateExpr} < ? AND {$exchangeLeg} THEN {$signedAmt}
+                    ELSE 0
+                END), 0) AS bf_total,
+                COALESCE(SUM(CASE
+                    WHEN {$dateExpr} BETWEEN ? AND ? AND {$exchangeLeg} THEN {$signedAmt}
+                    ELSE 0
+                END), 0) AS cr_dr_total,
                 COUNT(CASE WHEN {$dateExpr} BETWEEN ? AND ? THEN 1 END) AS period_txn_count
             FROM transaction_entry e
             JOIN transactions h ON e.header_id = h.id
@@ -761,9 +780,14 @@ function typePeriodSearchBulkRateMetrics(
             WHERE {$hFilter['sql']}
               AND e.account_id IN ({$accPh})
               AND h.transaction_type = 'RATE'
-              AND e.entry_type IN ('RATE_FIRST_FROM', 'RATE_FIRST_TO', 'RATE_TRANSFER_FROM', 'RATE_TRANSFER_TO')
               AND e.currency_id IS NOT NULL
-              {$pureRateSql}";
+              AND (
+                    (
+                      {$exchangeLeg}
+                      {$pureRateSql}
+                    )
+                    OR e.entry_type = 'RATE_MIDDLEMAN'
+              )";
 
     $params = [
         $dateFromDb,

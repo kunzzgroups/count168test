@@ -60,6 +60,8 @@ import {
   resolveFormulaMaintenanceScope,
 } from "./formulaMaintenanceScope.js";
 import { normalizeMaintenanceSearchInput } from "../shared/maintenanceSearchInput.js";
+import { useRealtimeDomain } from "../../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../../lib/realtime/realtimeEvents.js";
 
 // Components
 import FormulaMaintenanceFilters from "./components/FormulaMaintenanceFilters.jsx";
@@ -175,8 +177,9 @@ export default function FormulaMaintenancePage() {
         companyId,
         groupsAllMode,
         groupAllMode,
+        me,
       }),
-    [companies, selectedGroup, companyId, groupsAllMode, groupAllMode],
+    [companies, selectedGroup, companyId, groupsAllMode, groupAllMode, me],
   );
 
   const formulaScopeKey = useMemo(
@@ -715,6 +718,10 @@ export default function FormulaMaintenancePage() {
   ]);
 
   performSearchRef.current = performSearch;
+
+  useRealtimeDomain(REALTIME_DOMAINS.MAINTENANCE, () => {
+    void performSearchRef.current?.();
+  }, { enabled: listQueryEnabled });
 
   useEffect(() => {
     companyIdRef.current = companyId;

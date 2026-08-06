@@ -5,6 +5,7 @@
  */
 require_once '../../includes/session_check.php';
 require_once '../../includes/config.php';
+require_once '../../includes/group_company_access.php';
 require_once '../includes/money_decimal.php';
 require_once '../includes/ownership_history.php';
 require_once '../includes/ownership_schema.php';
@@ -21,6 +22,13 @@ $monthRaw = $_GET['month'] ?? null;
 
 if (!$group_id) {
     echo json_encode(['status' => 'error', 'message' => 'Missing group_id']);
+    exit();
+}
+
+try {
+    gc_assert_group_ledger_access($pdo, (string) $group_id);
+} catch (Throwable $e) {
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     exit();
 }
 

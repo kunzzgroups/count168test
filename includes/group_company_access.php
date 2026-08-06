@@ -534,6 +534,24 @@ function gc_session_can_access_company_id(PDO $pdo, int $companyId, ?string $vie
         }
     }
 
+    // External partner remap: company_ownership.partner_group_id places Owner A's
+    // company under Owner B's login group (e.g. native JJ → display KK). List APIs
+    // already expose these rows; access checks must match.
+    $role = strtolower(trim((string) ($_SESSION['role'] ?? '')));
+    $userType = strtolower(trim((string) ($_SESSION['user_type'] ?? '')));
+    if ($role === 'owner' || $userType === 'owner') {
+        $ownerId = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $_SESSION['user_id'] ?? 0);
+        if ($ownerId > 0 && gc_owner_has_company_access($pdo, $companyId, $ownerId)) {
+            $displayGid = gc_owner_company_display_group($pdo, $companyId, $ownerId);
+            if ($displayGid !== '' && in_array($displayGid, $groupCodes, true)) {
+                return true;
+            }
+            if ($nativeGid !== '' && in_array($nativeGid, $groupCodes, true)) {
+                return true;
+            }
+        }
+    }
+
     if ($viewGroupNorm !== null) {
         if ($nativeGid === $viewGroupNorm) {
             return true;
@@ -660,10 +678,16 @@ function gc_assert_api_company_access(PDO $pdo, int $companyId, ?string $viewGro
     $userType = strtolower((string) ($_SESSION['user_type'] ?? ''));
 
     if ($role === 'owner' || $userType === 'owner') {
-        $ownerId = (int) ($_SESSION['owner_id'] ?? $userId);
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM company WHERE id = ? AND owner_id = ?');
-        $stmt->execute([$companyId, $ownerId]);
-        if ((int) $stmt->fetchColumn() > 0) {
+        // real_owner_id survives external-company session swap; includes partnership rows.
+        $ownerId = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $userId);
+        if (gc_owner_has_company_access($pdo, $companyId, $ownerId)) {
+            return;
+        }
+        if (
+            $viewGroup !== null
+            && trim((string) $viewGroup) !== ''
+            && gc_session_can_access_subsidiary_under_view_group($pdo, $companyId, $viewGroup)
+        ) {
             return;
         }
         throw new RuntimeException('无权限访问该公司');
@@ -1449,5 +1473,47 @@ function gc_owner_has_company_access(PDO $pdo, int $companyId, int $ownerId): bo
     }
 
     return false;
+}
+
+/**
+ * Display group for an owner viewing a company — matches getCompaniesByOwner:
+ * COALESCE(company_ownership.partner_group_id, company.group_id).
+ */
+function gc_owner_company_display_group(PDO $pdo, int $companyId, int $ownerId): string
+{
+    if ($companyId <= 0 || $ownerId <= 0) {
+        return '';
+    }
+
+    try {
+        $hasCo = $pdo->query("SHOW TABLES LIKE 'company_ownership'")->rowCount() > 0;
+    } catch (Throwable $e) {
+        $hasCo = false;
+    }
+
+    if ($hasCo) {
+        $stmt = $pdo->prepare("
+            SELECT UPPER(TRIM(COALESCE(NULLIF(TRIM(co.partner_group_id), ''), c.group_id))) AS display_group
+            FROM company c
+            LEFT JOIN company_ownership co
+                ON co.company_id = c.id
+               AND co.owner_type = 'owner'
+               AND co.account_id = ?
+            WHERE c.id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$ownerId, $companyId]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT UPPER(TRIM(group_id)) AS display_group
+            FROM company
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$companyId]);
+    }
+
+    $gid = $stmt->fetchColumn();
+    return $gid !== false ? strtoupper(trim((string) $gid)) : '';
 }
 

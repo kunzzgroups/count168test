@@ -204,6 +204,10 @@ try {
     }
 
     $deletedCount = $deleted_ac_count;
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([$company_id], 'accounts', 'delete');
+
     api_success(['deleted' => $deletedCount], $deletedCount === 1 ? '1 account deleted' : $deletedCount . ' accounts deleted');
 } catch (PDOException $e) {
     error_log('Delete account API error: ' . $e->getMessage());

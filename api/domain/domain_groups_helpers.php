@@ -38,7 +38,7 @@ function domainApiNormalizeGroupsPayload($groups): array
         $entry = [
             'group_code' => $code,
             'expiration_date' => !empty($row['expiration_date']) ? $row['expiration_date'] : null,
-            'permissions' => (isset($row['permissions']) && is_array($row['permissions'])) ? $row['permissions'] : [],
+            'permissions' => ['Games'],
             'fee_share_allocations' => $row['fee_share_allocations'] ?? null,
             'apply_commission_payments_on_domain_save' => !empty($row['apply_commission_payments_on_domain_save']),
         ];
@@ -235,6 +235,85 @@ function domainApiValidateCrossOwnerCodesIncludingGroups(
     return 'This ID "' . $code . '" is already in use by another domain (not allowed). Choose a different Company ID or Group ID.';
 }
 
+/** JSON stored in groups.permissions for the fixed Games category. */
+function domainApiFixedGamesPermissionsJson(): string
+{
+    return json_encode(['Games'], JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * True when DB permissions are null/empty/invalid or not exactly ["Games"].
+ *
+ * @param mixed $raw
+ */
+function domainApiGroupPermissionsNeedGamesHeal($raw): bool
+{
+    if ($raw === null) {
+        return true;
+    }
+    if (is_array($raw)) {
+        $decoded = $raw;
+    } else {
+        $s = trim((string) $raw);
+        if ($s === '' || strcasecmp($s, 'null') === 0) {
+            return true;
+        }
+        $decoded = json_decode($s, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            return true;
+        }
+    }
+    $norm = array_values(array_map(static fn ($p) => (string) $p, $decoded));
+
+    return $norm !== ['Games'];
+}
+
+/**
+ * Persist groups.permissions = ["Games"] for rows that are null/empty/legacy.
+ * Pass $groupPk > 0 to heal one row, or 0 for all rows.
+ *
+ * @return int rows updated
+ */
+function domainApiHealGroupGamesPermissions(PDO $pdo, int $groupPk = 0): int
+{
+    if (!domainApiHasGroupsTable($pdo)) {
+        return 0;
+    }
+    try {
+        if ($pdo->query("SHOW COLUMNS FROM `groups` LIKE 'permissions'")->rowCount() === 0) {
+            return 0;
+        }
+    } catch (Throwable $e) {
+        return 0;
+    }
+
+    $json = domainApiFixedGamesPermissionsJson();
+    if ($groupPk > 0) {
+        $stmt = $pdo->prepare('SELECT id, permissions FROM `groups` WHERE id = ? LIMIT 1');
+        $stmt->execute([$groupPk]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !domainApiGroupPermissionsNeedGamesHeal($row['permissions'] ?? null)) {
+            return 0;
+        }
+        $up = $pdo->prepare('UPDATE `groups` SET permissions = ? WHERE id = ?');
+        $up->execute([$json, $groupPk]);
+
+        return (int) $up->rowCount();
+    }
+
+    $updated = 0;
+    foreach ($pdo->query('SELECT id, permissions FROM `groups`') as $row) {
+        if (!domainApiGroupPermissionsNeedGamesHeal($row['permissions'] ?? null)) {
+            continue;
+        }
+        $up = $pdo->prepare('UPDATE `groups` SET permissions = ? WHERE id = ?');
+        $up->execute([$json, (int) $row['id']]);
+        $updated += (int) $up->rowCount();
+    }
+
+    return $updated;
+}
+
 /**
  * @return array<int, array<string, mixed>>
  */
@@ -244,18 +323,16 @@ function domainApiFetchOwnerGroupsFormatted(PDO $pdo, int $ownerId): array
         return [];
     }
     $stmt = $pdo->prepare(
-        'SELECT group_code, expiration_date, permissions, fee_share_allocations FROM `groups` WHERE owner_id = ? ORDER BY group_code'
+        'SELECT id, group_code, expiration_date, permissions, fee_share_allocations FROM `groups` WHERE owner_id = ? ORDER BY group_code'
     );
     $stmt->execute([$ownerId]);
     $groups = [];
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $perms = $row['permissions'];
-        if ($perms !== null && $perms !== '') {
-            $decoded = json_decode($perms, true);
-            $row['permissions'] = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : [];
-        } else {
-            $row['permissions'] = [];
+        // Phase 5 contract: group category is always Games; heal legacy NULL/empty in DB.
+        if (domainApiGroupPermissionsNeedGamesHeal($row['permissions'] ?? null)) {
+            domainApiHealGroupGamesPermissions($pdo, (int) ($row['id'] ?? 0));
         }
+        $row['permissions'] = ['Games'];
         $row['fee_share_allocations'] = normalizeFeeShareAllocationsInput($row['fee_share_allocations'] ?? null);
         $groups[] = $row;
     }
@@ -302,7 +379,7 @@ function domainApiSaveOwnerGroups(PDO $pdo, int $ownerId, array $groupsData, str
         }
         $prevCode = strtoupper(trim((string) ($g['previous_group_code'] ?? '')));
         $newCodes[$code] = true;
-        $permsJson = !empty($g['permissions']) && is_array($g['permissions']) ? json_encode($g['permissions']) : null;
+        $permsJson = domainApiFixedGamesPermissionsJson();
         $feeJson = feeShareAllocationsToJson(normalizeFeeShareAllocationsInput($g['fee_share_allocations'] ?? null));
         $exp = !empty($g['expiration_date']) ? $g['expiration_date'] : null;
 

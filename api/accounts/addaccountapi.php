@@ -130,16 +130,58 @@ function resolveGroupEntityCompanyId(PDO $pdo, string $groupId, ?int $ownerId = 
 }
 
 function resolveOwnerIdForGroupScope(PDO $pdo, string $groupId, int $currentUserId, string $currentUserRole): int {
-    if ($currentUserRole === 'owner') {
-        $ownerId = (int)($_SESSION['owner_id'] ?? $currentUserId);
+    $g = strtoupper(trim($groupId));
+    if ($g === '') {
+        return 0;
+    }
+
+    // Phase 4/6: empty group has no company rows — resolve via groups.owner_id.
+    if (function_exists('gc_has_groups_table') && gc_has_groups_table($pdo)) {
+        try {
+            if (strtolower($currentUserRole) === 'owner') {
+                $ownerId = (int) ($_SESSION['owner_id'] ?? $currentUserId);
+                if ($ownerId > 0) {
+                    $stmt = $pdo->prepare('
+                        SELECT owner_id FROM `groups`
+                        WHERE UPPER(TRIM(group_code)) = ? AND owner_id = ?
+                        LIMIT 1
+                    ');
+                    $stmt->execute([$g, $ownerId]);
+                    $oid = (int) ($stmt->fetchColumn() ?: 0);
+                    if ($oid > 0) {
+                        return $oid;
+                    }
+                }
+            } else {
+                // Admin / assigned users: groups.owner_id when user_group_map binds them.
+                $stmt = $pdo->prepare('
+                    SELECT grp.owner_id
+                    FROM `groups` grp
+                    INNER JOIN user_group_map ugm ON ugm.group_id = grp.id
+                    WHERE UPPER(TRIM(grp.group_code)) = ? AND ugm.user_id = ?
+                    LIMIT 1
+                ');
+                $stmt->execute([$g, $currentUserId]);
+                $oid = (int) ($stmt->fetchColumn() ?: 0);
+                if ($oid > 0) {
+                    return $oid;
+                }
+            }
+        } catch (Throwable $e) {
+            // fall through to company-based checks
+        }
+    }
+
+    if (strtolower($currentUserRole) === 'owner') {
+        $ownerId = (int) ($_SESSION['owner_id'] ?? $currentUserId);
         $stmt = $pdo->prepare("
             SELECT COUNT(*)
             FROM company
             WHERE owner_id = ?
               AND UPPER(TRIM(COALESCE(group_id, ''))) = ?
         ");
-        $stmt->execute([$ownerId, $groupId]);
-        return ((int)$stmt->fetchColumn() > 0) ? $ownerId : 0;
+        $stmt->execute([$ownerId, $g]);
+        return ((int) $stmt->fetchColumn() > 0) ? $ownerId : 0;
     }
 
     $stmt = $pdo->prepare("
@@ -152,8 +194,8 @@ function resolveOwnerIdForGroupScope(PDO $pdo, string $groupId, int $currentUser
         ORDER BY c.id ASC
         LIMIT 1
     ");
-    $stmt->execute([$currentUserId, $groupId]);
-    return (int)($stmt->fetchColumn() ?: 0);
+    $stmt->execute([$currentUserId, $g]);
+    return (int) ($stmt->fetchColumn() ?: 0);
 }
 
 /**
@@ -453,11 +495,12 @@ try {
         if ($forceGroupLedger) {
             $groupPk = gc_resolve_group_pk_by_code($pdo, $group_scope_id);
             $anchorId = gc_resolve_group_anchor_company_id($pdo, $group_scope_id);
-            if ($groupPk <= 0 || $anchorId <= 0) {
+            if ($groupPk <= 0) {
                 throw new Exception('Missing company information');
             }
-            $company_id = $anchorId;
-            $group_ledger_link = ['group_pk' => $groupPk, 'anchor_company_id' => $anchorId];
+            // Phase 4: empty group may have anchor=0; dual-tenant link uses group_pk.
+            $company_id = $anchorId > 0 ? $anchorId : 0;
+            $group_ledger_link = ['group_pk' => $groupPk, 'anchor_company_id' => $company_id];
         } else {
             $legacy_entity_id = gc_resolve_legacy_group_entity_company_id($pdo, $group_scope_id);
             if ($legacy_entity_id > 0) {
@@ -466,15 +509,19 @@ try {
             } else {
                 $groupPk = gc_resolve_group_pk_by_code($pdo, $group_scope_id);
                 $anchorId = gc_resolve_group_anchor_company_id($pdo, $group_scope_id);
-                if ($groupPk <= 0 || $anchorId <= 0) {
+                if ($groupPk <= 0) {
                     throw new Exception('Missing company information');
                 }
-                $company_id = $anchorId;
-                $group_ledger_link = ['group_pk' => $groupPk, 'anchor_company_id' => $anchorId];
+                $company_id = $anchorId > 0 ? $anchorId : 0;
+                $group_ledger_link = ['group_pk' => $groupPk, 'anchor_company_id' => $company_id];
             }
         }
-        if (gc_is_group_login()) {
+        if ($company_id > 0 && gc_is_group_login()) {
             gc_assert_company_id_allowed_for_login_scope($pdo, $company_id, $group_scope_id);
+        } elseif ($company_id <= 0 && $group_ledger_link !== null) {
+            if (!gc_session_can_access_group_ledger($pdo, $group_scope_id)) {
+                throw new Exception('无权限访问该公司');
+            }
         }
     }
 
@@ -482,14 +529,17 @@ try {
         gc_assert_company_id_allowed_for_login_scope($pdo, $company_id, $group_scope_id);
     }
 
-    if (!$company_id) {
+    if (!$company_id && $group_ledger_link === null) {
         throw new Exception('缺少公司信息');
     }
 
-    validateCompanyAccess($pdo, $company_id, $group_scope_id);
+    if ($company_id > 0) {
+        validateCompanyAccess($pdo, $company_id, $group_scope_id);
+    }
 
-    $account_id = trim($_POST['account_id'] ?? '');
-    $name = trim($_POST['name'] ?? '');
+    // Canonical store: uppercase account codes/names (callers may send CSS-only "uppercase" visual values).
+    $account_id = strtoupper(trim($_POST['account_id'] ?? ''));
+    $name = strtoupper(trim($_POST['name'] ?? ''));
     $role = trim($_POST['role'] ?? '');
     $password = trim($_POST['password'] ?? '');
     $payment_alert = isset($_POST['payment_alert']) ? (int)$_POST['payment_alert'] : 0;
@@ -552,9 +602,12 @@ try {
 
     $alert_day = $alert_type;
     $alert_specific_date = $alert_start_date;
-    $remark = !empty($_POST['remark']) ? trim($_POST['remark']) : null;
+    $remark = !empty($_POST['remark']) ? strtoupper(trim($_POST['remark'])) : null;
 
-    $lockKey = buildAccountCreateLockKey($company_id, $account_id);
+    $lockScopeId = $company_id > 0
+        ? $company_id
+        : (int) ($group_ledger_link['group_pk'] ?? 0);
+    $lockKey = buildAccountCreateLockKey($lockScopeId, $account_id);
     if (!acquireAccountCreateLock($pdo, $lockKey, 5)) {
         throw new Exception('Account creation is in progress for this ID, please retry');
     }
@@ -604,7 +657,12 @@ try {
             }
             // Group-only add must be scoped by group selection only.
             // Do not merge caller-provided company_ids (can drag links back to C168).
-            if (empty($forced_company_ids_to_link) && isset($_POST['company_ids']) && $_POST['company_ids'] !== '') {
+            if (
+                empty($forced_company_ids_to_link)
+                && $group_ledger_link === null
+                && isset($_POST['company_ids'])
+                && $_POST['company_ids'] !== ''
+            ) {
                 $company_ids = json_decode($_POST['company_ids'], true);
                 if (is_array($company_ids) && !empty($company_ids)) {
                     foreach ($company_ids as $comp_id) {
@@ -622,17 +680,27 @@ try {
                     (int) $group_ledger_link['group_pk'],
                     (int) $group_ledger_link['anchor_company_id']
                 );
-                $company_ids_to_link = [(int) $group_ledger_link['anchor_company_id']];
+                $anchorLink = (int) $group_ledger_link['anchor_company_id'];
+                $company_ids_to_link = $anchorLink > 0 ? [$anchorLink] : [];
             } else {
                 if (empty($company_ids_to_link)) {
                     $company_ids_to_link[] = $company_id;
                 }
                 linkAccountToCompanies($pdo, $newAccountId, $company_ids_to_link);
             }
-            $users = getUsersWithCompanyAccess($pdo, $company_ids_to_link);
-            updateUserAccountPermissionsForNewAccount($pdo, $users, $company_ids_to_link, $newAccountId, $account_id);
+            if ($company_ids_to_link !== []) {
+                $users = getUsersWithCompanyAccess($pdo, $company_ids_to_link);
+                updateUserAccountPermissionsForNewAccount($pdo, $users, $company_ids_to_link, $newAccountId, $account_id);
+            }
 
             $pdo->commit();
+
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies(
+                !empty($company_ids_to_link) ? $company_ids_to_link : [$company_id],
+                'accounts',
+                'add'
+            );
 
             jsonResponse(true, '账户创建成功！', [
                 'id' => $newAccountId,

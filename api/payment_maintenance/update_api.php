@@ -11,6 +11,8 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/group_company_access.php';
 require_once __DIR__ . '/../includes/money_decimal.php';
+require_once __DIR__ . '/../includes/payment_delete_shared.php';
+require_once __DIR__ . '/../datacapture/data_capture_scope_common.php';
 
 /**
  * 标准 JSON 响应：success, message, data
@@ -54,15 +56,6 @@ try {
     if (!isset($_SESSION['user_id'])) {
         throw new Exception('请先登录');
     }
-    if (!isset($_SESSION['company_id'])) {
-        throw new Exception('缺少公司信息');
-    }
-    $company_id = (int) $_SESSION['company_id'];
-    gc_assert_api_company_access(
-        $pdo,
-        $company_id,
-        gc_is_group_login() ? gc_session_login_identifier() : null
-    );
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         throw new Exception('只支持 POST 请求');
@@ -72,6 +65,33 @@ try {
     if (!is_array($payload)) {
         throw new Exception('无效的请求数据');
     }
+
+    $viewGroupForAccess = dcNormalizeGroupId(
+        $payload['view_group'] ?? $payload['group_id'] ?? ''
+    );
+    $listScope = payment_delete_resolve_list_scope($pdo, $payload);
+    $permCompanyId = tx_permission_company_id_for_scope($pdo, $listScope);
+    if ($permCompanyId <= 0 && ($listScope['mode'] ?? '') !== 'group') {
+        if (!isset($_SESSION['company_id'])) {
+            throw new Exception('缺少公司信息');
+        }
+        $permCompanyId = (int) $_SESSION['company_id'];
+        $listScope = [
+            'mode' => 'company',
+            'company_id' => $permCompanyId,
+            'group_scope_id' => 0,
+        ];
+    }
+    if ($permCompanyId > 0) {
+        dcAssertUserCanAccessCompany(
+            $pdo,
+            $permCompanyId,
+            $viewGroupForAccess !== '' ? $viewGroupForAccess : null
+        );
+    }
+    $company_id = $permCompanyId > 0
+        ? $permCompanyId
+        : (int) ($_SESSION['company_id'] ?? 0);
 
     $transaction_id = (int) ($payload['transaction_id'] ?? 0);
     $amount = isset($payload['amount']) ? money_normalize($payload['amount']) : null;
@@ -85,11 +105,19 @@ try {
         throw new Exception('金额不能小于 0');
     }
 
-    if (!checkTransactionBelongsToCompany($pdo, $transaction_id, $company_id)) {
+    if ($company_id > 0 && !checkTransactionBelongsToCompany($pdo, $transaction_id, $company_id)) {
         throw new Exception('交易不存在或无权访问');
     }
 
     updateTransaction($pdo, $transaction_id, $amount, $description, $remark);
+
+    require_once __DIR__ . '/../includes/payment_delete_shared.php';
+    payment_delete_clear_tx_search_cache();
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    require_once __DIR__ . '/../includes/ledger_realtime.php';
+    realtime_publish_scope($listScope, 'maintenance', 'payment_update');
+    tx_ledger_realtime_publish_scope($listScope, 'payment_update');
 
     jsonResponse(true, '交易更新成功', [
         'transaction_id' => $transaction_id,

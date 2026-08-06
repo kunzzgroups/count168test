@@ -6,6 +6,7 @@ import SecondaryVerifyBackButton from "./SecondaryVerifyBackButton.jsx";
 import { useAuthBackground } from "./useAuthBackground.js";
 import { resolveDefaultLandingPath } from "../../utils/auth/sidebarPermissions.js";
 import { spaPath } from "../../utils/routing/pageRoutes.js";
+import PasswordInput from "../../components/PasswordInput.jsx";
 
 const VARIANT_CONFIG = {
   owner: {
@@ -170,19 +171,21 @@ export default function SecondaryPasswordPage({ variant }) {
           <form className="login-form" onSubmit={onSubmit}>
             <div className="input-group">
               <i className="fas fa-lock input-icon" />
-              <input
+              <PasswordInput
                 id="secondary_password"
                 ref={inputRef}
-                type="password"
                 placeholder={i18n.placeholder}
                 maxLength={6}
                 pattern="[0-9]{6}"
                 autoComplete="off"
+                inputMode="numeric"
                 required
                 autoFocus
                 value={password}
                 onChange={onChange}
                 onPaste={onPaste}
+                showLabel={i18n.showPassword}
+                hideLabel={i18n.hidePassword}
               />
             </div>
 

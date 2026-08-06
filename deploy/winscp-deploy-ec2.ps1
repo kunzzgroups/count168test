@@ -120,9 +120,15 @@ $lines = @(
   "synchronize remote -mirror -criteria=time,size `"${RepoUnix}/api`" /var/www/count168/api"
 )
 
+# Windows checkout often has CRLF; syncing deploy/*.sh as-is breaks `set -o pipefail` on EC2
+# and poisons GitHub Actions (which runs deploy/deploy.sh before git reset can repair it).
+$lines += @(
+  "call bash -lc `"sed -i 's/\r$//' /var/www/count168/deploy/*.sh /var/www/count168/deploy/systemd/*.service; chmod +x /var/www/count168/deploy/*.sh`""
+)
+
 if (-not $SkipRealtime) {
   $lines += @(
-    "call bash -lc `"sed -i 's/\r$//' /var/www/count168/deploy/deploy-realtime.sh /var/www/count168/deploy/systemd/tx-realtime.service; chmod +x /var/www/count168/deploy/deploy-realtime.sh; bash /var/www/count168/deploy/deploy-realtime.sh`""
+    "call bash -lc `"bash /var/www/count168/deploy/deploy-realtime.sh`""
   )
 }
 

@@ -161,6 +161,8 @@ try {
         $stmt = $pdo->prepare("DELETE FROM bank_process WHERE id IN ($delPlaceholders) AND company_id = ? AND status = 'inactive'");
         $stmt->execute(array_merge($inactiveIds, [$company_id_session]));
         $deletedCount = $stmt->rowCount();
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$company_id_session], 'processes', 'delete');
         api_success(['deleted' => $deletedCount], $deletedCount === 1 ? '1 process deleted' : $deletedCount . ' processes deleted');
         exit;
     }
@@ -230,6 +232,8 @@ try {
     ));
     $deletedCount = $stmt->rowCount();
     $pdo->commit();
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([$company_id_session], 'processes', 'delete');
     api_success(
         ['deleted' => $deletedCount, 'mode' => 'soft_delete_waiting'],
         $deletedCount === 1 ? '1 process deleted' : $deletedCount . ' processes deleted'

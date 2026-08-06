@@ -17,6 +17,7 @@ import {
   isGroupPayrollDraftProcessId,
   selectedProcessFromGroupOnlySession,
 } from "../lib/dataCaptureGroupOnlyProcesses.js";
+import { resolvePayrollDraftProcessKey } from "../lib/dataCaptureGamesPayrollProcesses.js";
 import {
   normalizeGroupOnlyDraftCurrencyId,
   restoreGroupOnlyTableDraft,
@@ -88,6 +89,7 @@ function readRestoredSelectedProcess(restoredProcessData, selectedGroup = null, 
     displayText: pname || pcode || pid,
     process_id: pcode,
     description_name: null,
+    enable_save_draft: Boolean(restoredProcessData.enableSaveDraft),
   };
 }
 
@@ -430,12 +432,15 @@ export function useDataCaptureFormEngine(
 
   const selectProcessRow = useCallback(async (row) => {
     if (!applyCompanyOnlyFieldsRef.current) return;
+    // Flush the outgoing process's draft (no-op unless it's a matched payroll process).
+    await callDataCaptureRuntime("flushGroupOnlyTableDraftNow");
     const displayText = displayTextFromProcessRow(row);
     setSelectedProcess({
       id: String(row.id),
       displayText,
       process_id: row.process_id,
       description_name: row.description_name || null,
+      enable_save_draft: Boolean(row.enable_save_draft),
     });
     setProcessOpen(false);
     setProcessFilter("");
@@ -566,6 +571,7 @@ export function useDataCaptureFormEngine(
           displayText: displayTextFromProcessRow(row),
           process_id: row.process_id,
           description_name: row.description_name || null,
+          enable_save_draft: Boolean(row.enable_save_draft),
         });
       } else if (pid || pcode || pname) {
         setSelectedProcess({
@@ -573,6 +579,7 @@ export function useDataCaptureFormEngine(
           displayText: pname || pcode || pid,
           process_id: pcode,
           description_name: null,
+          enable_save_draft: Boolean(processData.enableSaveDraft),
         });
       }
     }
@@ -670,11 +677,16 @@ export function useDataCaptureFormEngine(
     persistGroupOnlyFormPrefs();
   }, [applyCompanyOnlyFields, selectedGroup, selectedProcess?.id, currencyId, captureDate, persistGroupOnlyFormPrefs]);
 
-  /** Restore saved group-only table draft when process/currency is set and grid is ready. */
+  /**
+   * Restore saved payroll table draft when process/currency is set and grid is ready.
+   * Covers both the Bank/AP-IG group payroll UI (fixed synthetic ids) and the
+   * Games company UI (real SALARY/BONUS/COMMISSION process rows, matched by name).
+   */
   useEffect(() => {
     const draftBucket = payrollPrefsKeyRef.current;
-    if (applyCompanyOnlyFields || !draftBucket || !selectedProcess?.id) return;
-    if (!isGroupPayrollDraftProcessId(selectedProcess.id)) return;
+    if (!draftBucket) return;
+    const processKey = resolvePayrollDraftProcessKey(selectedProcess, !applyCompanyOnlyFields);
+    if (!processKey) return;
     if (!scriptsReady) return;
     if (!normalizeGroupOnlyDraftCurrencyId(currencyId)) return;
     if (getDataCaptureState().isRestoring) return;
@@ -683,14 +695,14 @@ export function useDataCaptureFormEngine(
     } catch {
       /* ignore */
     }
-    void restoreGroupOnlyTableDraft(draftBucket, selectedProcess.id, currencyId, {
+    void restoreGroupOnlyTableDraft(draftBucket, processKey, currencyId, {
       captureScope,
       serverSync: payrollDraftServerSync,
     });
   }, [
     applyCompanyOnlyFields,
     payrollPrefsKey,
-    selectedProcess?.id,
+    selectedProcess,
     currencyId,
     scriptsReady,
     captureScope,

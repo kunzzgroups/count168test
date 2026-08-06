@@ -453,6 +453,11 @@ try {
     }
     bmp_clearResendAnchorAccountingDueSideEffects($pdo, $bankProcessId, $company_id, $effectiveDayStartYmd);
     $pdo->commit();
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([(int) $company_id], 'processes', 'resend_accounting_due');
+    realtime_publish_companies([(int) $company_id], 'maintenance', 'resend_accounting_due');
+
     jsonResponse(true, 'Done: This process can appear in Accounting Due again.', [
         'bank_process_id' => $bankProcessId,
         'process_accounting_posted_removed' => $removedPap,

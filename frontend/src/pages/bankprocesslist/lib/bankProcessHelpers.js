@@ -1,5 +1,6 @@
 import { MoneyDecimal } from "../../../utils/money/moneyDecimal.js";
 import { buildApiUrl } from "../../../utils/core/apiUrl.js";
+import { resolveCompanyCategoryFlags } from "../../../utils/company/companyCategoryFlags.js";
 import { formatDmyDash, parseDdMmYyyyToYmd, parseYmd } from "../../../utils/date/dateUtils.js";
 import { notifyTransactionListInvalidated } from "../../transaction/lib/transactionPaymentLogic.js";
 
@@ -453,6 +454,25 @@ export function resolveBankOnlyCategoryHint(sessionMe, companyNumericId) {
   if (sessionMe.company_has_bank && !sessionMe.company_has_gambling) return true;
   if (sessionMe.company_has_gambling) return false;
   return null;
+}
+
+/**
+ * Sync bank-only decision for Process route swaps.
+ * Prefer owner-companies row / session-flag cache; then session hint for current company.
+ * @returns {boolean|null} null when unknown (caller may fall back to domain API)
+ */
+export function resolveIsBankOnlyCompany(companyRow, sessionMe = null) {
+  const flags = resolveCompanyCategoryFlags(companyRow);
+  if (flags) return Boolean(flags.hasBank && !flags.hasGambling);
+  return resolveBankOnlyCategoryHint(sessionMe, companyRow?.id);
+}
+
+/** Local flags first; domain API only when category is still unknown. */
+export async function resolveIsBankOnlyCompanyAsync(companyRow, sessionMe, buildApiUrl) {
+  const local = resolveIsBankOnlyCompany(companyRow, sessionMe);
+  if (local !== null) return local;
+  if (!companyRow?.company_id) return false;
+  return isBankCategoryCompany(companyRow.company_id, buildApiUrl);
 }
 
 export async function isBankCategoryCompany(companyCode, buildApiUrl) {

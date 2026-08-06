@@ -15,10 +15,9 @@ export function parseYmd(s) {
 export function defaultDashboardDateRange() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  // Live ops: YTD gives a useful first paint; This Month is often empty mid-month
-  // for companies that post later in the cycle.
+  // Align with desktop: first paint = This Month → today
   return {
-    dateFrom: formatYmd(new Date(today.getFullYear(), 0, 1)),
+    dateFrom: formatYmd(new Date(today.getFullYear(), today.getMonth(), 1)),
     dateTo: formatYmd(today),
   };
 }
@@ -105,6 +104,37 @@ export function eachDateInRange(startYmd, endYmd) {
     cursor.setDate(cursor.getDate() + 1);
   }
   return dates;
+}
+
+/** Inclusive calendar-month span (desktop parity). */
+export function chartMonthSpan(startYmd, endYmd) {
+  const start = parseYmd(startYmd);
+  const end = parseYmd(endYmd);
+  if (!start || !end) return 0;
+  return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+}
+
+export function shouldAggregateChartByMonth(startYmd, endYmd) {
+  return chartMonthSpan(startYmd, endYmd) >= 3;
+}
+
+export function eachMonthInRange(startYmd, endYmd) {
+  const start = parseYmd(startYmd);
+  const end = parseYmd(endYmd);
+  if (!start || !end || start > end) return [];
+  const months = [];
+  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+  while (cur <= endMonth) {
+    months.push({ year: cur.getFullYear(), month: cur.getMonth() + 1 });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return months;
+}
+
+/** Month tick for Trend Chart X-axis — omit year to avoid crowded labels on narrow phones. */
+export function formatChartMonthLabel(_year, month) {
+  return MONTHS_SHORT[month - 1] || "";
 }
 
 /** Inclusive day count for a YMD range. */

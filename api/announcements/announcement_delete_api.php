@@ -76,6 +76,11 @@ try {
     }
 
     deleteAnnouncementById($pdo, $announcementId);
+    $company_id = (int) ($_SESSION['company_id'] ?? 0);
+    if ($company_id > 0) {
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$company_id], 'announcements', 'delete');
+    }
     jsonResponse(true, 'Announcement deleted successfully', null);
 
 } catch (PDOException $e) {

@@ -282,3 +282,4 @@ bash /var/www/count168/deploy/deploy.sh
   **不要**用仓库配置覆盖 `/etc/nginx/conf.d/count168.org.conf`。若需更新 `.site` 的 nginx 路由，手动合并到现有 certbot 配置，或只改 `count168.site.conf` 里非 `listen` 的 location 块。
   若误删了 `count168.site-le-ssl.conf`，用 `sudo certbot --nginx -d count168.site -d www.count168.site` 恢复 HTTPS。
 - 若本地手动成功，但 Actions 仍失败：检查 GitHub Secrets 里 `EC2_HOST`（公网 IP）、`EC2_USER`（`ec2-user`）、`EC2_SSH_KEY`（完整 `.pem` 私钥，含 `BEGIN/END` 行）。Secret 被截断或改错后，从 1072 起会连续失败且网站仍显示旧版本。
+- Actions 数秒失败且日志含 `set: pipefail: invalid option name`：EC2 上的 `deploy/*.sh` 被 WinSCP 写成了 **CRLF**。先 `sed -i 's/\r$//' /var/www/count168/deploy/*.sh` 再跑 `bash /var/www/count168/deploy/deploy.sh`。`winscp-deploy-ec2.ps1` 同步后会自动去 CRLF。

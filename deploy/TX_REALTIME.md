@@ -1,64 +1,67 @@
-# Transaction Payment 实时同步（SSE + 可选 Redis）
+# App-wide realtime sync（SSE Invalidate Bus）
 
-一边 Submit 后，其他开着 Transaction Payment 的浏览器经 SSE 收到 `ledger_changed`，静默重搜列表（约 &lt;1s）。`PENDING` 也会广播，以便 Manager+ 的 Contra Inbox 徽章即时更新；审批通过/拒绝同样广播。
+保存成功后，其他开着相关页面的浏览器经 SSE 收到变更信号，静默重拉数据（约 &lt;1s）。**不推送完整业务行**，客户端按权限自行 refetch。
+
+Transaction Payment 的 `ledger_changed` 仍兼容；新域使用 `domain_changed` + `domain` 字段。
 
 ## 组件
 
 | 组件 | 路径 |
 |------|------|
 | Node SSE hub | `services/tx-realtime/server.mjs` |
-| PHP publish | `api/includes/ledger_realtime.php`（submit / contra approve） |
-| Ticket API | `api/transactions/realtime_ticket_api.php` |
-| 前端订阅 | `frontend/src/pages/transaction/lib/transactionRealtime.js` |
+| PHP publish（通用） | `api/includes/realtime.php` |
+| PHP ledger 兼容包装 | `api/includes/ledger_realtime.php` |
+| Ticket API（全站） | `api/realtime/ticket_api.php` |
+| 前端单连接 | `frontend/src/lib/realtime/AppRealtimeBridge.jsx`（AuthenticatedLayout） |
+| 页面订阅 | `useRealtimeDomain(domain, refetch)` |
 | systemd | `deploy/systemd/tx-realtime.service` |
 
-单机 EC2：**可不装 Redis**（进程内 fanout）。多实例时再设 `REDIS_URL`。
+## 桌面端已覆盖页面
 
-## EC2 部署（推荐：Windows WinSCP 一键）
+| Domain | 写（publish） | 读（subscribe / invalidate） |
+|--------|---------------|------------------------------|
+| `ledger` | submit / contra / process→tx | Transaction、TX Maintenance、Dashboard、Reports、Member |
+| `accounts` | account CRUD/link/currency… | Account List、TX To/From、Bank Process、User Access |
+| `processes` | process CRUD/list writes | Process List、Bank Process、User Access、Data Capture Query |
+| `datacapture` | submissions / catalog / summary | Data Capture Query、Summary |
+| `ownership` | owners / company-group | Ownership |
+| `users` | userlist create/update、toggle、useraccess | User List、User Access |
+| `maintenance` | capture/formula/payment/bank/site maint | 各 Maintenance 页、Announcement |
+| `announcements` | announcement CRUD | Announcement |
+| `domain` | domain_api writes | Domain |
 
-在仓库根目录（已装 WinSCP，私钥默认 `%USERPROFILE%\.ssh\Server_Key.pem`）：
+暂缓：Deleted Log、Auto Renew（无/弱 publish）；mobile 另线。
+
+## 新人接新功能（checklist）
+
+1. **写 API 成功后**：
+
+```php
+require_once __DIR__ . '/../includes/realtime.php';
+realtime_publish_companies([$company_id], 'accounts', 'add');
+```
+
+2. **列表页**：
+
+```js
+useRealtimeDomain(REALTIME_DOMAINS.ACCOUNTS, () => refreshList({ silent: true }));
+```
+
+3. Hub / nginx / secret **不用改**。
+
+## EC2 部署
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\winscp-deploy-ec2.ps1
 ```
 
-脚本会：`npm run build` → WinSCP 同步 `frontend/dist` / `api` / `services/tx-realtime` / `deploy` → 远端跑 `deploy/deploy-realtime.sh`（生成 secret、systemd、nginx `/realtime/`）。
+发版前端请用 `npm run build:deploy`（或脚本内 build）保留 hashed assets。
 
-可选参数：`-SkipBuild`、`-SkipRealtime`。本地覆盖：`deploy/local/winscp-ec2.ps1`（已 gitignore）。
+`includes/config.local.php` 的 `$tx_realtime_secret` 须与 `services/tx-realtime/.env` 一致。
 
-### 仅在 EC2 上手动启用 SSE
+排障：
 
-```bash
-# 代码已在 /var/www/count168 后：
-bash /var/www/count168/deploy/deploy-realtime.sh
-curl -s http://127.0.0.1:3911/health
-```
-
-可选 Redis（多实例时）：`sudo dnf install -y redis` 后在 `services/tx-realtime/.env` 设 `REDIS_URL`。
-
-## 本地开发
-
-```bash
-cd services/tx-realtime
-cp .env.example .env   # 设置 TX_REALTIME_SECRET
-npm install
-npm run dev
-```
-
-`includes/config.local.php` 设同一 `$tx_realtime_secret`。未设置 secret 时 realtime **自动关闭**（Submit 不受影响）。
-
-**权限（必查）**：Amazon Linux 上 php-fpm 用户是 `apache`。`config.local.php` 若为 `640` + 组 `nginx`，apache **读不到** secret，ticket 会一直 `enabled:false`，浏览器也不会连 `/realtime/sse`。部署脚本会设为 `ec2-user:apache` + `640`。手动修复：
-
-```bash
-sudo chown ec2-user:apache /var/www/count168/includes/config.local.php
-sudo chmod 640 /var/www/count168/includes/config.local.php
-```
-
-排障：`/realtime/health` 的 `clients` 应 ≥ 开着 Transaction Payment 的浏览器数；access log 里应有 `/realtime/sse`（不只 `realtime_ticket_api.php`）。
-
-## 验收
-
-1. 两浏览器同公司、Capture Date 含交易日  
-2. A Submit 当天 PAYMENT → B 不点 Search，约 1s 内表格更新  
-3. PENDING 账 B 不可见；审批通过后 B 更新  
-4. B 在 submit-focus 时保持窄列表（仅 focus 账户行更新）
+- `/realtime/health` 的 `clients` ≥ 已登录开着 SPA 的浏览器数
+- Network 里 `/realtime/sse` 应长期 **pending**（不是红叉）。红叉常见原因：ticket 过期后浏览器用同一 URL 重试；前端已改为 `onerror` 立刻关连并重新领票
+- ticket 有效期 6h；公司切换会 debounce 后按 scope 重连（scope 未变且已 OPEN 则跳过）
+- Cloudflare：勿对 `/realtime/*` 开缓存；Rocket Loader 若干扰可对站点关闭

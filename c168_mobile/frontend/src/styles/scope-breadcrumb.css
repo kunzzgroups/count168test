@@ -15,7 +15,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.75rem;
+  font-size: var(--m-text-secondary);
   font-weight: 700;
 }
 
@@ -45,7 +45,7 @@
   border-radius: 0.375rem;
   background: #ede9fe;
   padding: 0.125rem 0.375rem;
-  font-size: 0.5625rem;
+  font-size: var(--m-text-micro);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -54,7 +54,7 @@
 
 .m-scope-chevron {
   flex-shrink: 0;
-  font-size: 0.5rem;
+  font-size: var(--m-text-micro);
   color: #cbd5e1;
 }
 
@@ -78,5 +78,5 @@
 }
 
 .m-scope-glyph i {
-  font-size: 0.5625rem;
+  font-size: var(--m-text-micro);
 }

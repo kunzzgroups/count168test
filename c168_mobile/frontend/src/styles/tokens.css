@@ -34,12 +34,21 @@
   --m-color-ring: rgba(226, 232, 240, 0.9);
   --m-color-ring-soft: rgba(241, 245, 249, 1);
 
-  --m-text-compact: 0.8125rem;
-  --m-text-body: 0.8125rem;
-  --m-text-label-ratio: 0.78em;
-  --m-text-sub-ratio: 0.9em;
-  --m-text-tab-minus-ratio: 1.15em;
-  --m-text-badge-ratio: 0.72em;
+  /*
+   * Original c168_mobile type scale (1rem = 16px; NOT desktop 62.5%).
+   * Body/compact = 0.8125rem (13px). Ratio aliases are absolute rem
+   * equivalents of the old 0.78em / 0.9em / 0.72em (no nested em shrink).
+   */
+  --m-text-title: 0.875rem; /* 14px — page titles */
+  --m-text-body: 0.8125rem; /* 13px — original body */
+  --m-text-compact: 0.8125rem; /* 13px — original compact */
+  --m-text-secondary: 0.75rem; /* 12px — secondary */
+  --m-text-caption: 0.6875rem; /* 11px ≈ old label 0.78em */
+  --m-text-micro: 0.5625rem; /* 9px ≈ old badge / chrome floor */
+  --m-text-label-ratio: var(--m-text-caption);
+  --m-text-sub-ratio: 0.75rem; /* ≈ old 0.9em on 13px */
+  --m-text-badge-ratio: var(--m-text-micro);
+  --m-text-tab-minus-ratio: 0.9375rem; /* ≈ old 1.15em on 13px */
 
   --m-radius-card: 0.75rem;
   --m-radius-card-lg: 1rem;

@@ -31,7 +31,9 @@ export const DOMAIN_I18N = {
     noUngroupedCompaniesAvailable: "No ungrouped companies available",
     noCompaniesInGroup: 'No companies in group "{gid}". Click "Multiple Choice" to assign.',
     noUngroupedCompanies: "No ungrouped companies",
-    notSet: "Not set",
+    notSet: "NO SET",
+    expirationRequiredBeforeConfirm:
+      'Set expiration date for "{id}" before confirming.',
     setExpirationDate: "Set expiration date",
     set: "Set",
     remove: "Remove",
@@ -246,6 +248,7 @@ export const DOMAIN_I18N = {
     noCompaniesInGroup: '集团 "{gid}" 中没有公司，点击“多选分配”进行分配。',
     noUngroupedCompanies: "暂无未集团公司",
     notSet: "未设置",
+    expirationRequiredBeforeConfirm: "请先为「{id}」设置到期日后再确认。",
     setExpirationDate: "设置到期日",
     set: "设置",
     remove: "移除",

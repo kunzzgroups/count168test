@@ -118,7 +118,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -130,7 +130,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   font-weight: 600;
   color: var(--m-sidebar-highlight);
 }

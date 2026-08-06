@@ -6,6 +6,7 @@ import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
 import {
   canAccessBankProcess,
+  canAccessBankprocessMaintenance,
   canAccessMaintenance,
   canAccessPaymentMaintenance,
   canAccessTransactionMaintenance,
@@ -81,11 +82,20 @@ export default function MaintenanceHubPage() {
       violet: true,
     });
   }
+  if (canAccessBankprocessMaintenance(me)) {
+    records.push({
+      to: "/maintenance/bankprocess",
+      icon: "fa-building-columns",
+      title: i18n.bpMaintenanceTitle,
+      desc: i18n.bpMaintenanceDesc,
+      features: i18n.bpFeatures,
+      badge: i18n.deleteAccess,
+      violet: true,
+    });
+  }
 
-  const setup = [
-    { icon: "fa-database", label: i18n.setupDataCapture },
-    { icon: "fa-square-root-variable", label: i18n.setupFormula },
-  ];
+  // Data Capture / Formula are desktop-only — omit from mobile hub.
+  const setup = [];
   if (canAccessBankProcess(me)) {
     setup.push({
       to: "/maintenance/bank-process",
@@ -94,8 +104,6 @@ export default function MaintenanceHubPage() {
       desc: i18n.setupBankDesc,
       features: i18n.setupBankFeatures,
     });
-  } else {
-    setup.push({ icon: "fa-building-columns", label: i18n.setupBank });
   }
 
   return (
@@ -141,32 +149,26 @@ export default function MaintenanceHubPage() {
               ))}
             </div>
 
-            <p className="m-mt-section-label">{i18n.sectionSetup}</p>
-            <div className="m-mt-setup-list">
-              {setup.map((item) =>
-                item.to ? (
-                  <Link key={item.label} to={item.to} className="m-mt-record-card tap-scale">
-                    <span className="m-mt-record-icon is-violet">
-                      <i className={`fas ${item.icon}`} aria-hidden="true" />
-                    </span>
-                    <span className="m-mt-record-copy">
-                      <strong>{item.label}</strong>
-                      {item.desc ? <small>{item.desc}</small> : null}
-                      {item.features ? <em className="m-mt-record-features">{item.features}</em> : null}
-                    </span>
-                    <i className="fas fa-chevron-right m-mt-record-chevron" aria-hidden="true" />
-                  </Link>
-                ) : (
-                  <div key={item.label} className="m-mt-setup-row">
-                    <span className="m-mt-setup-icon">
-                      <i className={`fas ${item.icon}`} aria-hidden="true" />
-                    </span>
-                    <span className="m-mt-setup-label">{item.label}</span>
-                    <span className="m-mt-soon">{i18n.comingSoon}</span>
-                  </div>
-                ),
-              )}
-            </div>
+            {setup.length > 0 ? (
+              <>
+                <p className="m-mt-section-label">{i18n.sectionSetup}</p>
+                <div className="m-mt-setup-list">
+                  {setup.map((item) => (
+                    <Link key={item.label} to={item.to} className="m-mt-record-card tap-scale">
+                      <span className="m-mt-record-icon is-violet">
+                        <i className={`fas ${item.icon}`} aria-hidden="true" />
+                      </span>
+                      <span className="m-mt-record-copy">
+                        <strong>{item.label}</strong>
+                        {item.desc ? <small>{item.desc}</small> : null}
+                        {item.features ? <em className="m-mt-record-features">{item.features}</em> : null}
+                      </span>
+                      <i className="fas fa-chevron-right m-mt-record-chevron" aria-hidden="true" />
+                    </Link>
+                  ))}
+                </div>
+              </>
+            ) : null}
           </>
         )}
       </main>

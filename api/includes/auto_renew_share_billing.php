@@ -208,7 +208,7 @@ function auto_renew_create_share_commission_payments(
             if (money_cmp($amount, '0') <= 0) {
                 continue;
             }
-            $roleSql = "LOWER(TRIM(COALESCE(a.role, ''))) IN ('staff', 'agent')";
+            $roleSql = "LOWER(TRIM(COALESCE(a.role, ''))) IN ('staff', 'agent', 'partner')";
             $chk = $pdo->prepare("
                 SELECT COUNT(*)
                 FROM account_company ac

@@ -51,20 +51,33 @@ function getRoles(PDO $pdo) {
 }
 
 /**
- * Account modal roles: ensure DEBTOR appears after MEMBER when missing from role table.
+ * Account modal roles: ensure PARTNER / DEBTOR when missing from role table
+ * (same core fallbacks as get_categories_api.php / addaccountapi roleExists).
  */
 function ensureAccountModalRoles(array $roles): array
 {
     $normalized = array_map(static fn($r) => strtoupper(trim((string) $r)), $roles);
-    if (in_array('DEBTOR', $normalized, true)) {
-        return $roles;
+
+    if (!in_array('PARTNER', $normalized, true)) {
+        $companyIdx = array_search('COMPANY', $normalized, true);
+        if ($companyIdx !== false) {
+            array_splice($roles, $companyIdx + 1, 0, 'PARTNER');
+            array_splice($normalized, $companyIdx + 1, 0, 'PARTNER');
+        } else {
+            $roles[] = 'PARTNER';
+            $normalized[] = 'PARTNER';
+        }
     }
-    $memberIdx = array_search('MEMBER', $normalized, true);
-    if ($memberIdx !== false) {
-        array_splice($roles, $memberIdx + 1, 0, 'DEBTOR');
-        return $roles;
+
+    if (!in_array('DEBTOR', $normalized, true)) {
+        $memberIdx = array_search('MEMBER', $normalized, true);
+        if ($memberIdx !== false) {
+            array_splice($roles, $memberIdx + 1, 0, 'DEBTOR');
+        } else {
+            $roles[] = 'DEBTOR';
+        }
     }
-    $roles[] = 'DEBTOR';
+
     return $roles;
 }
 

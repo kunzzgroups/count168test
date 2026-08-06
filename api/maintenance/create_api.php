@@ -84,6 +84,11 @@ try {
     $created_by = ($user_type === 'owner') ? ($_SESSION['owner_id'] ?? $user_id) : $user_id;
 
     $id = insertMaintenance($pdo, $prefix, $content, $created_by, $user_type);
+    $company_id = (int) ($_SESSION['company_id'] ?? 0);
+    if ($company_id > 0) {
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$company_id], 'maintenance', 'create');
+    }
     jsonResponse(true, 'Maintenance content created successfully', ['id' => $id]);
 } catch (PDOException $e) {
     jsonResponse(false, 'Database error: ' . $e->getMessage(), null, 500);

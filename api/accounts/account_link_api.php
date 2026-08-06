@@ -33,10 +33,86 @@ function accountLinkResolveContext(PDO $pdo, array $params): array
     ]);
 }
 
-/** account_link.company_id stores anchor/subsidiary pk for scope partition. */
-function accountLinkStorageCompanyId(array $ctx): int
+function accountLinkHasScopeColumns(PDO $pdo): bool
 {
-    return (int) ($ctx['company_id'] ?? 0);
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+    try {
+        $cached = $pdo->query("SHOW COLUMNS FROM account_link LIKE 'scope_type'")->rowCount() > 0;
+    } catch (Throwable $e) {
+        $cached = false;
+    }
+    return $cached;
+}
+
+/**
+ * @return array{company_id: ?int, scope_type: ?string, scope_id: ?int, use_scope: bool}
+ */
+function accountLinkPartitionFromCtx(PDO $pdo, array $ctx): array
+{
+    $companyId = (int) ($ctx['company_id'] ?? 0);
+    $groupPk = (int) ($ctx['group_pk'] ?? 0);
+    if (($ctx['mode'] ?? '') === 'group' && $groupPk > 0 && accountLinkHasScopeColumns($pdo)) {
+        return [
+            'company_id' => $companyId > 0 ? $companyId : null,
+            'scope_type' => 'group',
+            'scope_id' => $groupPk,
+            'use_scope' => true,
+        ];
+    }
+    return [
+        'company_id' => $companyId > 0 ? $companyId : null,
+        'scope_type' => null,
+        'scope_id' => null,
+        'use_scope' => false,
+    ];
+}
+
+/**
+ * @return array{company_id: ?int, scope_type: ?string, scope_id: ?int, use_scope: bool}
+ */
+function accountLinkAssertCtx(PDO $pdo, array $ctx): array
+{
+    $companyId = (int) ($ctx['company_id'] ?? 0);
+    $groupPk = (int) ($ctx['group_pk'] ?? 0);
+    $isPureGroup = ($ctx['mode'] ?? '') === 'group' && $groupPk > 0;
+    if ($companyId <= 0 && !$isPureGroup) {
+        throw new Exception('缺少必要参数');
+    }
+    $groupCode = (string) ($ctx['group_code'] ?? '');
+    if ($companyId > 0 && $groupCode !== '' && gc_is_group_login()) {
+        gc_assert_company_id_allowed_for_login_scope($pdo, $companyId, $groupCode);
+    } elseif ($isPureGroup && $groupCode !== '') {
+        if (!gc_session_can_access_group_ledger($pdo, $groupCode)) {
+            throw new Exception('无权限访问该集团');
+        }
+    }
+    $part = accountLinkPartitionFromCtx($pdo, $ctx);
+    if (!$part['use_scope'] && ($part['company_id'] === null || (int) $part['company_id'] <= 0)) {
+        throw new Exception('缺少必要参数');
+    }
+    return $part;
+}
+
+/**
+ * @param array{company_id: ?int, scope_type: ?string, scope_id: ?int, use_scope: bool} $part
+ * @return array{sql: string, params: array<int|string>}
+ */
+function accountLinkWhereSql(array $part, string $alias = ''): array
+{
+    $p = $alias !== '' ? $alias . '.' : '';
+    if (!empty($part['use_scope'])) {
+        return [
+            'sql' => "{$p}scope_type = ? AND {$p}scope_id = ?",
+            'params' => [(string) $part['scope_type'], (int) $part['scope_id']],
+        ];
+    }
+    return [
+        'sql' => "{$p}company_id = ?",
+        'params' => [(int) $part['company_id']],
+    ];
 }
 
 if ($isDirectRequest) {
@@ -45,19 +121,15 @@ if ($isDirectRequest) {
             case 'get_linked_accounts':
                 $account_id = isset($_GET['account_id']) ? (int) $_GET['account_id'] : 0;
                 $linkCtx = accountLinkResolveContext($pdo, $_GET);
-                $company_id = accountLinkStorageCompanyId($linkCtx);
-                if ($account_id <= 0 || $company_id <= 0) {
+                $part = accountLinkAssertCtx($pdo, $linkCtx);
+                if ($account_id <= 0) {
                     throw new Exception('缺少必要参数');
-                }
-                $groupCode = (string) ($linkCtx['group_code'] ?? '');
-                if ($groupCode !== '' && gc_is_group_login()) {
-                    gc_assert_company_id_allowed_for_login_scope($pdo, $company_id, $groupCode);
                 }
                 if (!linkAccountBelongsToContext($pdo, $account_id, $linkCtx)) {
                     throw new Exception('账户不属于当前范围');
                 }
-                $linked_accounts_data = getAllLinkedAccountsForDisplayWithType($pdo, $account_id, $company_id, $linkCtx);
-                $link_type_info = getLinkTypeInfo($pdo, $account_id, $company_id);
+                $linked_accounts_data = getAllLinkedAccountsForDisplayWithType($pdo, $account_id, $part, $linkCtx);
+                $link_type_info = getLinkTypeInfo($pdo, $account_id, $part);
                 echo json_encode([
                     'success' => true,
                     'message' => '',
@@ -65,8 +137,9 @@ if ($isDirectRequest) {
                         'accounts' => $linked_accounts_data['accounts'],
                         'link_type_info' => $link_type_info,
                         'link_types_map' => $linked_accounts_data['link_types_map'],
-                        'company_id' => $company_id,
+                        'company_id' => $part['company_id'],
                         'scope_mode' => $linkCtx['mode'] ?? 'company',
+                        'group_pk' => (int) ($linkCtx['group_pk'] ?? 0),
                     ],
                 ]);
                 break;
@@ -79,10 +152,10 @@ if ($isDirectRequest) {
                 $account_id_1 = isset($input['account_id_1']) ? (int)$input['account_id_1'] : 0;
                 $account_id_2 = isset($input['account_id_2']) ? (int)$input['account_id_2'] : 0;
                 $linkCtx = accountLinkResolveContext($pdo, array_merge($_GET, $input));
-                $company_id = accountLinkStorageCompanyId($linkCtx);
+                $part = accountLinkAssertCtx($pdo, $linkCtx);
                 $link_type = isset($input['link_type']) ? $input['link_type'] : 'bidirectional';
                 $source_account_id = isset($input['source_account_id']) ? (int) $input['source_account_id'] : null;
-                if (!$account_id_1 || !$account_id_2 || $company_id <= 0) {
+                if (!$account_id_1 || !$account_id_2) {
                     throw new Exception('缺少必要参数');
                 }
                 if ($account_id_1 === $account_id_2) {
@@ -103,7 +176,11 @@ if ($isDirectRequest) {
                 if (!linkAccountBelongsToContext($pdo, $account_id_2, $linkCtx)) {
                     throw new Exception('账户2不属于当前范围');
                 }
-                linkAccountsUpsert($pdo, $account_id_1, $account_id_2, $company_id, $link_type, $source_account_id);
+                linkAccountsUpsert($pdo, $account_id_1, $account_id_2, $part, $link_type, $source_account_id);
+                require_once __DIR__ . '/../includes/realtime.php';
+                if (($part['company_id'] ?? null) !== null && (int) $part['company_id'] > 0) {
+                    realtime_publish_companies([(int) $part['company_id']], 'accounts', 'link');
+                }
                 echo json_encode(['success' => true, 'message' => '账户关联成功', 'data' => null]);
                 break;
 
@@ -115,8 +192,8 @@ if ($isDirectRequest) {
                 $account_id_1 = isset($input['account_id_1']) ? (int)$input['account_id_1'] : 0;
                 $account_id_2 = isset($input['account_id_2']) ? (int)$input['account_id_2'] : 0;
                 $linkCtx = accountLinkResolveContext($pdo, array_merge($_GET, $input));
-                $company_id = accountLinkStorageCompanyId($linkCtx);
-                if (!$account_id_1 || !$account_id_2 || $company_id <= 0) {
+                $part = accountLinkAssertCtx($pdo, $linkCtx);
+                if (!$account_id_1 || !$account_id_2) {
                     throw new Exception('缺少必要参数');
                 }
                 if ($account_id_1 > $account_id_2) {
@@ -128,21 +205,25 @@ if ($isDirectRequest) {
                 ) {
                     throw new Exception('账户不属于当前范围');
                 }
-                unlinkAccounts($pdo, $account_id_1, $account_id_2, $company_id);
+                unlinkAccounts($pdo, $account_id_1, $account_id_2, $part);
+                require_once __DIR__ . '/../includes/realtime.php';
+                if (($part['company_id'] ?? null) !== null && (int) $part['company_id'] > 0) {
+                    realtime_publish_companies([(int) $part['company_id']], 'accounts', 'unlink');
+                }
                 echo json_encode(['success' => true, 'message' => '账户关联已移除', 'data' => null]);
                 break;
 
             case 'get_all_linked_accounts':
                 $account_id = isset($_GET['account_id']) ? (int) $_GET['account_id'] : 0;
                 $linkCtx = accountLinkResolveContext($pdo, $_GET);
-                $company_id = accountLinkStorageCompanyId($linkCtx);
-                if ($account_id <= 0 || $company_id <= 0) {
+                $part = accountLinkAssertCtx($pdo, $linkCtx);
+                if ($account_id <= 0) {
                     throw new Exception('缺少必要参数');
                 }
                 if (!linkAccountBelongsToContext($pdo, $account_id, $linkCtx)) {
                     throw new Exception('账户不属于当前范围');
                 }
-                $linked_accounts = getLinkedAccountsForMember($pdo, $account_id, $company_id, $linkCtx);
+                $linked_accounts = getLinkedAccountsForMember($pdo, $account_id, $part, $linkCtx);
                 $account_ids = array_column($linked_accounts, 'id');
                 if (!in_array($account_id, $account_ids)) {
                     $current_account = getAccountById($pdo, $account_id);
@@ -169,10 +250,10 @@ if ($isDirectRequest) {
                 $account_id_1 = isset($input['account_id_1']) ? (int)$input['account_id_1'] : 0;
                 $account_id_2 = isset($input['account_id_2']) ? (int)$input['account_id_2'] : 0;
                 $linkCtx = accountLinkResolveContext($pdo, array_merge($_GET, $input));
-                $company_id = accountLinkStorageCompanyId($linkCtx);
+                $part = accountLinkAssertCtx($pdo, $linkCtx);
                 $link_type = isset($input['link_type']) ? $input['link_type'] : 'bidirectional';
                 $source_account_id = isset($input['source_account_id']) ? (int) $input['source_account_id'] : null;
-                if (!$account_id_1 || !$account_id_2 || $company_id <= 0) {
+                if (!$account_id_1 || !$account_id_2) {
                     throw new Exception('缺少必要参数');
                 }
                 if (!in_array($link_type, ['bidirectional', 'unidirectional'], true)) {
@@ -187,7 +268,11 @@ if ($isDirectRequest) {
                 ) {
                     throw new Exception('账户不属于当前范围');
                 }
-                updateLinkType($pdo, $account_id_1, $account_id_2, $company_id, $link_type, $source_account_id);
+                updateLinkType($pdo, $account_id_1, $account_id_2, $part, $link_type, $source_account_id);
+                require_once __DIR__ . '/../includes/realtime.php';
+                if (($part['company_id'] ?? null) !== null && (int) $part['company_id'] > 0) {
+                    realtime_publish_companies([(int) $part['company_id']], 'accounts', 'update_link_type');
+                }
                 echo json_encode(['success' => true, 'message' => '连接类型更新成功', 'data' => null]);
                 break;
 
@@ -217,23 +302,41 @@ function filterLinkAccountRowsInContext(PDO $pdo, array $rows, array $ctx): arra
     }));
 }
 
-function linkAccountsUpsert(PDO $pdo, int $account_id_1, int $account_id_2, int $company_id, string $link_type, ?int $source_account_id): void {
-    $stmt = $pdo->prepare("SELECT id FROM account_link WHERE account_id_1 = ? AND account_id_2 = ? AND company_id = ?");
-    $stmt->execute([$account_id_1, $account_id_2, $company_id]);
+function linkAccountsUpsert(PDO $pdo, int $account_id_1, int $account_id_2, array $part, string $link_type, ?int $source_account_id): void {
+    $w = accountLinkWhereSql($part);
+    $stmt = $pdo->prepare("SELECT id FROM account_link WHERE account_id_1 = ? AND account_id_2 = ? AND {$w['sql']}");
+    $stmt->execute(array_merge([$account_id_1, $account_id_2], $w['params']));
     $existing = $stmt->fetch(PDO::FETCH_ASSOC);
     $source = $link_type === 'unidirectional' ? $source_account_id : null;
     if ($existing) {
         $updateStmt = $pdo->prepare("UPDATE account_link SET link_type = ?, source_account_id = ? WHERE id = ?");
         $updateStmt->execute([$link_type, $source, $existing['id']]);
-    } else {
-        $stmt = $pdo->prepare("INSERT INTO account_link (account_id_1, account_id_2, company_id, link_type, source_account_id) VALUES (?, ?, ?, ?, ?)");
-        $stmt->execute([$account_id_1, $account_id_2, $company_id, $link_type, $source]);
+        return;
     }
+    if (!empty($part['use_scope'])) {
+        $stmt = $pdo->prepare("
+            INSERT INTO account_link (account_id_1, account_id_2, company_id, scope_type, scope_id, link_type, source_account_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $account_id_1,
+            $account_id_2,
+            $part['company_id'],
+            $part['scope_type'],
+            $part['scope_id'],
+            $link_type,
+            $source,
+        ]);
+        return;
+    }
+    $stmt = $pdo->prepare("INSERT INTO account_link (account_id_1, account_id_2, company_id, link_type, source_account_id) VALUES (?, ?, ?, ?, ?)");
+    $stmt->execute([$account_id_1, $account_id_2, $part['company_id'], $link_type, $source]);
 }
 
-function unlinkAccounts(PDO $pdo, int $account_id_1, int $account_id_2, int $company_id): void {
-    $stmt = $pdo->prepare("SELECT id FROM account_link WHERE account_id_1 = ? AND account_id_2 = ? AND company_id = ? LIMIT 1");
-    $stmt->execute([$account_id_1, $account_id_2, $company_id]);
+function unlinkAccounts(PDO $pdo, int $account_id_1, int $account_id_2, array $part): void {
+    $w = accountLinkWhereSql($part);
+    $stmt = $pdo->prepare("SELECT id FROM account_link WHERE account_id_1 = ? AND account_id_2 = ? AND {$w['sql']} LIMIT 1");
+    $stmt->execute(array_merge([$account_id_1, $account_id_2], $w['params']));
     $linkRow = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($linkRow && isset($linkRow['id'])) {
         deletedLog(
@@ -244,16 +347,24 @@ function unlinkAccounts(PDO $pdo, int $account_id_1, int $account_id_2, int $com
             (string) $linkRow['id'],
             'DELETE',
             null,
-            (string) $company_id
+            $part['company_id'] !== null ? (string) $part['company_id'] : ''
         );
     }
-    $stmt = $pdo->prepare("DELETE FROM account_link WHERE account_id_1 = ? AND account_id_2 = ? AND company_id = ?");
-    $stmt->execute([$account_id_1, $account_id_2, $company_id]);
+    $stmt = $pdo->prepare("DELETE FROM account_link WHERE account_id_1 = ? AND account_id_2 = ? AND {$w['sql']}");
+    $stmt->execute(array_merge([$account_id_1, $account_id_2], $w['params']));
 }
 
-function updateLinkType(PDO $pdo, int $account_id_1, int $account_id_2, int $company_id, string $link_type, ?int $source_account_id): void {
-    $stmt = $pdo->prepare("UPDATE account_link SET link_type = ?, source_account_id = ? WHERE account_id_1 = ? AND account_id_2 = ? AND company_id = ?");
-    $stmt->execute([$link_type, $link_type === 'unidirectional' ? $source_account_id : null, $account_id_1, $account_id_2, $company_id]);
+function updateLinkType(PDO $pdo, int $account_id_1, int $account_id_2, array $part, string $link_type, ?int $source_account_id): void {
+    $w = accountLinkWhereSql($part);
+    $stmt = $pdo->prepare("
+        UPDATE account_link
+        SET link_type = ?, source_account_id = ?
+        WHERE account_id_1 = ? AND account_id_2 = ? AND {$w['sql']}
+    ");
+    $stmt->execute(array_merge(
+        [$link_type, $link_type === 'unidirectional' ? $source_account_id : null, $account_id_1, $account_id_2],
+        $w['params']
+    ));
 }
 
 function getAccountById(PDO $pdo, int $id): ?array {
@@ -263,14 +374,15 @@ function getAccountById(PDO $pdo, int $id): ?array {
     return $row ?: null;
 }
 
-function getLinkTypeInfo($pdo, $account_id, $company_id) {
+function getLinkTypeInfo($pdo, $account_id, array $part) {
     $check_column_stmt = $pdo->query("SHOW COLUMNS FROM account_link LIKE 'link_type'");
     $has_link_type = $check_column_stmt->rowCount() > 0;
     if (!$has_link_type) {
         return ['link_type' => 'bidirectional', 'has_unidirectional' => false];
     }
-    $stmt = $pdo->prepare("SELECT link_type, source_account_id FROM account_link WHERE (account_id_1 = ? OR account_id_2 = ?) AND company_id = ?");
-    $stmt->execute([$account_id, $account_id, $company_id]);
+    $w = accountLinkWhereSql($part);
+    $stmt = $pdo->prepare("SELECT link_type, source_account_id FROM account_link WHERE (account_id_1 = ? OR account_id_2 = ?) AND {$w['sql']}");
+    $stmt->execute(array_merge([$account_id, $account_id], $w['params']));
     $links = $stmt->fetchAll(PDO::FETCH_ASSOC);
     if (empty($links)) {
         return ['link_type' => 'bidirectional', 'has_unidirectional' => false];
@@ -298,22 +410,29 @@ function getLinkTypeInfo($pdo, $account_id, $company_id) {
     return ['link_type' => 'bidirectional', 'has_unidirectional' => false];
 }
 
-function getAllLinkedAccountsForDisplayWithType($pdo, $account_id, $company_id, array $ctx = []) {
+function getAllLinkedAccountsForDisplayWithType($pdo, $account_id, array $part, array $ctx = []) {
     $linked_data = [];
     $link_types_map = [];
     $check_column_stmt = $pdo->query("SHOW COLUMNS FROM account_link LIKE 'link_type'");
     $has_link_type = $check_column_stmt->rowCount() > 0;
+    $w = accountLinkWhereSql($part);
     if ($has_link_type) {
         $stmt = $pdo->prepare("
             SELECT account_id_2 AS linked_id, link_type, source_account_id
-            FROM account_link WHERE account_id_1 = ? AND company_id = ?
+            FROM account_link WHERE account_id_1 = ? AND {$w['sql']}
             AND (link_type = 'bidirectional' OR (link_type = 'unidirectional' AND source_account_id = ?))
             UNION
             SELECT account_id_1 AS linked_id, link_type, source_account_id
-            FROM account_link WHERE account_id_2 = ? AND company_id = ?
+            FROM account_link WHERE account_id_2 = ? AND {$w['sql']}
             AND (link_type = 'bidirectional' OR (link_type = 'unidirectional' AND source_account_id = ?))
         ");
-        $stmt->execute([$account_id, $company_id, $account_id, $account_id, $company_id, $account_id]);
+        $stmt->execute(array_merge(
+            [$account_id],
+            $w['params'],
+            [$account_id, $account_id],
+            $w['params'],
+            [$account_id]
+        ));
         $linked_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($linked_data as $row) {
             $linked_id = $row['linked_id'];
@@ -323,11 +442,11 @@ function getAllLinkedAccountsForDisplayWithType($pdo, $account_id, $company_id, 
         }
     } else {
         $stmt = $pdo->prepare("
-            SELECT account_id_2 AS linked_id FROM account_link WHERE account_id_1 = ? AND company_id = ?
+            SELECT account_id_2 AS linked_id FROM account_link WHERE account_id_1 = ? AND {$w['sql']}
             UNION
-            SELECT account_id_1 AS linked_id FROM account_link WHERE account_id_2 = ? AND company_id = ?
+            SELECT account_id_1 AS linked_id FROM account_link WHERE account_id_2 = ? AND {$w['sql']}
         ");
-        $stmt->execute([$account_id, $company_id, $account_id, $company_id]);
+        $stmt->execute(array_merge([$account_id], $w['params'], [$account_id], $w['params']));
         $linked_ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
         foreach ($linked_ids as $linked_id) {
             if ($linked_id != $account_id) {
@@ -352,15 +471,16 @@ function getAllLinkedAccountsForDisplayWithType($pdo, $account_id, $company_id, 
     return ['accounts' => $result, 'link_types_map' => $link_types_map];
 }
 
-function getAllLinkedAccountsForDisplay($pdo, $account_id, $company_id, array $ctx = []) {
-    $result = getAllLinkedAccountsForDisplayWithType($pdo, $account_id, $company_id, $ctx);
+function getAllLinkedAccountsForDisplay($pdo, $account_id, array $part, array $ctx = []) {
+    $result = getAllLinkedAccountsForDisplayWithType($pdo, $account_id, $part, $ctx);
     return $result['accounts'];
 }
 
-function getLinkedAccounts($pdo, $account_id, $company_id) {
+function getLinkedAccounts($pdo, $account_id, array $part) {
     $visited = [];
     $result = [];
     $queue = [$account_id];
+    $w = accountLinkWhereSql($part);
     while (!empty($queue)) {
         $current_id = array_shift($queue);
         if (isset($visited[$current_id])) {
@@ -369,14 +489,20 @@ function getLinkedAccounts($pdo, $account_id, $company_id) {
         $visited[$current_id] = true;
         $stmt = $pdo->prepare("
             SELECT account_id_2 AS linked_id, link_type, source_account_id
-            FROM account_link WHERE account_id_1 = ? AND company_id = ?
+            FROM account_link WHERE account_id_1 = ? AND {$w['sql']}
             AND (link_type = 'bidirectional' OR (link_type = 'unidirectional' AND (source_account_id = ? OR source_account_id = account_id_2)))
             UNION
             SELECT account_id_1 AS linked_id, link_type, source_account_id
-            FROM account_link WHERE account_id_2 = ? AND company_id = ?
+            FROM account_link WHERE account_id_2 = ? AND {$w['sql']}
             AND (link_type = 'bidirectional' OR (link_type = 'unidirectional' AND (source_account_id = ? OR source_account_id = account_id_1)))
         ");
-        $stmt->execute([$current_id, $company_id, $current_id, $current_id, $company_id, $current_id]);
+        $stmt->execute(array_merge(
+            [$current_id],
+            $w['params'],
+            [$current_id, $current_id],
+            $w['params'],
+            [$current_id]
+        ));
         $linked_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($linked_data as $row) {
             $linked_id = $row['linked_id'];
@@ -400,12 +526,12 @@ function getLinkedAccounts($pdo, $account_id, $company_id) {
     return $result;
 }
 
-function getLinkedAccountsForMember($pdo, $account_id, $company_id, array $ctx = []) {
+function getLinkedAccountsForMember($pdo, $account_id, array $part, array $ctx = []) {
     $account_id = (int) $account_id;
-    $company_id = (int) $company_id;
     $visited = [];
     $result = [];
     $queue = [$account_id];
+    $w = accountLinkWhereSql($part);
     while (!empty($queue)) {
         $current_id = (int) array_shift($queue);
         if (isset($visited[$current_id])) {
@@ -414,14 +540,20 @@ function getLinkedAccountsForMember($pdo, $account_id, $company_id, array $ctx =
         $visited[$current_id] = true;
         $stmt = $pdo->prepare("
             SELECT account_id_2 AS linked_id, link_type, source_account_id
-            FROM account_link WHERE account_id_1 = ? AND company_id = ?
+            FROM account_link WHERE account_id_1 = ? AND {$w['sql']}
             AND (link_type = 'bidirectional' OR (link_type = 'unidirectional' AND source_account_id = ?))
             UNION
             SELECT account_id_1 AS linked_id, link_type, source_account_id
-            FROM account_link WHERE account_id_2 = ? AND company_id = ?
+            FROM account_link WHERE account_id_2 = ? AND {$w['sql']}
             AND (link_type = 'bidirectional' OR (link_type = 'unidirectional' AND source_account_id = ?))
         ");
-        $stmt->execute([$current_id, $company_id, $current_id, $current_id, $company_id, $current_id]);
+        $stmt->execute(array_merge(
+            [$current_id],
+            $w['params'],
+            [$current_id, $current_id],
+            $w['params'],
+            [$current_id]
+        ));
         $linked_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($linked_data as $row) {
             $linked_id = (int) $row['linked_id'];

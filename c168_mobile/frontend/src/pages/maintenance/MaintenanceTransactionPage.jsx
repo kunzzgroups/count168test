@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
+import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx";
 import { useIncrementalList } from "../../hooks/useIncrementalList.js";
 import { useMaintenanceSession } from "../../hooks/useMaintenanceSession.js";
 import {
@@ -105,6 +106,17 @@ export default function MaintenanceTransactionPage() {
 
   const stickyBar = (
     <div className="m-mt-sticky">
+      <MobileSubpageHeader
+        backTo="/maintenance"
+        backAriaLabel={i18n.backToHub}
+        title={i18n.txMaintenanceTitle}
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: i18n.searchPlaceholder,
+          clearAriaLabel: i18n.reset,
+        }}
+      />
       <MaintenanceFilterBar
         i18n={i18n}
         dateFrom={dateFrom}
@@ -114,20 +126,6 @@ export default function MaintenanceTransactionPage() {
         selectedCompany={s.selectedCompany}
         onOpen={() => setFilterOpen(true)}
       />
-      <div className="m-mt-search">
-        <i className="fas fa-magnifying-glass" aria-hidden="true" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={i18n.searchPlaceholder}
-          inputMode="search"
-        />
-        {query ? (
-          <button type="button" onClick={() => setQuery("")} aria-label={i18n.reset}>
-            <i className="fas fa-xmark" aria-hidden="true" />
-          </button>
-        ) : null}
-      </div>
     </div>
   );
 

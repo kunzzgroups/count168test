@@ -1,3 +1,7 @@
+import { buildApiUrl } from "../utils/apiUrl.js";
+
+/** System FX API (DB-cached). Upstream Frankfurter is server-side + client fallback. */
+const SYSTEM_FX_API = "api/fx/fx_rates_api.php";
 const FRANKFURTER_API = "https://api.frankfurter.dev/v2/rates";
 
 function normalizeQuotes(baseCode, quoteCodes) {
@@ -11,6 +15,21 @@ function normalizeQuotes(baseCode, quoteCodes) {
   ];
 }
 
+function extractFxRateRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return null;
+  if (Array.isArray(payload.rows)) return payload.rows;
+  if (Array.isArray(payload.rates) && payload.rates[0]?.quote != null) return payload.rates;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (payload.data && typeof payload.data === "object") {
+    if (Array.isArray(payload.data.rows)) return payload.data.rows;
+    if (Array.isArray(payload.data.rates) && payload.data.rates[0]?.quote != null) {
+      return payload.data.rates;
+    }
+  }
+  return null;
+}
+
 export async function fetchFrankfurterRates(baseCode, quoteCodes, { signal, date = null } = {}) {
   const base = String(baseCode || "").trim().toUpperCase();
   const quotes = normalizeQuotes(base, quoteCodes);
@@ -19,43 +38,53 @@ export async function fetchFrankfurterRates(baseCode, quoteCodes, { signal, date
 
   const params = new URLSearchParams({ base, quotes: quotes.join(",") });
   if (date) params.set("date", String(date));
-  const url = `${FRANKFURTER_API}?${params}`;
 
-  // Always enforce timeout even when AbortSignal.any is unavailable.
   const timeoutMs = 8000;
-  const res = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new DOMException("Exchange rate request timed out", "TimeoutError"));
-    }, timeoutMs);
+  const fetchWithTimeout = (url, init = {}) =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new DOMException("Exchange rate request timed out", "TimeoutError"));
+      }, timeoutMs);
 
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    if (signal) {
-      if (signal.aborted) {
-        onAbort();
-        return;
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
       }
-      signal.addEventListener("abort", onAbort, { once: true });
-    }
 
-    fetch(url, { signal, cache: "no-store" })
-      .then((response) => {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener("abort", onAbort);
-        resolve(response);
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        if (signal) signal.removeEventListener("abort", onAbort);
-        reject(err);
-      });
-  });
+      fetch(url, { signal, cache: "no-store", ...init })
+        .then((response) => {
+          clearTimeout(timer);
+          if (signal) signal.removeEventListener("abort", onAbort);
+          resolve(response);
+        })
+        .catch((err) => {
+          clearTimeout(timer);
+          if (signal) signal.removeEventListener("abort", onAbort);
+          reject(err);
+        });
+    });
 
-  if (!res.ok) throw new Error("Failed to load exchange rates");
+  let res;
+  try {
+    res = await fetchWithTimeout(`${buildApiUrl(SYSTEM_FX_API)}?${params}`, {
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`FX HTTP ${res.status}`);
+  } catch (err) {
+    if (err?.name === "AbortError" || err?.name === "TimeoutError") throw err;
+    res = await fetchWithTimeout(`${FRANKFURTER_API}?${params}`);
+    if (!res.ok) throw new Error("Failed to load exchange rates");
+  }
+
   const json = await res.json();
-  const rows = Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
+  const rows = extractFxRateRows(json) || [];
   const rates = { [base]: 1 };
   for (const row of rows) {
     const quote = String(row.quote || "").toUpperCase();

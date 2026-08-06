@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 const MONEY_SCALE = 8;
 const MONEY_CALC_SCALE = 16;
+/** bankProcess→Transaction 等入账落库小数位（UI 仍 Half Up 展示 2 位，不参与计算）。 */
+const MONEY_TX_STORE_SCALE = 6;
 
 function money_require_bc(): void
 {

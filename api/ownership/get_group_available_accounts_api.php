@@ -2,12 +2,14 @@
 /**
  * Group Earnings API — Get available accounts for a group
  * GET ?group_id=IG
- * 
- * Returns all owners/users from all companies belonging to this group,
- * so the "+ Add Account" dropdown in Group Earnings has the full list.
+ *
+ * Returns owners/users from subsidiaries + pure Group sources
+ * (`groups.owner_id`, `user_group_map`) so empty Group still has a dropdown.
  */
 require_once '../../includes/session_check.php';
 require_once '../../includes/config.php';
+require_once '../../includes/group_company_access.php';
+require_once '../includes/ownership_history.php';
 
 header('Content-Type: application/json');
 
@@ -24,15 +26,74 @@ if (!$group_id) {
 }
 
 try {
-    // 1. Find all company IDs that belong to this group
+    gc_assert_group_ledger_access($pdo, (string) $group_id);
+} catch (Throwable $e) {
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    exit();
+}
+
+try {
+    // 1. Find all company IDs that belong to this group (exclude legacy group-entity rows)
     $stmtCompanies = $pdo->prepare("
-        SELECT id FROM company 
-        WHERE UPPER(group_id) = UPPER(?) AND company_id != ''
+        SELECT id, company_id, group_id FROM company
+        WHERE UPPER(TRIM(group_id)) = UPPER(TRIM(?)) AND TRIM(company_id) <> ''
     ");
     $stmtCompanies->execute([$group_id]);
-    $companyIds = $stmtCompanies->fetchAll(PDO::FETCH_COLUMN);
+    $companyIds = [];
+    foreach ($stmtCompanies->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        if (gc_company_row_is_group_entity($row['company_id'] ?? '', $row['group_id'] ?? '')) {
+            continue;
+        }
+        $companyIds[] = (int) $row['id'];
+    }
 
     $accountMap = []; // keyed by composite id to deduplicate
+
+    // 1b. Pure Group owner from `groups` table (empty Group / first-class tenant)
+    if ($pdo->query("SHOW TABLES LIKE 'groups'")->rowCount() > 0) {
+        $gOwnerStmt = $pdo->prepare("
+            SELECT CONCAT('O_', o.id) as id,
+                   o.owner_code as account_name,
+                   o.name,
+                   'OWNER' as role,
+                   'owner' as type,
+                   1 as is_main_owner
+            FROM `groups` g
+            INNER JOIN owner o ON o.id = g.owner_id
+            WHERE UPPER(TRIM(g.group_code)) = UPPER(TRIM(?))
+              AND LOWER(o.status) = 'active'
+            LIMIT 1
+        ");
+        $gOwnerStmt->execute([$group_id]);
+        foreach ($gOwnerStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $accountMap[$row['id']] = $row;
+        }
+    }
+
+    // 1c. Users bound via user_group_map (Admin / Partnership on pure Group)
+    if ($pdo->query("SHOW TABLES LIKE 'user_group_map'")->rowCount() > 0
+        && $pdo->query("SHOW TABLES LIKE 'groups'")->rowCount() > 0
+    ) {
+        $ugmUsers = $pdo->prepare("
+            SELECT DISTINCT CONCAT('U_', u.id) as id,
+                   u.login_id as account_name,
+                   u.name,
+                   UPPER(u.role) as role,
+                   'user' as type,
+                   0 as is_main_owner
+            FROM user u
+            INNER JOIN user_group_map ugm ON ugm.user_id = u.id
+            INNER JOIN `groups` g ON g.id = ugm.group_id
+            WHERE UPPER(TRIM(g.group_code)) = UPPER(TRIM(?))
+              AND LOWER(u.status) = 'active'
+        ");
+        $ugmUsers->execute([$group_id]);
+        foreach ($ugmUsers->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if (!isset($accountMap[$row['id']])) {
+                $accountMap[$row['id']] = $row;
+            }
+        }
+    }
 
     if (!empty($companyIds)) {
         $in = str_repeat('?,', count($companyIds) - 1) . '?';
@@ -126,33 +187,64 @@ try {
     //    dropdown option stays available even if the source group was since removed.
     $sessionRole = strtolower($_SESSION['role'] ?? '');
     if ($sessionRole === 'owner') {
-        $currentOwnerId = (int)($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $_SESSION['user_id']);
+        $currentOwnerId = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $_SESSION['user_id']);
     } else {
-        $stmtOwn = $pdo->prepare("SELECT DISTINCT owner_id FROM company WHERE UPPER(TRIM(group_id)) = UPPER(TRIM(?)) LIMIT 1");
-        $stmtOwn->execute([$group_id]);
-        $currentOwnerId = (int) $stmtOwn->fetchColumn();
+        $currentOwnerId = ownership_history_resolve_group_owner_id($pdo, (string) $group_id);
+        if ($currentOwnerId <= 0) {
+            $stmtOwn = $pdo->prepare('SELECT DISTINCT owner_id FROM company WHERE UPPER(TRIM(group_id)) = UPPER(TRIM(?)) LIMIT 1');
+            $stmtOwn->execute([$group_id]);
+            $currentOwnerId = (int) $stmtOwn->fetchColumn();
+        }
     }
     if ($currentOwnerId > 0) {
-        $stmtMyGroups = $pdo->prepare("
-            SELECT DISTINCT UPPER(TRIM(c.group_id)) as gid
-            FROM company c
-            WHERE c.owner_id = ?
-              AND c.group_id IS NOT NULL
-              AND TRIM(c.group_id) <> ''
-              AND UPPER(TRIM(c.group_id)) <> UPPER(TRIM(?))
-        ");
-        $stmtMyGroups->execute([$currentOwnerId, $group_id]);
-        foreach ($stmtMyGroups->fetchAll(PDO::FETCH_COLUMN) as $gid) {
-            $key = 'G_' . $gid;
-            if (!isset($accountMap[$key])) {
-                $accountMap[$key] = [
-                    'id'            => $key,
-                    'account_name'  => 'Group: ' . $gid,
-                    'name'          => 'Group Equity',
-                    'role'          => 'GROUP',
-                    'type'          => 'group',
-                    'is_main_owner' => 0,
-                ];
+        // Prefer groups table for peer groups (empty Group peers included)
+        $peerFromGroups = false;
+        if ($pdo->query("SHOW TABLES LIKE 'groups'")->rowCount() > 0) {
+            $stmtMyGroups = $pdo->prepare("
+                SELECT DISTINCT UPPER(TRIM(group_code)) as gid
+                FROM `groups`
+                WHERE owner_id = ?
+                  AND UPPER(TRIM(group_code)) <> UPPER(TRIM(?))
+            ");
+            $stmtMyGroups->execute([$currentOwnerId, $group_id]);
+            $peerRows = $stmtMyGroups->fetchAll(PDO::FETCH_COLUMN);
+            $peerFromGroups = true;
+            foreach ($peerRows as $gid) {
+                $key = 'G_' . $gid;
+                if (!isset($accountMap[$key])) {
+                    $accountMap[$key] = [
+                        'id'            => $key,
+                        'account_name'  => 'Group: ' . $gid,
+                        'name'          => 'Group Equity',
+                        'role'          => 'GROUP',
+                        'type'          => 'group',
+                        'is_main_owner' => 0,
+                    ];
+                }
+            }
+        }
+        if (!$peerFromGroups) {
+            $stmtMyGroups = $pdo->prepare("
+                SELECT DISTINCT UPPER(TRIM(c.group_id)) as gid
+                FROM company c
+                WHERE c.owner_id = ?
+                  AND c.group_id IS NOT NULL
+                  AND TRIM(c.group_id) <> ''
+                  AND UPPER(TRIM(c.group_id)) <> UPPER(TRIM(?))
+            ");
+            $stmtMyGroups->execute([$currentOwnerId, $group_id]);
+            foreach ($stmtMyGroups->fetchAll(PDO::FETCH_COLUMN) as $gid) {
+                $key = 'G_' . $gid;
+                if (!isset($accountMap[$key])) {
+                    $accountMap[$key] = [
+                        'id'            => $key,
+                        'account_name'  => 'Group: ' . $gid,
+                        'name'          => 'Group Equity',
+                        'role'          => 'GROUP',
+                        'type'          => 'group',
+                        'is_main_owner' => 0,
+                    ];
+                }
             }
         }
     }

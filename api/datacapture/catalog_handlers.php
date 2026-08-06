@@ -50,6 +50,8 @@ function dcHandleAddDescription(): void
         return;
     }
     $descriptionId = insertDescription($pdo, (int) $company_id, $descriptionName);
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([(int) $company_id], 'datacapture', 'add_description');
     jsonResponse(true, 'Description added successfully', ['description_id' => $descriptionId]);
 }
 
@@ -81,6 +83,8 @@ function dcHandleDeleteDescription(): void
         return;
     }
     deleteDescription($pdo, $descriptionId, (int) $company_id);
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([(int) $company_id], 'datacapture', 'delete_description');
     jsonResponse(true, 'Description deleted successfully', null);
 }
 

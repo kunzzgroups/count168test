@@ -12,7 +12,7 @@ import {
   isBankOnlyCategoryCompany,
 } from "../shared/maintenanceCompanyApi.js";
 import { fetchProcesses as fetchDomainReportProcesses } from "../../report/domain/domainReportApi.js";
-import { mapDomainGroupProcesses } from "../../report/domain/domainReportGroupProcesses.js";
+import { mapGroupPayrollProcesses } from "../../datacapture/lib/dataCaptureGroupOnlyProcesses.js";
 import {
   transactionMaintenanceScopeApiParams,
   transactionMaintenanceScopeCacheKey,
@@ -131,7 +131,7 @@ export async function fetchProcesses(companyId, scope = null) {
   }
   if (scope && transactionMaintenanceUsesGroupProcesses(scope) && !payrollChannel) {
     const apiList = await fetchDomainReportProcesses(scope, { credentials: "include" });
-    return mapProcessesForMaintenanceSelect(mapDomainGroupProcesses(apiList));
+    return mapProcessesForMaintenanceSelect(mapGroupPayrollProcesses(apiList));
   }
   const effectiveId = scope?.scopeCompanyId ?? companyId;
   const rows = await fetchMaintenanceProcesses(effectiveId, {

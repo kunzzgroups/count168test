@@ -7,13 +7,15 @@ import {
 } from "./typeAheadMatch.js";
 
 /**
- * Keyboard navigation for custom listbox dropdowns (ArrowUp/Down, Enter, Escape, type-ahead).
+ * Keyboard navigation for custom listbox dropdowns (ArrowUp/Down, Enter, Escape, first-letter type-ahead).
+ * When closed + getItemLabel: letter keys open the menu and jump to the first match.
  */
 export function useListboxKeyboard({ open, itemCount, resetToken = null, initialIndex = 0, getItemLabel = null, onTypeAheadChange = null }) {
   const [highlightIdx, setHighlightIdx] = useState(initialIndex);
   const [typeAheadPrefix, setTypeAheadPrefix] = useState("");
   const listRef = useRef(null);
   const typeAheadRef = useRef(createTypeAheadState());
+  const pendingOpenKeyRef = useRef(null);
 
   const clearTypeAhead = useCallback(() => {
     resetTypeAheadState(typeAheadRef.current);
@@ -25,6 +27,7 @@ export function useListboxKeyboard({ open, itemCount, resetToken = null, initial
     if (!open) {
       setHighlightIdx(initialIndex);
       clearTypeAhead();
+      pendingOpenKeyRef.current = null;
     }
   }, [open, initialIndex, clearTypeAhead]);
 
@@ -71,6 +74,15 @@ export function useListboxKeyboard({ open, itemCount, resetToken = null, initial
     },
     [buildLabels, getItemLabel, onTypeAheadChange],
   );
+
+  // Apply letter pressed while closed after the menu opens.
+  useEffect(() => {
+    if (!open || !getItemLabel) return;
+    const key = pendingOpenKeyRef.current;
+    if (!key) return;
+    pendingOpenKeyRef.current = null;
+    tryTypeAhead(key, itemCount);
+  }, [open, getItemLabel, itemCount, tryTypeAhead]);
 
   const moveDown = useCallback((len) => {
     if (len <= 0) return;
@@ -129,12 +141,18 @@ export function useListboxKeyboard({ open, itemCount, resetToken = null, initial
         if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onToggleOpen?.();
+          return;
+        }
+        if (getItemLabel && isTypeAheadKey(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          pendingOpenKeyRef.current = e.key;
+          onToggleOpen?.();
         }
         return;
       }
       handleListKeyDown(e, { len: count, onSelectIndex, onClose });
     },
-    [handleListKeyDown, itemCount],
+    [handleListKeyDown, itemCount, getItemLabel],
   );
 
   const highlightClass = (idx) => (highlightIdx === idx && highlightIdx >= 0 ? " keyboard-focus" : "");

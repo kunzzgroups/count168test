@@ -64,6 +64,9 @@ try {
 
     $pdo->commit();
 
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([(int) $company_id], 'ownership', 'save');
+
     echo json_encode([
         'status' => 'success',
         'message' => 'Ownership saved successfully'

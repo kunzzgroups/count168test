@@ -76,9 +76,9 @@ function partialFirstMonthAmounts(string $dayStart, string $cost, string $price,
     }
     $ratio = money_div((string) $daysRemaining, (string) $daysInMonth, MONEY_CALC_SCALE);
     return [
-        'cost' => money_mul($cost, $ratio, 2),
-        'price' => money_mul($price, $ratio, 2),
-        'profit' => money_mul($profit, $ratio, 2),
+        'cost' => money_mul($cost, $ratio, MONEY_TX_STORE_SCALE),
+        'price' => money_mul($price, $ratio, MONEY_TX_STORE_SCALE),
+        'profit' => money_mul($profit, $ratio, MONEY_TX_STORE_SCALE),
     ];
 }
 
@@ -98,9 +98,9 @@ function prorateToMonthEndFromStart(string $startYmd, string $cost, string $pric
     $daysRemaining = max(0, $daysRemaining);
     $ratio = money_div((string) $daysRemaining, (string) $daysInMonth, MONEY_CALC_SCALE);
     return [
-        'cost' => money_mul($cost, $ratio, 2),
-        'price' => money_mul($price, $ratio, 2),
-        'profit' => money_mul($profit, $ratio, 2),
+        'cost' => money_mul($cost, $ratio, MONEY_TX_STORE_SCALE),
+        'price' => money_mul($price, $ratio, MONEY_TX_STORE_SCALE),
+        'profit' => money_mul($profit, $ratio, MONEY_TX_STORE_SCALE),
     ];
 }
 
@@ -292,18 +292,19 @@ function isWithinRecurringBillingWindow(string $todayYmd, ?string $dayStartYmd, 
 /** $fromYmd、$toYmd 均含当日；各段按当月天数比例分摊整月金额。 */
 function prorateInclusiveDateRange(string $fromYmd, string $toYmd, string $cost, string $price, string $profit): array
 {
+    $zero = money_normalize('0', MONEY_TX_STORE_SCALE);
     if ($fromYmd > $toYmd) {
-        return ['cost' => '0.00000000', 'price' => '0.00000000', 'profit' => '0.00000000'];
+        return ['cost' => $zero, 'price' => $zero, 'profit' => $zero];
     }
     try {
         $cur = new DateTimeImmutable($fromYmd);
         $end = new DateTimeImmutable($toYmd);
     } catch (Throwable $e) {
-        return ['cost' => '0.00000000', 'price' => '0.00000000', 'profit' => '0.00000000'];
+        return ['cost' => $zero, 'price' => $zero, 'profit' => $zero];
     }
-    $tc = '0.00000000';
-    $tp = '0.00000000';
-    $tf = '0.00000000';
+    $tc = '0';
+    $tp = '0';
+    $tf = '0';
     while ($cur <= $end) {
         $dim = (int) $cur->format('t');
         $monthEnd = $cur->modify('last day of this month');
@@ -320,9 +321,9 @@ function prorateInclusiveDateRange(string $fromYmd, string $toYmd, string $cost,
         $cur = $chunkEnd->modify('+1 day');
     }
     return [
-        'cost' => money_normalize($tc, 2),
-        'price' => money_normalize($tp, 2),
-        'profit' => money_normalize($tf, 2),
+        'cost' => money_normalize($tc, MONEY_TX_STORE_SCALE),
+        'price' => money_normalize($tp, MONEY_TX_STORE_SCALE),
+        'profit' => money_normalize($tf, MONEY_TX_STORE_SCALE),
     ];
 }
 
@@ -3064,9 +3065,9 @@ try {
             $pid = (int) ($row['id'] ?? 0);
             $ds = trim((string) ($row['day_start'] ?? ''));
             $dsNorm = $ds !== '' ? (inboxBankProcessDateFieldToYmd($ds) ?? $ds) : '';
-            $c = money_normalize($row['cost'] ?? '0', 2);
-            $p = money_normalize($row['price'] ?? '0', 2);
-            $pr = money_normalize($row['profit'] ?? '0', 2);
+            $c = money_normalize($row['cost'] ?? '0', MONEY_TX_STORE_SCALE);
+            $p = money_normalize($row['price'] ?? '0', MONEY_TX_STORE_SCALE);
+            $pr = money_normalize($row['profit'] ?? '0', MONEY_TX_STORE_SCALE);
             $weeklyAnchor = '';
             if (!empty($row['is_weekly'])) {
                 $weeklyAnchor = trim((string) ($row['weekly_billing_start'] ?? $row['monthly_billing_month'] ?? ''));

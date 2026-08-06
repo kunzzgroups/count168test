@@ -80,16 +80,36 @@ function pickDefaultAccountCurrency(list, preferredCurrencyId = null) {
 
 async function fetchAccountCurrencies(accountId, captureScope, companyId) {
   if (!accountId) return [];
-  const params = new URLSearchParams({ action: "get_account_currencies" });
-  params.set("account_id", String(accountId));
-  applyTenantLedgerToParams(params, resolveEditFormulaLedgerScope(captureScope, companyId));
-  const response = await fetch(
-    buildApiUrl(`api/accounts/account_currency_api.php?${params.toString()}`),
+  const ledger = resolveEditFormulaLedgerScope(captureScope, companyId);
+  const ownedParams = new URLSearchParams({ action: "get_account_currencies" });
+  ownedParams.set("account_id", String(accountId));
+  applyTenantLedgerToParams(ownedParams, ledger);
+  const ownedRes = await fetch(
+    buildApiUrl(`api/accounts/account_currency_api.php?${ownedParams.toString()}`),
     { credentials: "include" }
   );
-  const json = await response.json();
-  if (json.success && Array.isArray(json.data)) {
-    return json.data.map(normalizeAccountCurrencyRow);
+  const ownedJson = await ownedRes.json();
+  if (ownedJson.success && Array.isArray(ownedJson.data) && ownedJson.data.length > 0) {
+    return ownedJson.data.map(normalizeAccountCurrencyRow);
+  }
+
+  // Group ledger: account may exist without account_currency rows (old AP / new acc).
+  // Fall back to scope currencies so Edit Formula Currency is selectable.
+  const availParams = new URLSearchParams({ action: "get_available_currencies" });
+  availParams.set("account_id", String(accountId));
+  applyTenantLedgerToParams(availParams, ledger);
+  const availRes = await fetch(
+    buildApiUrl(`api/accounts/account_currency_api.php?${availParams.toString()}`),
+    { credentials: "include" }
+  );
+  const availJson = await availRes.json();
+  if (availJson.success && Array.isArray(availJson.data)) {
+    return availJson.data.map((c) =>
+      normalizeAccountCurrencyRow({
+        ...c,
+        is_linked: c?.is_linked != null ? !!c.is_linked : false,
+      }),
+    );
   }
   return [];
 }
@@ -101,6 +121,7 @@ export function useSummaryEditFormulaPure({
   captureScope,
   companyId,
   processId,
+  processCode,
   tableData,
   rows,
   replaceRows,
@@ -373,6 +394,7 @@ export function useSummaryEditFormulaPure({
             captureScope,
             companyId,
             processId,
+            processCode,
           });
           if (!tpl.success) {
             pushSummaryNotification(
@@ -398,7 +420,7 @@ export function useSummaryEditFormulaPure({
           if (targetRow.productType === "sub" || applied.action === "insertSub") {
             const parentId = targetRow.parentIdProduct || anchor.idProduct;
             await syncSubOrderTemplates(nextRows, parentId, (row) =>
-              saveSummaryTemplatePure(row, { captureScope, companyId, processId })
+              saveSummaryTemplatePure(row, { captureScope, companyId, processId, processCode })
             );
           }
         } catch (e) {
@@ -427,6 +449,7 @@ export function useSummaryEditFormulaPure({
     captureScope,
     companyId,
     processId,
+    processCode,
     closeEditFormula,
     t,
   ]);

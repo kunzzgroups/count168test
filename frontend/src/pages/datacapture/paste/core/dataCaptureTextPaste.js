@@ -17,6 +17,7 @@ import {
   detectVerticalFieldDump,
 } from "./dataCaptureVerticalDumpDetect.js";
 import { tryReshapeC8WinLossPlainMatrix } from "./dataCaptureC8WinLossPasteHelper.js";
+import { tryReshapeAllGamesPlainMatrix } from "./dataCaptureAllGamesPasteHelper.js";
 import {
   plainTextLooksLikeAlignedTsv,
   sanitizePasteMatrix,
@@ -119,6 +120,10 @@ export function parsePlainTextMatrix(pastedData) {
   // Null for all other report pastes (agent_period, OB, etc.).
   const c8WinLoss = tryReshapeC8WinLossPlainMatrix(normalized);
   if (c8WinLoss?.length) return finalizePlainMatrix(c8WinLoss);
+
+  // Scoped allGames (iview) helper — % tokens + Total(N) break shared vertical-dump.
+  const allGames = tryReshapeAllGamesPlainMatrix(normalized);
+  if (allGames?.length) return finalizePlainMatrix(allGames);
 
   const rawLines = normalized.split("\n");
   const nonEmptyLines = rawLines.filter((line) => line.trim() !== "");

@@ -51,6 +51,18 @@ if (!is_array($input)) {
 $action = strtolower(trim((string) ($input['action'] ?? 'list')));
 
 try {
+    // Sidebar polls pending_count every ~45s — never run DDL / window sync here.
+    if ($action === 'pending_count') {
+        if (!auto_renew_page_access($pdo, $_SESSION)) {
+            session_write_close();
+            auto_renew_json_response(false, 'Access denied', null, 403);
+        }
+        session_write_close();
+        auto_renew_json_response(true, 'success', [
+            'pending_count' => auto_renew_count_pending_fast($pdo),
+        ]);
+    }
+
     auto_renew_ensure_columns($pdo);
     auto_renew_ensure_request_table($pdo);
 
@@ -98,6 +110,13 @@ try {
                 $companyCode,
                 (int) ($defaultTo ?? 0)
             );
+            if (!$defaultFrom) {
+                $defaultFrom = auto_renew_resolve_c168_owner_account(
+                    $pdo,
+                    $c168Pk,
+                    (int) ($defaultTo ?? 0)
+                );
+            }
         } elseif ($c168Pk > 0) {
             $defaultTo = auto_renew_resolve_default_to_account($pdo, $c168Pk);
         }
@@ -117,13 +136,6 @@ try {
         session_write_close();
         auto_renew_json_response(true, 'success', [
             'status_map' => auto_renew_status_map($pdo),
-        ]);
-    }
-
-    if ($action === 'pending_count') {
-        session_write_close();
-        auto_renew_json_response(true, 'success', [
-            'pending_count' => auto_renew_count_pending($pdo),
         ]);
     }
 

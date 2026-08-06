@@ -105,14 +105,11 @@ function tenant_resolve_currency_context(
         $useGroupLedger = $forceGroupLedger || tenant_dual_tenant_enabled($pdo);
         if ($useGroupLedger) {
             $anchorId = gc_resolve_group_anchor_company_id($pdo, $groupCode);
-            if ($anchorId <= 0) {
-                throw new Exception('缺少 company_id');
-            }
-
+            // Phase 4: empty group — company_id may be 0; scope_id carries the ledger.
             return [
                 'mode' => 'group',
                 'group_pk' => $groupPk,
-                'company_id' => $anchorId,
+                'company_id' => $anchorId > 0 ? $anchorId : 0,
                 'group_code' => $groupCode,
             ];
         }
@@ -128,14 +125,10 @@ function tenant_resolve_currency_context(
         }
 
         $anchorId = gc_resolve_group_anchor_company_id($pdo, $groupCode);
-        if ($anchorId <= 0) {
-            throw new Exception('缺少 company_id');
-        }
-
         return [
             'mode' => 'group',
             'group_pk' => $groupPk,
-            'company_id' => $anchorId,
+            'company_id' => $anchorId > 0 ? $anchorId : 0,
             'group_code' => $groupCode,
         ];
     }
@@ -438,14 +431,11 @@ function tenant_ensure_group_currency_from_subsidiary(PDO $pdo, string $groupCod
     }
 
     $anchorId = gc_resolve_group_anchor_company_id($pdo, $groupCode);
-    if ($anchorId <= 0) {
-        return;
-    }
-
+    // Phase 4: allow company_id=0 for pure group currency rows.
     $ctx = [
         'mode' => 'group',
         'group_pk' => $groupPk,
-        'company_id' => $anchorId,
+        'company_id' => $anchorId > 0 ? $anchorId : 0,
         'group_code' => $groupCode,
         'sync_source' => 'subsidiary',
     ];
@@ -613,7 +603,12 @@ function tenant_create_currency(PDO $pdo, string $code, array $ctx): array
     }
 
     $companyId = (int) ($ctx['company_id'] ?? 0);
-    if ($companyId <= 0) {
+    $groupPk = (int) ($ctx['group_pk'] ?? 0);
+    $isPureGroup = ($ctx['mode'] ?? '') === 'group' && $groupPk > 0;
+    if ($companyId <= 0 && !$isPureGroup) {
+        throw new Exception('缺少公司信息');
+    }
+    if ($isPureGroup && $companyId <= 0 && !tenant_table_has_scope_columns($pdo, 'currency')) {
         throw new Exception('缺少公司信息');
     }
 
@@ -649,19 +644,21 @@ function tenant_create_currency(PDO $pdo, string $code, array $ctx): array
             }
         }
 
+        // Pure group has no anchor company — company_id must be NULL (FK rejects 0).
+        $companyIdBind = $companyId > 0 ? $companyId : null;
         try {
             if (tenant_table_has_sync_source_column($pdo)) {
                 $stmt = $pdo->prepare("
                     INSERT INTO currency (code, company_id, scope_type, scope_id, sync_source)
                     VALUES (?, ?, 'group', ?, ?)
                 ");
-                $stmt->execute([$code, $companyId, $groupPk, $requestedSyncSource]);
+                $stmt->execute([$code, $companyIdBind, $groupPk, $requestedSyncSource]);
             } else {
                 $stmt = $pdo->prepare("
                     INSERT INTO currency (code, company_id, scope_type, scope_id)
                     VALUES (?, ?, 'group', ?)
                 ");
-                $stmt->execute([$code, $companyId, $groupPk]);
+                $stmt->execute([$code, $companyIdBind, $groupPk]);
             }
         } catch (PDOException $e) {
             if ((string) $e->getCode() === '23000') {
@@ -684,6 +681,13 @@ function tenant_create_currency(PDO $pdo, string $code, array $ctx): array
                         return ['id' => $legacyId, 'code' => $code];
                     }
                 }
+                // FK / NOT NULL on company_id for pure group — surface the real SQL error.
+                if ($companyIdBind === null && str_contains($e->getMessage(), 'fk_currency_company')) {
+                    throw new Exception(
+                        'Currency table requires nullable company_id for empty groups. '
+                        . 'Run database/migrations/20260731_currency_company_id_nullable.sql'
+                    );
+                }
                 throw new Exception(
                     'Currency ' . $code . ' already exists for this group. '
                     . 'If creation still fails, run database/migrations/20260604_currency_scope_unique.sql on the server.'
@@ -691,18 +695,51 @@ function tenant_create_currency(PDO $pdo, string $code, array $ctx): array
             }
             throw $e;
         }
-    } else {
-        $stmt = $pdo->prepare('SELECT id FROM currency WHERE code = ? AND company_id = ?');
-        $stmt->execute([$code, $companyId]);
-        if ($stmt->fetchColumn()) {
-            throw new Exception('Currency ' . $code . ' already exists');
+
+        // Capture before any follow-up queries can reset PDO::lastInsertId().
+        $newId = (int) $pdo->lastInsertId();
+        if ($newId <= 0) {
+            $findStmt = $pdo->prepare("
+                SELECT id FROM currency
+                WHERE scope_type = 'group' AND scope_id = ? AND UPPER(TRIM(code)) = ?
+                ORDER BY id DESC
+                LIMIT 1
+            ");
+            $findStmt->execute([$groupPk, $code]);
+            $newId = (int) ($findStmt->fetchColumn() ?: 0);
         }
-        $stmt = $pdo->prepare('INSERT INTO currency (code, company_id) VALUES (?, ?)');
-        $stmt->execute([$code, $companyId]);
-        tenant_sync_company_currency_to_parent_groups($pdo, $companyId, $code);
+        if ($newId <= 0) {
+            throw new Exception('Currency created but id unresolved');
+        }
+
+        return ['id' => $newId, 'code' => $code];
     }
 
-    return ['id' => (int) $pdo->lastInsertId(), 'code' => $code];
+    $subsidiaryOnly = tenant_sql_currency_subsidiary_only($pdo);
+    $stmt = $pdo->prepare('SELECT id FROM currency WHERE code = ? AND company_id = ?' . $subsidiaryOnly);
+    if ($stmt->fetchColumn()) {
+        throw new Exception('Currency ' . $code . ' already exists');
+    }
+    $stmt = $pdo->prepare('INSERT INTO currency (code, company_id) VALUES (?, ?)');
+    $stmt->execute([$code, $companyId]);
+
+    // Must read lastInsertId before group sync (recursive create / duplicate-key
+    // recovery can zero the connection's last insert id).
+    $newId = (int) $pdo->lastInsertId();
+    if ($newId <= 0) {
+        $findStmt = $pdo->prepare(
+            'SELECT id FROM currency WHERE code = ? AND company_id = ?' . $subsidiaryOnly . ' ORDER BY id DESC LIMIT 1'
+        );
+        $findStmt->execute([$code, $companyId]);
+        $newId = (int) ($findStmt->fetchColumn() ?: 0);
+    }
+    if ($newId <= 0) {
+        throw new Exception('Currency created but id unresolved');
+    }
+
+    tenant_sync_company_currency_to_parent_groups($pdo, $companyId, $code);
+
+    return ['id' => $newId, 'code' => $code];
 }
 
 /**
@@ -827,17 +864,22 @@ function tableExistsForTenant(PDO $pdo, string $tableName): bool
 function tenant_fetch_currencies(PDO $pdo, array $ctx): array
 {
     $companyId = (int) ($ctx['company_id'] ?? 0);
-    if ($companyId <= 0) {
+    $isGroupMode = ($ctx['mode'] ?? '') === 'group' && tenant_table_has_scope_columns($pdo, 'currency');
+    // Phase 4: pure group ledger (company_id=0) still lists scope_type=group currencies.
+    if ($companyId <= 0 && !$isGroupMode) {
         return [];
     }
 
     $syncCol = tenant_table_has_sync_source_column($pdo) ? ', sync_source' : '';
-    if (($ctx['mode'] ?? '') === 'group' && tenant_table_has_scope_columns($pdo, 'currency')) {
+    if ($isGroupMode) {
         $groupCode = gc_normalize_group_code((string) ($ctx['group_code'] ?? ''));
         if ($groupCode !== '') {
             tenant_reconcile_group_currencies_from_subsidiaries($pdo, $groupCode);
         }
         $groupPk = (int) ($ctx['group_pk'] ?? 0);
+        if ($groupPk <= 0) {
+            return [];
+        }
         $stmt = $pdo->prepare("
             SELECT id, code{$syncCol} FROM currency
             WHERE scope_type = 'group' AND scope_id = ?
@@ -1214,12 +1256,18 @@ function tenant_account_company_subsidiary_where(PDO $pdo, int $companyId, strin
 
 function tenant_link_account_group_scope(PDO $pdo, int $accountId, int $groupPk, int $anchorCompanyId): void
 {
-    if ($groupPk <= 0 || $anchorCompanyId <= 0) {
+    if ($groupPk <= 0) {
         throw new Exception('无效的集团范围');
     }
+    // Phase 4: pure group ledger may use company_id NULL when dual-tenant scope columns exist.
+    if ($anchorCompanyId <= 0 && !tenant_table_has_scope_columns($pdo, 'account_company')) {
+        throw new Exception('无效的集团范围');
+    }
+    $companyIdForRow = $anchorCompanyId > 0 ? $anchorCompanyId : null;
+
     if (!tenant_table_has_scope_columns($pdo, 'account_company')) {
         $stmt = $pdo->prepare('INSERT INTO account_company (account_id, company_id) VALUES (?, ?)');
-        $stmt->execute([$accountId, $anchorCompanyId]);
+        $stmt->execute([$accountId, $companyIdForRow]);
         return;
     }
 
@@ -1237,5 +1285,5 @@ function tenant_link_account_group_scope(PDO $pdo, int $accountId, int $groupPk,
         INSERT INTO account_company (account_id, company_id, scope_type, scope_id)
         VALUES (?, ?, ?, ?)
     ');
-    $stmt->execute([$accountId, $anchorCompanyId, 'group', $groupPk]);
+    $stmt->execute([$accountId, $companyIdForRow, 'group', $groupPk]);
 }

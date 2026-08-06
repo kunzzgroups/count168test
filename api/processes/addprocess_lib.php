@@ -217,14 +217,15 @@ function insertProcess(PDO $pdo, array $row): int {
         INSERT INTO process (
             process_id, description_id, currency_id, remove_word, replace_word_from, replace_word_to, remark,
             created_by, created_by_type, created_by_owner_id, dts_created, company_id, sync_source_process_id,
-            status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+            status, enable_save_draft
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
     ");
     $stmt->execute([
         $row['process_id'], $row['description_id'], $row['currency_id'], $row['remove_word'],
         $row['replace_word_from'], $row['replace_word_to'], $row['remark'],
         $row['created_by'], $row['created_by_type'], $row['created_by_owner_id'],
-        $row['dts_created'], $row['company_id'], $row['sync_source_process_id']
+        $row['dts_created'], $row['company_id'], $row['sync_source_process_id'],
+        !empty($row['enable_save_draft']) ? 1 : 0
     ]);
     return (int)$pdo->lastInsertId();
 }

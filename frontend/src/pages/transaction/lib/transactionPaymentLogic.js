@@ -1,7 +1,9 @@
 import { parseBalanceValue } from "./transactionFormat.js";
 import { MoneyDecimal } from "../../../utils/money/moneyDecimal.js";
 import { resolveSavedCurrencyOrder } from "../../../utils/company/currencyDisplayOrder.js";
+import { invalidateDashboardCachesForLedgerChange } from "../../../utils/dashboard/dashboardCache.js";
 import { clearTxSearchCache } from "../../../utils/transaction/transactionSearchCache.js";
+import { clearReportSnapshots } from "../../report/shared/reportPageSnapshotCache.js";
 
 export const TRANSACTION_CURRENCY_FILTER_KEY_PREFIX = "transaction_currency_filter_v1_";
 export const TX_LIST_SESSION_PREFIX = "count168_txlist_v1_";
@@ -9,8 +11,21 @@ export const TX_LIST_INVALIDATE_LS_KEY = "count168_tx_invalidate_ts";
 export const TX_LIST_INVALIDATE_HANDLED_KEY = "count168_tx_invalidate_handled";
 export const TX_DATA_CHANGED_EVENT = "tx-data-changed";
 
-/** Broadcast that transaction balances changed elsewhere (maintenance delete, process post, etc.). */
-export function notifyTransactionListInvalidated(source = "unknown") {
+/** Current ledger-list invalidate timestamp (0 if unset). Used by route warm to drop stale fills. */
+export function readTxListInvalidateTs() {
+  try {
+    const n = Number(localStorage.getItem(TX_LIST_INVALIDATE_LS_KEY) || 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Central ledger-client invalidate: Dashboard session caches, TX search Map,
+ * report remount snapshots, and tx-data-changed broadcast for mounted listeners.
+ */
+export function invalidateLedgerClientCaches(source = "unknown") {
   const ts = Date.now();
   try {
     localStorage.setItem(TX_LIST_INVALIDATE_LS_KEY, String(ts));
@@ -18,8 +33,15 @@ export function notifyTransactionListInvalidated(source = "unknown") {
     /* ignore */
   }
   clearTxSearchCache();
+  invalidateDashboardCachesForLedgerChange();
+  clearReportSnapshots();
   window.dispatchEvent(new CustomEvent(TX_DATA_CHANGED_EVENT, { detail: { ts, source } }));
   return ts;
+}
+
+/** Broadcast that transaction balances changed elsewhere (maintenance delete, process post, etc.). */
+export function notifyTransactionListInvalidated(source = "unknown") {
+  return invalidateLedgerClientCaches(source);
 }
 
 /** @param {string|null|undefined} role */
@@ -353,33 +375,16 @@ export function filterTransactionTableRows(rawLeft, rawRight, { showZeroBalance,
   };
 }
 
-export function normalizeRateRowsByCrDr(leftRows, rightRows, isRate) {
-  const safeLeft = Array.isArray(leftRows) ? leftRows : [];
-  const safeRight = Array.isArray(rightRows) ? rightRows : [];
-  if (!isRate) {
-    return { leftRows: [...safeLeft], rightRows: [...safeRight] };
-  }
-  const normalizedLeft = [];
-  const normalizedRight = [];
-  safeLeft.forEach((row) => {
-    const crDr = parseBalanceValue(row?.cr_dr);
-    if (crDr === null || Math.abs(crDr) < 1e-5) {
-      normalizedLeft.push(row);
-      return;
-    }
-    if (crDr > 0) normalizedLeft.push(row);
-    else normalizedRight.push(row);
-  });
-  safeRight.forEach((row) => {
-    const crDr = parseBalanceValue(row?.cr_dr);
-    if (crDr === null || Math.abs(crDr) < 1e-5) {
-      normalizedRight.push(row);
-      return;
-    }
-    if (crDr > 0) normalizedLeft.push(row);
-    else normalizedRight.push(row);
-  });
-  return { leftRows: normalizedLeft, rightRows: normalizedRight };
+/**
+ * Historically re-split RATE rows by Cr/Dr sign. Product rule is now unified with
+ * CONTRA/PAYMENT: keep search_api Balance-based left/right for all types.
+ * Kept as a passthrough so older call sites stay safe.
+ */
+export function normalizeRateRowsByCrDr(leftRows, rightRows, _isRate = false) {
+  return {
+    leftRows: Array.isArray(leftRows) ? [...leftRows] : [],
+    rightRows: Array.isArray(rightRows) ? [...rightRows] : [],
+  };
 }
 
 /** @deprecated Use {@link filterTransactionTableRows} — kept for legacy two-step callers. */
@@ -545,15 +550,18 @@ export function dedupeCurrencyRowsByCode(rows) {
 /**
  * Apply saved API/global/local order to currency rows from get_company_currencies_api.
  */
-export function orderCurrencyRows(orderedData, orderData, explicitCompanyId = null) {
+export function orderCurrencyRows(orderedData, orderData, explicitOrderKey = null) {
   let ordered = dedupeCurrencyRowsByCode(orderedData);
   try {
-    const companyId =
-      explicitCompanyId != null && explicitCompanyId !== ""
-        ? Number(explicitCompanyId)
-        : orderData?.data?.company_id;
+    let orderKey = explicitOrderKey;
+    if (orderKey == null || orderKey === "") {
+      const cid = orderData?.data?.company_id;
+      const gid = orderData?.data?.group_id;
+      if (cid != null && Number(cid) > 0) orderKey = Number(cid);
+      else if (gid) orderKey = `g:${String(gid).trim().toUpperCase()}`;
+    }
     const savedOrder = resolveSavedCurrencyOrder(
-      companyId,
+      orderKey,
       orderData?.success ? orderData?.data?.order : null,
     );
     if (!savedOrder?.length) return ordered;
@@ -588,10 +596,9 @@ export function orderCurrencyRows(orderedData, orderData, explicitCompanyId = nu
   }
 }
 
-/** Transaction page cold boot: MYR when available, otherwise first listed currency. */
+/** Default = first currency in the caller's ordered list (user drag order). */
 export function pickTransactionDefaultCurrency(codes) {
   const list = (codes || []).map((c) => String(c || "").toUpperCase().trim()).filter(Boolean);
-  if (list.includes("MYR")) return "MYR";
   return list[0] || "";
 }
 
@@ -652,8 +659,7 @@ export function countDisplayedRows(rawSearchData, searchState, txType, typeSearc
     showPaymentOnly: typeSearchActive ? false : searchState.showPaymentOnly,
     showCaptureOnly: typeSearchActive ? false : searchState.showCaptureOnly,
   });
-  const norm = normalizeRateRowsByCrDr(z.left, z.right, txType === "RATE");
-  return (norm.leftRows?.length || 0) + (norm.rightRows?.length || 0);
+  return (z.left?.length || 0) + (z.right?.length || 0);
 }
 
 /** Read cached transaction list payload from sessionStorage (same format as saveTxListToSession). */

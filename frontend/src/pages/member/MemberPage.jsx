@@ -20,7 +20,7 @@ import "../../../public/css/sidebar.css";
 import "../../../public/css/userlist.css";
 import "../../../public/css/date-range-picker.css";
 import "../../../public/css/report-outlined-fields.css";
-import "../../../public/css/transaction.css";
+import "../../../public/css/member-transaction.css";
 import AvatarPickerModal from "../../components/AvatarPickerModal.jsx";
 import ConfirmLogoutModal from "../../components/ConfirmLogoutModal.jsx";
 import ExpirationReminderModal from "../../components/ExpirationReminderModal.jsx";
@@ -85,6 +85,7 @@ export default function MemberPage() {
   const {
     viewAccountId,
     companyId,
+    groupId,
     dateFrom,
     setDateFrom,
     dateTo,
@@ -302,6 +303,7 @@ export default function MemberPage() {
     return {
       accountDbId: viewAccountId,
       companyId,
+      groupId,
       dateFrom,
       dateTo,
       currency: currencyPref,
@@ -312,6 +314,7 @@ export default function MemberPage() {
     linkedAccounts,
     viewAccountId,
     companyId,
+    groupId,
     dateFrom,
     dateTo,
     isAllSelected,
@@ -518,7 +521,7 @@ export default function MemberPage() {
                 className="member-winloss-export-pdf-btn"
                 aria-label={t("exportPdf")}
                 title={t("exportPdf")}
-                disabled={!viewAccountId || !companyId}
+                disabled={!viewAccountId || (!companyId && !groupId)}
                 onClick={onOpenExportPdf}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">

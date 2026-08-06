@@ -3,6 +3,7 @@ import { EDIT_FORMULA_INPUT_METHODS, CALCULATOR_KEYPAD } from "../formula/editFo
 import { formatSummaryAccountDisplay } from "../formula/editFormulaFormState.js";
 import { getSummaryInputMethodLabel } from "../../../translateFile/pages/dataCaptureSummaryTranslate.js";
 import { portalToDocumentBody } from "../../../components/ProcessModalPortal.jsx";
+import { isTypeAheadKey } from "../../../components/typeAheadMatch.js";
 import { useListboxKeyboard } from "../../../components/useListboxKeyboard.js";
 
 function CalcButton({ value, action, className = "", clearLabel = "Clr", onPress }) {
@@ -238,6 +239,18 @@ export default function EditFormulaModal({
                             setAccountOpen((v) => !v);
                           }}
                           onKeyDown={(e) => {
+                            if (
+                              !accountOpen &&
+                              isTypeAheadKey(e.key) &&
+                              !e.ctrlKey &&
+                              !e.metaKey &&
+                              !e.altKey
+                            ) {
+                              e.preventDefault();
+                              setAccountSearch(e.key);
+                              setAccountOpen(true);
+                              return;
+                            }
                             handleButtonKeyDown(e, {
                               isOpen: accountOpen,
                               onToggleOpen: () => setAccountOpen(true),

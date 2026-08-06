@@ -119,6 +119,9 @@ if ($saveHistoryOnly) {
         ownership_history_save_company_for_month($pdo, $companyIdInt, $historyRows, $savedBy, $effectiveMonth);
         $pdo->commit();
 
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$companyIdInt], 'ownership', 'batch_save_history');
+
         echo json_encode([
             'status' => 'success',
             'message' => 'Historical ownership saved successfully',
@@ -257,6 +260,9 @@ try {
     }
 
     $pdo->commit();
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([(int) $company_id], 'ownership', 'batch_save');
 
     echo json_encode([
         'status' => 'success',

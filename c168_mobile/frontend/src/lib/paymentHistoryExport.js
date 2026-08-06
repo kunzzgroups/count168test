@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { buildApiUrl } from "../utils/apiUrl.js";
+import { orderCurrencyCodesForCompany } from "./currencyOrder.js";
 import { formatPaymentHistoryMoney, formatRateForHistoryDisplay, getHistoryRemark } from "./transactionFormat.js";
 import MoneyDecimal from "./money/moneyDecimal.js";
 
@@ -37,9 +38,10 @@ export async function fetchPaymentHistoryExportCurrencies(accountId, companyId, 
   );
   const json = await parseJsonResponse(await res.text());
   if (!json?.success || !Array.isArray(json.data)) return [];
-  return json.data
+  const codes = json.data
     .map((row) => String(row.currency_code || row.code || "").trim().toUpperCase())
     .filter(Boolean);
+  return orderCurrencyCodesForCompany(codes, cid, signal);
 }
 
 export async function fetchMemberReportHistory({ accountId, companyId, dateFrom, dateTo, currency, signal }) {

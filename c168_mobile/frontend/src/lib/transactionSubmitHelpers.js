@@ -1,4 +1,8 @@
-import { formatRateAmount } from "./transactionFormat.js";
+import {
+  formatAmountForStore,
+  parseRateExpression,
+  RATE_STORE_MAX_DECIMALS,
+} from "./transactionFormat.js";
 import MoneyDecimal from "./money/moneyDecimal.js";
 
 export function toNumberLike(raw) {
@@ -12,8 +16,39 @@ function cleanAmt(raw) {
     .trim();
 }
 
-/** RATE Middle-Man 手续费 remark：charge {第一币种} {用户输入} Service Fees */
-export function buildRateServiceFeeRemark(currencyFrom, middlemanInputAmount) {
+function parsePositiveAmt(raw) {
+  try {
+    const inputStr = cleanAmt(raw);
+    if (!inputStr) return MoneyDecimal.toDecimal("0", 0);
+    const dec = MoneyDecimal.toDecimal(inputStr, 0);
+    return dec.gt(0) ? dec : MoneyDecimal.toDecimal("0", 0);
+  } catch {
+    return MoneyDecimal.toDecimal("0", 0);
+  }
+}
+
+function parseSignedAmt(raw) {
+  try {
+    return MoneyDecimal.toDecimal(cleanAmt(raw) || "0", 0);
+  } catch {
+    return MoneyDecimal.toDecimal("0", 0);
+  }
+}
+
+/** Rate-Mul factor: plain number or expression (`/0.1` → 10), same rules as exchange Rate. */
+function parseMiddlemanRateFactor(raw) {
+  const parsed = parseRateExpression(raw);
+  if (!parsed.valid) return MoneyDecimal.toDecimal("0", 0);
+  try {
+    const dec = MoneyDecimal.toDecimal(parsed.value || "0", 0);
+    return dec.gt(0) ? dec : MoneyDecimal.toDecimal("0", 0);
+  } catch {
+    return MoneyDecimal.toDecimal("0", 0);
+  }
+}
+
+/** RATE Service Fee remark / desc：charge {第二币种} {用户输入} Service Fees */
+export function buildRateServiceFeeRemark(currencyTo, middlemanInputAmount) {
   const inputStr = cleanAmt(middlemanInputAmount);
   if (!inputStr) return "";
   try {
@@ -22,14 +57,66 @@ export function buildRateServiceFeeRemark(currencyFrom, middlemanInputAmount) {
   } catch {
     return "";
   }
-  const currency = String(currencyFrom ?? "").trim().toUpperCase();
+  const currency = String(currencyTo ?? "").trim().toUpperCase();
   if (!currency) return "";
   return `charge ${currency} ${inputStr} Service Fees`;
 }
 
+/** RATE Platform Fee desc：charge {第二币种} {用户输入} PlatForm Fee */
+export function buildRatePlatformFeeRemark(currencyTo, platformFeeAmount) {
+  const inputStr = cleanAmt(platformFeeAmount);
+  if (!inputStr) return "";
+  let displayAmount;
+  try {
+    const dec = MoneyDecimal.toDecimal(inputStr, 0);
+    if (dec.isZero()) return "";
+    displayAmount = dec.abs().toString();
+  } catch {
+    return "";
+  }
+  const currency = String(currencyTo ?? "").trim().toUpperCase();
+  if (!currency) return "";
+  return `charge ${currency} ${displayAmount} PlatForm Fee`;
+}
+
+/**
+ * Middle-Man profit: rate-mul commission + Service Fee, with negative PT only.
+ * - PT-Fee > 0 → 外来平台费，只扣 From，**不**进 Middle（Middle = Fee + rateMul）
+ * - PT-Fee < 0 → Middle = Fee − abs(PT-Fee)
+ * Fee / Platform Fee are face values (no FX multiply).
+ */
+export function computeRateMiddlemanProfit({
+  fromAmount,
+  middlemanRate,
+  feeAmount,
+  platformFeeAmount,
+}) {
+  const fromDec = parsePositiveAmt(fromAmount);
+  let rateMulDec = MoneyDecimal.toDecimal("0", 0);
+  const mmrDec = parseMiddlemanRateFactor(middlemanRate);
+  if (fromDec.gt(0) && mmrDec.gt(0)) {
+    rateMulDec = fromDec.times(mmrDec);
+  }
+  const feeDec = parsePositiveAmt(feeAmount);
+  const platformSigned = parseSignedAmt(platformFeeAmount);
+  let feeNet = feeDec;
+  // Positive PT is external — never add into Middle-Man profit.
+  if (platformSigned.lt(0)) {
+    feeNet = feeDec.minus(platformSigned.abs());
+  }
+  return rateMulDec.plus(feeNet);
+}
+
+/** Positive PT-Fee abs for From-amount deduction; otherwise 0. */
+export function positivePlatformFeeDeduction(platformFeeAmount) {
+  const platformSigned = parseSignedAmt(platformFeeAmount);
+  return platformSigned.gt(0) ? platformSigned.abs() : MoneyDecimal.toDecimal("0", 0);
+}
+
 /**
  * RATE submit payload aligned with `js/transaction.js` submitAction + `api/transactions/submit_api.php` expectations.
- * `toGrossStr` = gross converted amount (half-up 2dp string), same role as legacy `dataset.grossAmount` / getRateCurrencyToGrossAmount.
+ * Amounts are truncated to 8dp for storage (no round-2). `formatRateAmount` is display-only elsewhere.
+ * `toGrossStr` is a fallback when rate/from cannot rebuild gross (e.g. missing rate).
  */
 export function buildRatePayload({
   toId,
@@ -50,39 +137,58 @@ export function buildRatePayload({
   rateTransferToAccount,
   rateTransferFromAccount,
   rateMiddlemanInputAmount,
+  rateMiddlemanPlatformFee,
 }) {
   const transferToId = rateTransferToAccount?.id ? String(rateTransferToAccount.id) : "";
   const transferFromId = rateTransferFromAccount?.id ? String(rateTransferFromAccount.id) : "";
   const middleId = rateMiddlemanAccount?.id ? String(rateMiddlemanAccount.id) : "";
+  const store = (v) => formatAmountForStore(v, RATE_STORE_MAX_DECIMALS);
 
   const fromDec = MoneyDecimal.toDecimal(cleanAmt(fromAmt) || "0", 0);
-  const grossDec = MoneyDecimal.toDecimal(cleanAmt(toGrossStr) || "0", 0);
 
-  let middleDec;
+  // Rebuild gross at full precision (UI may have rounded toGrossStr to 2dp for display).
+  let grossDec;
   try {
-    middleDec = MoneyDecimal.toDecimal(cleanAmt(rateMiddlemanAmount) || "0", 0);
-  } catch {
-    middleDec = MoneyDecimal.toDecimal("0", 0);
-  }
-  if (middleDec.isZero()) middleDec = MoneyDecimal.toDecimal("0", 0);
-
-  let inputAmtDec = MoneyDecimal.toDecimal("0", 0);
-  try {
-    const inputStr = cleanAmt(rateMiddlemanInputAmount);
-    if (inputStr) {
-      inputAmtDec = MoneyDecimal.toDecimal(inputStr, 0);
+    const rateDec = MoneyDecimal.toDecimal(cleanAmt(parsedRateNormalizedStr) || "0", 0);
+    if (fromDec.gt(0) && rateDec.gt(0)) {
+      grossDec = fromDec.times(rateDec);
+      try {
+        const feeInputDec = MoneyDecimal.toDecimal(cleanAmt(rateMiddlemanInputAmount) || "0", 0);
+        if (feeInputDec.lt(0)) {
+          grossDec = grossDec.plus(feeInputDec);
+        }
+      } catch {
+        // ignore fee adjust
+      }
+    } else {
+      grossDec = MoneyDecimal.toDecimal(cleanAmt(toGrossStr) || "0", 0);
     }
   } catch {
-    // ignore
+    grossDec = MoneyDecimal.toDecimal(cleanAmt(toGrossStr) || "0", 0);
   }
 
-  let rateDec = MoneyDecimal.toDecimal("0", 0);
-  try {
-    if (parsedRateNormalizedStr) {
-      rateDec = MoneyDecimal.toDecimal(parsedRateNormalizedStr, 0);
+  // Prefer recomputed middleman profit so store precision is not lost to display round-2.
+  let middleDec = computeRateMiddlemanProfit({
+    fromAmount: fromAmt,
+    middlemanRate: rateMiddlemanRate,
+    feeAmount: rateMiddlemanInputAmount,
+    platformFeeAmount: rateMiddlemanPlatformFee,
+  });
+  if (middleDec.isZero() && cleanAmt(rateMiddlemanAmount)) {
+    try {
+      middleDec = MoneyDecimal.toDecimal(cleanAmt(rateMiddlemanAmount) || "0", 0);
+    } catch {
+      middleDec = MoneyDecimal.toDecimal("0", 0);
     }
-  } catch {
-    // ignore
+  }
+
+  const platformInputDec = parseSignedAmt(rateMiddlemanPlatformFee);
+
+  // Rate-mul commission only (excludes fee / platform fee). Supports `/0.1` via parseRateExpression.
+  let rateMulDec = MoneyDecimal.toDecimal("0", 0);
+  const mmrDec = parseMiddlemanRateFactor(rateMiddlemanRate);
+  if (fromDec.gt(0) && mmrDec.gt(0)) {
+    rateMulDec = fromDec.times(mmrDec);
   }
 
   const fromCode = rateFromAccount?.account_id || "";
@@ -100,14 +206,19 @@ export function buildRatePayload({
       ? `Rate charge (x${rateMiddlemanRate}) from ${rateCurrencyFrom} ${MoneyDecimal.formatFixed(fromDec.toString(), 2)}`
       : "";
 
-  const serviceFeeRemark = buildRateServiceFeeRemark(rateCurrencyFrom, rateMiddlemanInputAmount);
-  const sms = serviceFeeRemark || txRemark;
+  const serviceFeeRemark = buildRateServiceFeeRemark(rateCurrencyTo, rateMiddlemanInputAmount);
+  const platformFeeRemark = buildRatePlatformFeeRemark(rateCurrencyTo, rateMiddlemanPlatformFee);
+  // Service Fee → header sms / history Remark only (no RATE_FEE row).
+  const sms = serviceFeeRemark || String(txRemark || "").toUpperCase();
+
+  const storeFrom = store(fromDec.toString());
+  const storeGross = store(grossDec.toString());
 
   const payload = {
     transaction_type: "RATE",
     account_id: toId,
     from_account_id: fromId,
-    amount: formatRateAmount(fromDec.toString()),
+    amount: storeFrom,
     transaction_date: rateDate,
     description: "",
     sms,
@@ -115,24 +226,25 @@ export function buildRatePayload({
 
     rate_from_account_id: fromId,
     rate_from_currency: rateCurrencyFrom,
-    rate_from_amount: formatRateAmount(fromDec.toString()),
+    rate_from_amount: storeFrom,
     rate_from_description: fromDesc,
 
     rate_to_account_id: toId,
     rate_to_currency: rateCurrencyTo,
-    rate_to_amount: formatRateAmount(grossDec.toString()),
+    rate_to_amount: storeGross,
     rate_to_description: toDesc,
 
     rate_currency_from: rateCurrencyFrom,
-    rate_currency_from_amount: formatRateAmount(fromDec.toString()),
+    rate_currency_from_amount: storeFrom,
     rate_currency_to: rateCurrencyTo,
-    rate_currency_to_amount: formatRateAmount(grossDec.toString()),
+    rate_currency_to_amount: storeGross,
     rate_exchange_rate: String(parsedRateNormalizedStr ?? ""),
 
     rate_middleman_rate: rateMiddlemanRate,
-    rate_middleman_amount: rateMiddlemanAmount ? formatRateAmount(middleDec.toString()) : "",
+    rate_middleman_amount: !middleDec.isZero() ? store(middleDec.toString()) : "",
     rate_middleman_account: middleId,
     rate_middleman_input_amount: rateMiddlemanInputAmount ? cleanAmt(rateMiddlemanInputAmount) : "",
+    rate_middleman_platform_fee: rateMiddlemanPlatformFee ? cleanAmt(rateMiddlemanPlatformFee) : "",
 
     rate_transfer_amount: "",
     rate_account_from_amount: "",
@@ -140,36 +252,29 @@ export function buildRatePayload({
   };
 
   if (transferToId && transferFromId) {
-    const transferGross = grossDec;
-
-    // Fee is already included in the first-currency amount: second-currency Cr/Dr
-    // uses net on BOTH sides (do not asymmetrically deduct converted fee again).
-    let convertedFeeDec = MoneyDecimal.toDecimal("0", 0);
-    if (inputAmtDec.gt(0) && rateDec.gt(0)) {
-      convertedFeeDec = inputAmtDec.times(rateDec);
-    }
-    const transferBase = convertedFeeDec.gt(0) ? transferGross.minus(convertedFeeDec) : transferGross;
-
-    let transferToSide = transferBase;
+    // To = net (exclude Service Fee) so 收款方 matches form amount (e.g. 300 not 310).
+    // From keeps Service Fee; positive PT-Fee deducts From in-leg (no RATE_PLATFORM_FEE row).
+    // Negative PT-Fee does not touch From/To; Middle = Fee − abs(PT), Remark on MARKUP.
+    const transferBase = grossDec;
+    const serviceFeeDec = parsePositiveAmt(rateMiddlemanInputAmount);
+    const positivePtDec = positivePlatformFeeDeduction(rateMiddlemanPlatformFee);
+    let transferToSide = serviceFeeDec.gt(0) ? transferBase.minus(serviceFeeDec) : transferBase;
     let transferFromSide = transferBase;
-    if (middleId && !middleDec.isZero()) {
-      let rateMultiplierFeeDec = middleDec;
-      if (convertedFeeDec.gt(0)) {
-        rateMultiplierFeeDec = middleDec.minus(convertedFeeDec);
-      }
-      if (rateMultiplierFeeDec.gt(0)) {
-        transferFromSide = transferBase.minus(rateMultiplierFeeDec);
-      }
+    if (middleId && rateMulDec.gt(0)) {
+      transferFromSide = transferBase.minus(rateMulDec);
+    }
+    if (positivePtDec.gt(0)) {
+      transferFromSide = transferFromSide.minus(positivePtDec);
     }
 
     payload.rate_transfer_from_account_id = transferToId;
     payload.rate_transfer_from_currency = rateCurrencyTo;
-    payload.rate_transfer_from_amount = formatRateAmount(transferToSide.toString());
+    payload.rate_transfer_from_amount = store(transferToSide.toString());
     payload.rate_transfer_from_description = transferFromDesc;
 
     payload.rate_transfer_to_account_id = transferFromId;
     payload.rate_transfer_to_currency = rateCurrencyTo;
-    payload.rate_transfer_to_amount = formatRateAmount(transferFromSide.toString());
+    payload.rate_transfer_to_amount = store(transferFromSide.toString());
     payload.rate_transfer_to_description = transferToDesc;
 
     payload.rate_transfer_from_account = transferToId;
@@ -178,8 +283,16 @@ export function buildRatePayload({
     if (middleId && !middleDec.isZero()) {
       payload.rate_middleman_account_id = middleId;
       payload.rate_middleman_currency = rateCurrencyTo;
-      payload.rate_middleman_amount = formatRateAmount(middleDec.toString());
+      payload.rate_middleman_amount = store(middleDec.toString());
       payload.rate_middleman_description = middleDesc;
+    }
+
+    // Only negative PT-Fee still needs platform-fee fields (Middle Remark / fallback Fee row).
+    if (platformInputDec.lt(0)) {
+      payload.rate_platform_fee_amount = store(platformInputDec.toString());
+      payload.rate_platform_fee_description =
+        platformFeeRemark ||
+        `charge ${String(rateCurrencyTo ?? "").trim().toUpperCase()} ${store(platformInputDec.abs().toString())} PlatForm Fee`;
     }
   }
 

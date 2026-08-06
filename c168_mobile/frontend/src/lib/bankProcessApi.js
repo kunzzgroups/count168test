@@ -1,4 +1,5 @@
 import { buildApiUrl } from "../utils/apiUrl.js";
+import { orderCurrencyCodesForCompany } from "./currencyOrder.js";
 import { fetchJson, assertApiOk } from "./fetchJson.js";
 
 export function normalizeBankIssueFlag(v) {
@@ -194,6 +195,13 @@ export async function fetchBankProcessList(companyId, { signal } = {}) {
     currencyCodes = [
       ...new Set(rows.map((r) => String(r.country || "").trim().toUpperCase()).filter(Boolean)),
     ];
+  }
+
+  // Align filter chips with desktop per-company order (not A–Z).
+  try {
+    currencyCodes = await orderCurrencyCodesForCompany(currencyCodes, cid, signal);
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
   }
 
   return { rows, currencyCodes };
@@ -543,6 +551,108 @@ export function profitSharingDisplayLabel(row, accounts) {
     return formatBankAccountDisplay(acc.account_id || acc.code, acc.name, row?.accountLabel);
   }
   return String(row?.accountLabel || "").trim() || "—";
+}
+
+/** Day-end rental months: 1+N uses first segment only (1 month). */
+export function parseBankContractRentalMonthsForDayEnd(contract) {
+  if (!contract || String(contract).trim() === "") return null;
+  const c = String(contract).trim();
+  if (/^1\+\d+/i.test(c)) return 1;
+  let m = c.match(/^1\+(\d+)$/i);
+  if (m) return 1 + parseInt(m[1], 10);
+  m = c.match(/^(\d+)\s*MONTHS?$/i);
+  if (m) return Math.max(1, parseInt(m[1], 10));
+  return null;
+}
+
+function addCalendarMonthsToYmd(ymd, months) {
+  if (!ymd || months == null || months < 1) return null;
+  const p = String(ymd).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!p) return null;
+  const d = new Date(parseInt(p[1], 10), parseInt(p[2], 10) - 1, parseInt(p[3], 10));
+  if (Number.isNaN(d.getTime())) return null;
+  d.setMonth(d.getMonth() + months);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function subtractOneDayFromYmd(ymd) {
+  if (!ymd) return null;
+  const head = String(ymd).trim().substring(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(head)) return null;
+  const p = head.split("-").map(Number);
+  const d = new Date(p[0], p[1] - 1, p[2]);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Auto day_end for bank form (desktop-parity; not used for posting). */
+export function contractBillingEndYmdForBankForm(startYmd, termMonths, frequency) {
+  if (!startYmd || termMonths == null || termMonths < 1) return null;
+  if (frequency === "once") return null;
+  const head = String(startYmd).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!head) return null;
+  const startDay = parseInt(head[3], 10);
+  if (startDay === 1) return addCalendarMonthsToYmd(startYmd, termMonths);
+  const exclusiveCal = addCalendarMonthsToYmd(startYmd, termMonths);
+  if (!exclusiveCal) return null;
+  return subtractOneDayFromYmd(exclusiveCal) || null;
+}
+
+export function canDeleteBankProcess(row) {
+  return (
+    normalizeBankProcessStatus(row?.status) === "inactive" && !row?.has_transactions
+  );
+}
+
+export async function deleteBankProcesses(ids) {
+  const list = (Array.isArray(ids) ? ids : [ids])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+  if (!list.length) throw new Error("Missing process id");
+  const { res, json } = await fetchJson(buildApiUrl("api/processes/delete_processes_api.php"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: list, permission: "Bank" }),
+  });
+  if (!res.ok || !json?.success) throw new Error(apiErrorMessage(json, "Delete failed"));
+  return json;
+}
+
+export async function fetchAccountRoles({ companyId, signal } = {}) {
+  const url = new URL(buildApiUrl("api/editdata/editdata_api.php"));
+  if (companyId) url.searchParams.set("company_id", String(companyId));
+  const { res, json } = await fetchJson(url.toString(), { signal });
+  if (!res.ok || !json?.success) return [...BANK_PICK_ACCOUNT_ROLES];
+  const roles = Array.isArray(json?.data?.roles) ? json.data.roles : [];
+  const upper = roles.map((r) => String(r || "").trim().toUpperCase()).filter(Boolean);
+  return upper.length ? upper : [...BANK_PICK_ACCOUNT_ROLES];
+}
+
+/**
+ * Quick-create account for Bank Process form (desktop addaccountapi parity).
+ * @returns {{ id: number }}
+ */
+export async function createBankPickAccount({ companyId, accountId, name, role, password }) {
+  const fd = new FormData();
+  fd.set("account_id", String(accountId || "").trim().toUpperCase());
+  fd.set("name", String(name || "").trim().toUpperCase());
+  fd.set("role", String(role || "").trim().toUpperCase());
+  fd.set("password", String(password || ""));
+  fd.set("payment_alert", "0");
+  fd.set("remark", "");
+  if (companyId) {
+    fd.set("company_id", String(companyId));
+    fd.set("company_ids", JSON.stringify([Number(companyId)]));
+  }
+  const { res, json } = await fetchJson(buildApiUrl("api/accounts/addaccountapi.php"), {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok || !json?.success) throw new Error(apiErrorMessage(json, "Failed to create account"));
+  const id = Number(json?.data?.id);
+  if (!Number.isFinite(id) || id <= 0) throw new Error("Missing account id");
+  return { id, account_id: String(accountId || "").trim().toUpperCase(), name: String(name || "").trim().toUpperCase(), role };
 }
 
 export function formatBankAccountDisplay(codeRaw, nameRaw, fallbackRaw) {

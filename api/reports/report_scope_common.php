@@ -100,6 +100,21 @@ function reportGroupHasBankSubsidiary(PDO $pdo, string $groupId): bool
 
 function checkReportGamesAccess(PDO $pdo, int $companyId, ?string $groupId): bool
 {
+    // Phase 10: pure group tenant (no company anchor) — fixed Games category (gt_v2).
+    if ($companyId <= 0) {
+        $g = (string) ($groupId ?? '');
+        if (
+            $g !== ''
+            && function_exists('gt_v2_enabled')
+            && gt_v2_enabled()
+            && function_exists('gt_v2_group_category_access_ok')
+        ) {
+            require_once __DIR__ . '/../../includes/group_tenant_v2.php';
+            return gt_v2_group_category_access_ok($pdo, $g);
+        }
+        return reportGroupHasGamesSubsidiary($pdo, $g);
+    }
+
     if (checkCompanyCategoryPermission($pdo, $companyId, 'Games')) {
         return true;
     }
@@ -107,9 +122,67 @@ function checkReportGamesAccess(PDO $pdo, int $companyId, ?string $groupId): boo
     return reportGroupHasGamesSubsidiary($pdo, (string) ($groupId ?? ''));
 }
 
+/**
+ * Build dual-tenant capture scope for Customer / Domain reports (aligned with Data Capture).
+ *
+ * @param array<string, mixed> $resolved from resolveReportRequestCompanyScope
+ * @param array<string, mixed> $get
+ * @return array<string, mixed>
+ */
+function resolveReportDualTenantCaptureScope(PDO $pdo, array $resolved, array $get): array
+{
+    require_once __DIR__ . '/../datacapture/data_capture_scope_common.php';
+
+    $hint = strtolower(trim((string) ($resolved['report_scope_hint'] ?? '')));
+    $groupScope = false;
+    if ($hint === 'company') {
+        $groupScope = false;
+    } elseif ($hint === 'group') {
+        $groupScope = true;
+    } elseif (strtolower(trim((string) ($resolved['list_scope']['mode'] ?? ''))) === 'group') {
+        $groupScope = true;
+    } else {
+        $groupScope = dcIsGroupScopeHint($resolved);
+    }
+
+    $scopeHint = strtolower(trim((string) ($get['report_scope'] ?? '')));
+    if ($scopeHint === 'company') {
+        $groupScope = false;
+    } elseif ($scopeHint === 'group') {
+        $groupScope = true;
+    }
+
+    $scopeResolved = [
+        'company_id' => (int) ($resolved['company_id'] ?? 0),
+        'group_id' => (string) ($resolved['group_id'] ?? ''),
+        'report_scope_hint' => $groupScope ? 'group' : 'company',
+        'is_group_scope' => $groupScope,
+    ];
+
+    $ctx = dcFinalizeDualTenantCaptureScope($pdo, $scopeResolved, $get);
+    $ctx['group_scope'] = (bool) ($ctx['is_group_scope'] ?? false);
+
+    return $ctx;
+}
+
 /** Games or Bank — used by maintenance / data-capture scope APIs. */
 function checkReportMaintenanceAccess(PDO $pdo, int $companyId, ?string $groupId): bool
 {
+    // Phase 2/3: pure group tenant (no company anchor) — fixed Games category
+    if ($companyId <= 0) {
+        $g = (string) ($groupId ?? '');
+        if (
+            $g !== ''
+            && function_exists('gt_v2_enabled')
+            && gt_v2_enabled()
+            && function_exists('gt_v2_group_category_access_ok')
+        ) {
+            require_once __DIR__ . '/../../includes/group_tenant_v2.php';
+            return gt_v2_group_category_access_ok($pdo, $g);
+        }
+        return false;
+    }
+
     if (checkCompanyCategoryPermission($pdo, $companyId, 'Games')) {
         return true;
     }
@@ -153,9 +226,15 @@ function resolveReportRequestCompanyScope(PDO $pdo, array $get, string $category
         gc_assert_group_ledger_access($pdo, $groupId);
     }
 
+    // Group ledger: category gate must ignore subsidiary/anchor company_id (often Bank-only).
+    // Otherwise checkReportGamesAccess fails Games on the anchor and throws Unauthorized.
+    $accessCompanyId = (($listScope['mode'] ?? '') === 'group')
+        ? 0
+        : $companyIdForAccess;
+
     $hasAccess = $categoryAccess === 'maintenance'
-        ? checkReportMaintenanceAccess($pdo, $companyIdForAccess, $groupForAccess)
-        : checkReportGamesAccess($pdo, $companyIdForAccess, $groupForAccess);
+        ? checkReportMaintenanceAccess($pdo, $accessCompanyId, $groupForAccess)
+        : checkReportGamesAccess($pdo, $accessCompanyId, $groupForAccess);
     if (!$hasAccess) {
         throw new Exception('Unauthorized permission category');
     }
@@ -165,8 +244,13 @@ function resolveReportRequestCompanyScope(PDO $pdo, array $get, string $category
         $reportScopeHint = (($listScope['mode'] ?? '') === 'group') ? 'group' : 'company';
     }
 
+    // Pure group: do not leak Bank/Games anchor into resolved company_id for dual-tenant finalize.
+    $resolvedCompanyId = (($listScope['mode'] ?? '') === 'group')
+        ? 0
+        : $companyIdForAccess;
+
     return [
-        'company_id' => $companyIdForAccess,
+        'company_id' => $resolvedCompanyId,
         'group_id' => $groupId,
         'report_scope_hint' => $reportScopeHint,
         'list_scope' => $listScope,

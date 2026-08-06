@@ -7,6 +7,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../includes/money_decimal.php';
+
 /** 与 manual_inactive 相同：1+1/1+2/1+3 → N，其余 → 1 */
 function getManualInactiveMultiplierFromContract(?string $contract): int
 {
@@ -86,6 +88,7 @@ function billingCalendarMonthDueYmd(int $year, int $month, int $dueDay): string
  * Frequency=monthly（先付 / prepaid）：应付日当天付连续 1 个月服务。
  * 首期（due=day_start）：[due, due+1月-1日]（5/22→5/22–6/21）。
  * 链式后续期（due>首段）：[due, due+1月]（6/21→6/21–7/21）；下一期应付 = 上期末日。
+ * day_start 为每月 1 号时，后续期末固定取下一自然月月末，避免从 30 日起链式后一直固定为 30 日。
  *
  * @return array{0:string,1:string}
  */
@@ -95,6 +98,15 @@ function billingMonthlyChainedInclusiveRangeFromDue(string $dueYmd, string $cont
         $due = new DateTimeImmutable($dueYmd);
         if ($dueYmd === $contractStartYmd) {
             return [$dueYmd, $due->modify('+1 month')->modify('-1 day')->format('Y-m-d')];
+        }
+
+        $contractStart = new DateTimeImmutable($contractStartYmd);
+        if ((int) $contractStart->format('j') === 1) {
+            $nextMonthEnd = $due
+                ->modify('first day of next month')
+                ->modify('last day of this month')
+                ->format('Y-m-d');
+            return [$dueYmd, $nextMonthEnd];
         }
 
         return [$dueYmd, $due->modify('+1 month')->format('Y-m-d')];
@@ -336,9 +348,9 @@ function prorateMonthlyAnniversaryPeriodLinear(
     $r = money_div((string) $useD, (string) $fullD, MONEY_CALC_SCALE);
 
     return [
-        'cost' => money_mul($cost, $r, 2),
-        'price' => money_mul($price, $r, 2),
-        'profit' => money_mul($profit, $r, 2),
+        'cost' => money_mul($cost, $r, MONEY_TX_STORE_SCALE),
+        'price' => money_mul($price, $r, MONEY_TX_STORE_SCALE),
+        'profit' => money_mul($profit, $r, MONEY_TX_STORE_SCALE),
         'ratio' => $r,
     ];
 }
@@ -393,9 +405,9 @@ function dailyAmountsForDayCount(string $cost, string $price, string $profit, in
 {
     $d = (string) max(1, $days);
     return [
-        'cost' => money_mul($cost, $d, 2),
-        'price' => money_mul($price, $d, 2),
-        'profit' => money_mul($profit, $d, 2),
+        'cost' => money_mul($cost, $d, MONEY_TX_STORE_SCALE),
+        'price' => money_mul($price, $d, MONEY_TX_STORE_SCALE),
+        'profit' => money_mul($profit, $d, MONEY_TX_STORE_SCALE),
     ];
 }
 

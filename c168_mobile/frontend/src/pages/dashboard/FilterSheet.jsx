@@ -535,42 +535,6 @@ export default function FilterSheet({ open, onClose, dash }) {
               </div>
             </Section>
           )}
-
-          {Array.isArray(dash.categories) && dash.categories.length > 0 && (
-            <Section title={dash.m?.category || i18n.category || "Category"}>
-              <div className="m-filter-pill-scroll">
-                <Pill
-                  active={!draft.selectedCategories?.length}
-                  onClick={() => setDraft((prev) => ({ ...prev, selectedCategories: [] }))}
-                >
-                  {dash.m?.selectAllCategories || i18n.all}
-                </Pill>
-                {dash.categories.map((cat) => {
-                  const label = String(cat?.name || cat?.category || cat || "");
-                  const value = String(cat?.name || cat?.category || cat || "");
-                  if (!value) return null;
-                  const active = (draft.selectedCategories || []).includes(value);
-                  return (
-                    <Pill
-                      key={value}
-                      active={active}
-                      onClick={() =>
-                        setDraft((prev) => {
-                          const list = prev.selectedCategories || [];
-                          const next = list.includes(value)
-                            ? list.filter((v) => v !== value)
-                            : [...list, value];
-                          return { ...prev, selectedCategories: next };
-                        })
-                      }
-                    >
-                      {label}
-                    </Pill>
-                  );
-                })}
-              </div>
-            </Section>
-          )}
         </div>
 
         <div className="m-sheet-footer">

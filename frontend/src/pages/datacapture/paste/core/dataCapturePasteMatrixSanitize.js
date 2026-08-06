@@ -82,6 +82,8 @@ function isSummaryLabelToken(text) {
     .replace(/:$/, "")
     .replace(/\s+/g, " ")
     .toUpperCase();
+  // iview allGames footer uses Total(1) / Total(12) — keep as summary, not junk.
+  if (/^TOTAL\(\d+\)$/.test(normalized)) return true;
   return (
     normalized === "SUBTOTAL" ||
     normalized === "SUB TOTAL" ||

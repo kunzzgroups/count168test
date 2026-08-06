@@ -205,8 +205,8 @@ function tx_resolve_request_company_id(PDO $pdo, array $params): int
         $userType = isset($_SESSION['user_type']) ? strtolower((string) $_SESSION['user_type']) : '';
 
         if ($userRole === 'owner') {
-            $ownerId = $_SESSION['owner_id'] ?? $_SESSION['user_id'];
-            if (gc_owner_has_company_access($pdo, $requested, (int)$ownerId)) {
+            $ownerId = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $_SESSION['user_id'] ?? 0);
+            if (gc_owner_has_company_access($pdo, $requested, $ownerId)) {
                 return $requested;
             }
             throw new Exception('无权访问该公司');

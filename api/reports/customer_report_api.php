@@ -9,6 +9,7 @@ require_once __DIR__ . '/../../includes/permissions.php';
 require_once __DIR__ . '/../includes/money_decimal.php';
 require_once __DIR__ . '/report_scope_common.php';
 require_once __DIR__ . '/../../includes/tenant_scope.php';
+require_once __DIR__ . '/../datacapture/data_capture_scope_common.php';
 session_start();
 session_write_close(); // 释放 session 锁，允许并发 AJAX 请求并行执行
 
@@ -158,7 +159,26 @@ function getAccountCurrenciesBulk(PDO $pdo, array $accountIds): array {
 }
 
 /**
+ * Ledger SQL fragments for Customer Report Win/Lose (group vs company — dual-tenant).
+ *
+ * @param array<string, mixed> $scopeCtx from resolveReportDualTenantCaptureScope
+ * @return array{sql: string, params: array<int|string>}
+ */
+function customerReportDcdLedgerClause(PDO $pdo, array $scopeCtx): array
+{
+    $ledgerDc = dcBuildCaptureLedgerFilter($pdo, $scopeCtx, 'dc', 'data_captures');
+    $ledgerDcd = dcBuildCaptureLedgerFilter($pdo, $scopeCtx, 'dcd', 'data_capture_details');
+    $sql = (string) ($ledgerDc['sql'] ?? '') . (string) ($ledgerDcd['sql'] ?? '');
+    $params = array_merge(
+        dcCaptureLedgerBindParams($ledgerDc),
+        dcCaptureLedgerBindParams($ledgerDcd)
+    );
+    return ['sql' => $sql, 'params' => $params];
+}
+
+/**
  * 批量：各账户 × 币种 在日期内的 Win/Lose（与逐条 getWinLoseByCurrency 语义一致）。
+ * @param array<string, mixed> $scopeCtx
  * @return array<string, array{win:string,lose:string}> key = "accountId:currencyId"
  */
 function fetchWinLoseByAccountCurrencyBulk(
@@ -166,10 +186,12 @@ function fetchWinLoseByAccountCurrencyBulk(
     array $accountIds,
     string $dateFrom,
     string $dateTo,
-    int $dcdCompanyId
+    array $scopeCtx
 ): array {
     $accountIds = array_values(array_unique(array_filter(array_map('intval', $accountIds))));
-    if (empty($accountIds) || $dcdCompanyId <= 0) {
+    $ledger = customerReportDcdLedgerClause($pdo, $scopeCtx);
+    $ledgerSql = trim((string) ($ledger['sql'] ?? ''));
+    if (empty($accountIds) || $ledgerSql === '') {
         return [];
     }
     $chunkSize = 250;
@@ -183,11 +205,10 @@ function fetchWinLoseByAccountCurrencyBulk(
             FROM data_capture_details dcd
             INNER JOIN data_captures dc ON dcd.capture_id = dc.id
             WHERE dcd.account_id IN ($in)
-              AND dcd.company_id = ?
-              AND dc.company_id = ?
+              {$ledgerSql}
               AND dc.capture_date BETWEEN ? AND ?
             GROUP BY dcd.account_id, dcd.currency_id";
-        $params = array_merge($chunk, [$dcdCompanyId, $dcdCompanyId, $dateFrom, $dateTo]);
+        $params = array_merge($chunk, $ledger['params'], [$dateFrom, $dateTo]);
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -205,6 +226,7 @@ function fetchWinLoseByAccountCurrencyBulk(
 
 /**
  * 批量：无币种绑定账户在日期内的 Win/Lose（与 getWinLoseNoCurrency 一致：不按 currency_id 过滤）。
+ * @param array<string, mixed> $scopeCtx
  * @return array<int, array{win:string,lose:string}>
  */
 function fetchWinLoseNoCurrencyBulk(
@@ -212,10 +234,12 @@ function fetchWinLoseNoCurrencyBulk(
     array $accountIds,
     string $dateFrom,
     string $dateTo,
-    int $dcdCompanyId
+    array $scopeCtx
 ): array {
     $accountIds = array_values(array_unique(array_filter(array_map('intval', $accountIds))));
-    if (empty($accountIds) || $dcdCompanyId <= 0) {
+    $ledger = customerReportDcdLedgerClause($pdo, $scopeCtx);
+    $ledgerSql = trim((string) ($ledger['sql'] ?? ''));
+    if (empty($accountIds) || $ledgerSql === '') {
         return [];
     }
     $chunkSize = 250;
@@ -229,11 +253,10 @@ function fetchWinLoseNoCurrencyBulk(
             FROM data_capture_details dcd
             INNER JOIN data_captures dc ON dcd.capture_id = dc.id
             WHERE dcd.account_id IN ($in)
-              AND dcd.company_id = ?
-              AND dc.company_id = ?
+              {$ledgerSql}
               AND dc.capture_date BETWEEN ? AND ?
             GROUP BY dcd.account_id";
-        $params = array_merge($chunk, [$dcdCompanyId, $dcdCompanyId, $dateFrom, $dateTo]);
+        $params = array_merge($chunk, $ledger['params'], [$dateFrom, $dateTo]);
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -259,10 +282,12 @@ function applyCurrencyFilter(array $currencyList, string $filterCodes): array {
 
 /**
  * @param array<string, mixed> $listScope
+ * @param array<string, mixed> $scopeCtx dual-tenant capture scope
  */
 function buildReportData(
     PDO $pdo,
     array $listScope,
+    array $scopeCtx,
     string $accountId,
     string $dateFrom,
     string $dateTo,
@@ -270,14 +295,21 @@ function buildReportData(
     string $currencyFilter
 ): array {
     $accounts = getAccountsForReport($pdo, $listScope, $accountId);
-    $isGroup = (($listScope['mode'] ?? '') === 'group');
+    $isGroup = (($listScope['mode'] ?? '') === 'group') || !empty($scopeCtx['is_group_scope']);
     $metaCompanyId = $isGroup
-        ? tx_permission_company_id_for_scope($pdo, $listScope)
+        ? (int) ($scopeCtx['company_id'] ?? tx_permission_company_id_for_scope($pdo, $listScope))
         : (int) ($listScope['company_id'] ?? 0);
-    $dcdCompanyId = $isGroup
-        ? $metaCompanyId
-        : (int) ($listScope['company_id'] ?? 0);
-    $coMeta = fetchCompanyReportMeta($pdo, $metaCompanyId > 0 ? $metaCompanyId : $dcdCompanyId);
+    if ($isGroup) {
+        $groupCode = reportNormalizeGroupId(
+            (string) ($scopeCtx['group_id'] ?? $listScope['group_code'] ?? '')
+        );
+        $coMeta = [
+            'company_id' => null,
+            'group_id' => $groupCode !== '' ? $groupCode : null,
+        ];
+    } else {
+        $coMeta = fetchCompanyReportMeta($pdo, $metaCompanyId);
+    }
     $reportData = [];
     $totalWin = '0.00000000';
     $totalLose = '0.00000000';
@@ -303,10 +335,10 @@ function buildReportData(
     }
 
     $wlByPair = !empty($idsWithAssignedCurrency)
-        ? fetchWinLoseByAccountCurrencyBulk($pdo, $idsWithAssignedCurrency, $dateFrom, $dateTo, $dcdCompanyId)
+        ? fetchWinLoseByAccountCurrencyBulk($pdo, $idsWithAssignedCurrency, $dateFrom, $dateTo, $scopeCtx)
         : [];
     $wlNoCur = !empty($idsNoCurrency)
-        ? fetchWinLoseNoCurrencyBulk($pdo, $idsNoCurrency, $dateFrom, $dateTo, $dcdCompanyId)
+        ? fetchWinLoseNoCurrencyBulk($pdo, $idsNoCurrency, $dateFrom, $dateTo, $scopeCtx)
         : [];
 
     $zeroWin = reportMoneyOut('0');
@@ -410,6 +442,7 @@ try {
 
     $resolved = resolveReportRequestCompanyScope($pdo, $_GET);
     $listScope = $resolved['list_scope'];
+    $scopeCtx = resolveReportDualTenantCaptureScope($pdo, $resolved, $_GET);
     $scope = ($resolved['report_scope_hint'] === 'group' || ($listScope['mode'] ?? '') === 'group')
         ? 'group'
         : 'company';
@@ -417,6 +450,7 @@ try {
     list($reportData, $totalWin, $totalLose) = buildReportData(
         $pdo,
         $listScope,
+        $scopeCtx,
         $accountId,
         $dateFrom,
         $dateTo,

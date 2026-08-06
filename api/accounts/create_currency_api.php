@@ -19,6 +19,14 @@ function jsonOut(bool $success, string $message, $data = null) {
 }
 
 function userCanAccessCompany(PDO $pdo, int $companyId, ?string $viewGroup = null): bool {
+    if ($companyId <= 0) {
+        $g = normalizeGroupId($viewGroup);
+        if ($g === null) {
+            return false;
+        }
+        return function_exists('gc_session_can_access_group_ledger')
+            && gc_session_can_access_group_ledger($pdo, $g);
+    }
     if (gc_is_group_login()) {
         return gc_session_can_access_company_id($pdo, $companyId, $viewGroup);
     }
@@ -162,6 +170,12 @@ try {
         http_response_code(400);
         jsonOut(false, $e->getMessage(), null);
         exit;
+    }
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    $publishIds = $companyId > 0 ? [$companyId] : [];
+    if ($publishIds !== []) {
+        realtime_publish_companies($publishIds, 'accounts', 'create_currency');
     }
 
     jsonOut(true, 'OK', ['id' => $created['id'], 'code' => $created['code']]);

@@ -267,6 +267,8 @@ try {
                 exit;
             }
             dbAddCompanyAndSyncCurrencies($pdo, $account_id, $company_id);
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies([$company_id], 'accounts', 'add_company');
             jsonResponse(true, '公司关联成功，并已同步现有货币设置到该公司');
             exit;
         }
@@ -296,6 +298,8 @@ try {
             if ($will_lose_access) {
                 $message .= '。注意：移除后账户将不再属于当前公司，如需继续操作请切换到账户所属的其他公司';
             }
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies([$company_id], 'accounts', 'remove_company');
             jsonResponse(true, $message, ['will_lose_access' => $will_lose_access]);
             exit;
         }

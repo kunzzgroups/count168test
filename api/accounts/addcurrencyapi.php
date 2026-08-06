@@ -297,6 +297,13 @@ try {
 
         $pdo->commit();
 
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies(
+            !empty($company_ids_to_link) ? $company_ids_to_link : [$company_id],
+            'accounts',
+            'add'
+        );
+
         jsonResponse(true, '账户创建成功！', [
             'id' => $newAccountId,
             'account_id' => $account_id,

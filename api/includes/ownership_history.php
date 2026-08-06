@@ -231,8 +231,28 @@ function ownership_history_resolve_group_owner_id(PDO $pdo, string $groupId): in
 
     $stmt = $pdo->prepare('SELECT DISTINCT owner_id FROM company WHERE UPPER(TRIM(group_id)) = UPPER(TRIM(?)) LIMIT 1');
     $stmt->execute([$groupId]);
+    $ownerId = (int) $stmt->fetchColumn();
+    if ($ownerId > 0) {
+        return $ownerId;
+    }
 
-    return (int) $stmt->fetchColumn();
+    // Empty Group (no subsidiaries / no ownership rows yet): resolve from groups table.
+    try {
+        if ($pdo->query("SHOW TABLES LIKE 'groups'")->rowCount() > 0) {
+            $gStmt = $pdo->prepare(
+                'SELECT owner_id FROM `groups` WHERE UPPER(TRIM(group_code)) = UPPER(TRIM(?)) LIMIT 1'
+            );
+            $gStmt->execute([$groupId]);
+            $ownerId = (int) $gStmt->fetchColumn();
+            if ($ownerId > 0) {
+                return $ownerId;
+            }
+        }
+    } catch (Throwable $e) {
+        // fall through
+    }
+
+    return 0;
 }
 
 /** Snapshot current calendar month for one group from live rows (does not touch other months). */
@@ -685,4 +705,61 @@ function ownership_build_group_history_rows_from_payload(
     }
 
     return $historyRows;
+}
+
+/**
+ * Company PKs in a string group code (for ownership SSE fan-out).
+ *
+ * @return int[]
+ */
+function ownership_company_ids_for_group_code(PDO $pdo, string $groupId): array
+{
+    $gid = strtoupper(trim($groupId));
+    if ($gid === '') {
+        return [];
+    }
+
+    $ownerId = (int) ($_SESSION['real_owner_id'] ?? $_SESSION['owner_id'] ?? $_SESSION['user_id'] ?? 0);
+    if ($ownerId <= 0) {
+        $ownerId = ownership_history_resolve_group_owner_id($pdo, $gid);
+    }
+    if ($ownerId <= 0) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id FROM company WHERE owner_id = ? AND UPPER(TRIM(COALESCE(group_id, \'\'))) = ?'
+    );
+    $stmt->execute([$ownerId, $gid]);
+    $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+
+    if ($ids === []) {
+        // Empty / new group: fan out to owner's companies so open Ownership tabs still refresh.
+        $fallback = $pdo->prepare('SELECT id FROM company WHERE owner_id = ? ORDER BY id ASC LIMIT 100');
+        $fallback->execute([$ownerId]);
+        $ids = array_map('intval', $fallback->fetchAll(PDO::FETCH_COLUMN) ?: []);
+    }
+
+    return array_values(array_unique(array_filter($ids, static function ($id) {
+        return $id > 0;
+    })));
+}
+
+function ownership_realtime_publish_for_group(PDO $pdo, string $groupId, string $source): void
+{
+    require_once __DIR__ . '/realtime.php';
+    $ids = ownership_company_ids_for_group_code($pdo, $groupId);
+    if ($ids === []) {
+        return;
+    }
+    realtime_publish_companies($ids, 'ownership', $source);
+}
+
+function ownership_realtime_publish_for_company(int $companyId, string $source): void
+{
+    if ($companyId <= 0) {
+        return;
+    }
+    require_once __DIR__ . '/realtime.php';
+    realtime_publish_companies([$companyId], 'ownership', $source);
 }

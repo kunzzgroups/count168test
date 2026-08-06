@@ -223,14 +223,21 @@ try {
     }
 
     $permCompanyId = (int) ($currencyCtx['company_id'] ?? 0);
-    if ($permCompanyId <= 0) {
+    $groupPk = (int) ($currencyCtx['group_pk'] ?? 0);
+    $isPureGroup = ($currencyCtx['mode'] ?? '') === 'group' && $groupPk > 0;
+    if ($permCompanyId <= 0 && !$isPureGroup) {
         jsonResponse(false, '用户未登录或缺少公司信息', null, 401);
         exit;
     }
 
     $groupCode = (string) ($currencyCtx['group_code'] ?? '');
-    if ($groupCode !== '' && gc_is_group_login()) {
+    if ($permCompanyId > 0 && $groupCode !== '' && gc_is_group_login()) {
         gc_assert_company_id_allowed_for_login_scope($pdo, $permCompanyId, $groupCode);
+    } elseif ($isPureGroup && $groupCode !== '') {
+        if (!gc_session_can_access_group_ledger($pdo, $groupCode)) {
+            jsonResponse(false, '无权限访问该集团', null, 403);
+            exit;
+        }
     }
 
     $method = $_SERVER['REQUEST_METHOD'];
@@ -251,6 +258,29 @@ try {
                 exit;
             }
             $currencies = dbGetAccountOwnedCurrenciesResolved($pdo, $account_id, $currencyCtx);
+            // Group ledger: older accounts may lack account_currency rows for scope_type=group.
+            // Expose scope currencies (is_linked=false) so Edit Formula Currency is never empty.
+            if (
+                empty($currencies)
+                && ($currencyCtx['mode'] ?? '') === 'group'
+            ) {
+                $scopeRows = dbGetScopeCurrencies($pdo, $currencyCtx);
+                $currencies = array_map(static function ($c) use ($account_id) {
+                    return [
+                        'id' => null,
+                        'account_id' => $account_id,
+                        'currency_id' => (int) ($c['id'] ?? $c['currency_id'] ?? 0),
+                        'currency_code' => strtoupper(trim((string) ($c['code'] ?? $c['currency_code'] ?? ''))),
+                        'is_linked' => false,
+                    ];
+                }, is_array($scopeRows) ? $scopeRows : []);
+                $currencies = array_values(array_filter(
+                    $currencies,
+                    static function ($r) {
+                        return !empty($r['currency_id']) && $r['currency_code'] !== '';
+                    }
+                ));
+            }
             jsonResponse(true, '', $currencies);
             exit;
         }
@@ -309,7 +339,9 @@ try {
                     jsonResponse(false, '无法识别会话', null, 403);
                     exit;
                 }
-                $allowed = member_linked_member_closure_ids($pdo, $loginId, $permCompanyId);
+                $allowed = (($currencyCtx['mode'] ?? '') === 'group')
+                    ? member_linked_member_closure_ids_in_scope($pdo, $loginId, $currencyCtx)
+                    : member_linked_member_closure_ids($pdo, $loginId, $permCompanyId);
                 $allowedMap = [];
                 foreach ($allowed as $x) {
                     $allowedMap[(int) $x] = true;
@@ -373,6 +405,8 @@ try {
                 exit;
             }
             dbAddAccountCurrency($pdo, $account_id, $currency_id);
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies([$permCompanyId], 'accounts', 'add_currency');
             jsonResponse(true, '货币添加成功', ['account_id' => $account_id, 'currency_id' => $currency_id]);
             exit;
         }
@@ -412,6 +446,8 @@ try {
                 jsonResponse(false, '关联不存在', null, 400);
                 exit;
             }
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies([$permCompanyId], 'accounts', 'remove_currency');
             jsonResponse(true, '货币移除成功');
             exit;
         }

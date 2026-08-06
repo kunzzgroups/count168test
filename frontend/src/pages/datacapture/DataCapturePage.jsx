@@ -7,11 +7,11 @@ import { spaPath } from "../../utils/routing/pageRoutes.js";
 import {
   companiesInGroupList,
   companyBelongsToGroup,
+  DASHBOARD_GROUP_FILTER_OPT_OUT_KEY,
   dedupeOwnerCompaniesByCode,
   filterCompaniesWithDisplayId,
   isExplicitCompanySelection,
   normalizeOwnerCompanyRow,
-  isDashboardGroupOnlyMode,
   persistDashboardFilterState,
   persistDashboardGroupFilter,
   notifyDashboardGroupFilterChanged,
@@ -20,6 +20,7 @@ import {
   readDashboardSelectedCompanyId,
   readPersistedDashboardGcFilter,
   resolveBootCompanyId,
+  resolveGcFilterBootCompanyId,
   resolveInitialSelectedGroupFromSession,
   fetchOwnerCompaniesAll,
 } from "../../utils/company/sharedCompanyFilter.js";
@@ -62,6 +63,7 @@ import {
   getGroupOnlyProcessOptions,
   isGroupOnlyProcessId,
 } from "./lib/dataCaptureGroupOnlyProcesses.js";
+import { gamesPayrollDraftBucket } from "./lib/dataCaptureGamesPayrollProcesses.js";
 import { resolveDataCaptureGridDimensions } from "./grid/dataCaptureGridMeta.js";
 import DataCaptureProcessSelect from "./components/DataCaptureProcessSelect.jsx";
 import SimpleSelect from "../../components/SimpleSelect.jsx";
@@ -174,6 +176,7 @@ function DataCapturePageContent() {
   const prevGroupOnlyGroupRef = useRef(null);
   const prevProcessCompanyRef = useRef(undefined);
   const prevScopeKeyRef = useRef(null);
+  const prevGroupOnlyTableRef = useRef(null);
   /** Tracks anchor session sync per group (sidebar flags follow PHP session company). */
   const groupAnchorSessionRef = useRef({ group: null, companyId: null });
 
@@ -235,6 +238,21 @@ function DataCapturePageContent() {
   );
   const showCompanyProcessUi = isCompanySelected && !companyPayrollChannel;
 
+  /**
+   * Games company UI (real SALARY/BONUS/COMMISSION processes, matched by name)
+   * reuses the same "company:<id>" draft bucket convention as Bank/C168, scoped
+   * to save-draft only — never touches the Bank category pill's hard-coded rows.
+   */
+  const effectivePayrollDraftBucket = groupPayrollUi
+    ? payrollDraft.bucket
+    : showCompanyProcessUi
+      ? gamesPayrollDraftBucket(companyId)
+      : "";
+  const effectivePayrollDraftServerSync = groupPayrollUi
+    ? payrollDraft.serverSync
+    : Boolean(effectivePayrollDraftBucket);
+  const payrollDraftHooksEnabled = groupPayrollUi || showCompanyProcessUi;
+
   const groupOnlyTable = groupPayrollUi;
 
   const onClearCompanyRef = useRef(() => {});
@@ -262,6 +280,7 @@ function DataCapturePageContent() {
     enableGroupAnchorSession: false,
     autoPickCompanyWhenEmpty: false,
     broadcastFilterToLayout: false,
+    closeActiveGroupOnReselect: true,
     me,
   });
 
@@ -329,8 +348,8 @@ function DataCapturePageContent() {
     applyCompanyOnlyFields: showCompanyProcessUi,
     companyPayrollUi: companyPayrollChannel,
     lang,
-    payrollPrefsKey: payrollDraft.prefsKey,
-    payrollDraftServerSync: payrollDraft.serverSync,
+    payrollPrefsKey: effectivePayrollDraftBucket,
+    payrollDraftServerSync: effectivePayrollDraftServerSync,
     selectedGroup,
     scriptsReady,
     selectedPermission,
@@ -356,6 +375,7 @@ function DataCapturePageContent() {
   const { submittedItems, submissionsError, refreshSubmitted } = useDataCaptureSubmittedList(
     captureScope,
     form.captureDate,
+    selectedPermission,
   );
 
   const topSectionRef = useRef(null);
@@ -365,6 +385,7 @@ function DataCapturePageContent() {
     captureType,
     citibetMode,
     formatGridReady,
+    applyCaptureType,
     handleCaptureTypeChange,
   } = useDataCaptureCaptureType();
 
@@ -389,27 +410,29 @@ function DataCapturePageContent() {
     groupPayrollUi,
     groupLedgerCapture: groupLedgerScope,
     groupPayrollCapture: companyPayrollChannel,
-    payrollDraftBucket: payrollDraft.bucket,
-    payrollDraftServerSync: payrollDraft.serverSync,
+    payrollDraftBucket: effectivePayrollDraftBucket,
+    payrollDraftServerSync: effectivePayrollDraftServerSync,
     selectedGroup,
     selectedPermission,
   });
   useDataCaptureGrid(scriptsReady, groupOnlyTable);
   useGroupOnlyTableDraftFlush({
-    enabled: groupPayrollUi,
+    enabled: payrollDraftHooksEnabled,
+    groupPayrollUi,
     captureScope,
-    draftBucket: payrollDraft.bucket,
-    payrollDraftServerSync: payrollDraft.serverSync,
-    selectedProcessId: form.selectedProcess?.id,
+    draftBucket: effectivePayrollDraftBucket,
+    payrollDraftServerSync: effectivePayrollDraftServerSync,
+    selectedProcess: form.selectedProcess,
     currencyId: form.currencyId,
     captureType,
   });
   useGroupOnlyTableDraftAutosave({
-    enabled: groupPayrollUi,
+    enabled: payrollDraftHooksEnabled,
+    groupPayrollUi,
     captureScope,
-    draftBucket: payrollDraft.bucket,
-    payrollDraftServerSync: payrollDraft.serverSync,
-    selectedProcessId: form.selectedProcess?.id,
+    draftBucket: effectivePayrollDraftBucket,
+    payrollDraftServerSync: effectivePayrollDraftServerSync,
+    selectedProcess: form.selectedProcess,
     currencyId: form.currencyId,
     captureType,
   });
@@ -523,20 +546,30 @@ function DataCapturePageContent() {
         const queryGroup = url.searchParams.get("group_id") || restoreBoot?.groupId || null;
         const sessionMeta = restoreFromUrl ? readCaptureSessionMeta() : null;
         const allowGroupOnly = canUseGroupOnlyMode(u);
-        const persistedGc = readPersistedDashboardGcFilter();
         const savedCompanyId = readDashboardSelectedCompanyId();
-        const groupOnlyBoot =
+        // Shared boot (same as Transaction/Dashboard): group-only only when flag
+        // is set AND no saved subsidiary — never wipe TT because of a stale flag.
+        const bootGc = resolveGcFilterBootCompanyId({
+          urlCompanyId: queryCompany,
+          sessionCompanyId: u.company_id,
+          defaultRowId: raw[0]?.id,
+        });
+        const explicitCaptureGroupOnly =
           allowGroupOnly &&
           !queryCompany &&
           (queryGroupOnly ||
             (sessionMeta?.groupOnlyCapture &&
               !sessionMeta?.groupPayrollCapture &&
               restoreFromUrl) ||
-            (submittedFromUrl && queryGroupOnly) ||
-            isDashboardGroupOnlyMode() ||
-            persistedGc.groupOnly ||
-            (canUseGroupOnlyMode(u) &&
-              (isDashboardGroupOnlyMode() || persistedGc.groupOnly || savedCompanyId == null)));
+            (submittedFromUrl && queryGroupOnly));
+        const groupOnlyBoot =
+          allowGroupOnly &&
+          !queryCompany &&
+          bootGc.companyId == null &&
+          (explicitCaptureGroupOnly ||
+            bootGc.groupOnly === true ||
+            // Group login with no subsidiary persisted → default Group ledger
+            (isGroupLogin(u) && savedCompanyId == null));
 
         if (cancelled) return;
 
@@ -545,18 +578,23 @@ function DataCapturePageContent() {
             navigate(DATA_CAPTURE_HOME_PATH, { replace: true });
             return;
           }
-          if (sessionMeta?.captureSelectedGroup) {
-            persistDashboardGroupFilter(sessionMeta.captureSelectedGroup);
+          const bootGroup =
+            (sessionMeta?.captureSelectedGroup &&
+              String(sessionMeta.captureSelectedGroup).trim().toUpperCase()) ||
+            resolveInitialSelectedGroupFromSession(raw, null, u) ||
+            (String(u?.login_scope || "").toLowerCase() === "group" && u?.login_identifier
+              ? String(u.login_identifier).trim().toUpperCase()
+              : null) ||
+            (queryGroup ? String(queryGroup).trim().toUpperCase() : null) ||
+            (bootGc.selectedGroup ? String(bootGc.selectedGroup).trim().toUpperCase() : null);
+          if (bootGroup) {
+            persistDashboardGroupFilter(bootGroup);
           }
           persistDashboardGroupOnlyMode(true);
           persistDashboardSelectedCompany(null);
           setCompanies(raw);
           setCompanyId(null);
-          setSelectedGroup(
-            (sessionMeta?.captureSelectedGroup &&
-              String(sessionMeta.captureSelectedGroup).trim().toUpperCase()) ||
-              resolveInitialSelectedGroupFromSession(raw, null)
-          );
+          setSelectedGroup(bootGroup);
           return;
         }
 
@@ -570,6 +608,9 @@ function DataCapturePageContent() {
           sessionCompanyId: u.company_id,
           defaultRowId: raw[0]?.id,
         });
+        if (effectiveCompany == null && bootGc.companyId != null) {
+          effectiveCompany = Number(bootGc.companyId);
+        }
 
         if (queryCompany && effectiveCompany && Number(effectiveCompany) !== Number(u.company_id)) {
           try {
@@ -614,12 +655,17 @@ function DataCapturePageContent() {
               return normalized;
             }
           }
-          return resolveInitialSelectedGroupFromSession(raw, rowForPick);
+          return resolveInitialSelectedGroupFromSession(raw, rowForPick, u);
         })();
 
         setCompanies(raw);
         setCompanyId(effectiveCompany);
         setSelectedGroup(initialGroup);
+        if (effectiveCompany != null) {
+          persistDashboardGroupOnlyMode(false);
+          persistDashboardSelectedCompany(effectiveCompany);
+          if (initialGroup) persistDashboardGroupFilter(initialGroup);
+        }
       } catch {
         if (!cancelled) navigate(spaPath("login"), { replace: true });
       } finally {
@@ -644,7 +690,8 @@ function DataCapturePageContent() {
 
   useEffect(() => {
     if (bootLoading || companies.length === 0) return;
-    if (isDashboardGroupOnlyMode()) {
+    // Honour combined filter (flag + no saved company), not a stale group_only key alone.
+    if (readPersistedDashboardGcFilter().groupOnly) {
       if (companyIdFromUrl) {
         navigate(spaPath("datacapture"), { replace: true });
       }
@@ -773,10 +820,23 @@ function DataCapturePageContent() {
       callDataCaptureRuntime("clearCaptureTable");
       callDataCaptureRuntime("reactFormReset");
       clearSelectedDescriptions();
+      // Company / group scope change: Format (and other types) must not leak —
+      // Group Mode has no Format selector; fresh company session defaults to 1.Text.
+      applyCaptureType("1.Text");
       void callDataCaptureRuntime("refreshSubmittedProcesses");
     }
     prevScopeKeyRef.current = scopeKey || null;
-  }, [captureScope, clearSelectedDescriptions]);
+  }, [captureScope, clearSelectedDescriptions, applyCaptureType]);
+
+  // Entering Group Mode hides the capture-type selector; force 1.Text so Format
+  // paste chrome / handlers cannot remain active from the previous company session.
+  useEffect(() => {
+    const prev = prevGroupOnlyTableRef.current;
+    prevGroupOnlyTableRef.current = groupOnlyTable;
+    if (!groupOnlyTable || prev === true) return;
+    if (getDataCaptureState().isRestoring || shouldRestoreFromUrl()) return;
+    applyCaptureType("1.Text");
+  }, [groupOnlyTable, applyCaptureType]);
 
   const switchCompanySessionAndNavigate = useCallback(async (nextCompanyId) => {
     const id = Number(nextCompanyId);
@@ -828,11 +888,16 @@ function DataCapturePageContent() {
       const id = Number(comp?.id);
       if (!id) return;
       const gid = comp.group_id ? String(comp.group_id).toUpperCase().trim() : null;
+      const groupFilterOptOut =
+        typeof sessionStorage !== "undefined" &&
+        sessionStorage.getItem(DASHBOARD_GROUP_FILTER_OPT_OUT_KEY) === "1";
       form.clearProcessSelection?.();
       setCompanySwitchInFlight(true);
       flushSync(() => {
         setCompanyId(id);
-        if (gid) setSelectedGroup(gid);
+        // Closing Group sets opt-out — do not re-apply company.group_id as selected Group.
+        if (groupFilterOptOut) setSelectedGroup(null);
+        else if (gid) setSelectedGroup(gid);
       });
     },
     [form.clearProcessSelection]

@@ -11,9 +11,20 @@ import {
 } from "../shared/maintenanceCompanySwitch.js";
 import { useMaintenancePageScrollLock } from "../shared/useMaintenancePageScrollLock.js";
 import {
+  isMaintenanceGroupOnlyBoot,
+  isMaintenanceSessionGroupEntityBoot,
+} from "../shared/maintenanceGroupBoot.js";
+import { canUseGroupOnlyMode } from "../../../utils/company/loginScope.js";
+import {
+  DASHBOARD_GROUP_FILTER_KEY,
+  DASHBOARD_GROUP_FILTER_OPT_OUT_KEY,
   isDashboardGroupOnlyMode,
   notifyDashboardGroupFilterChanged,
   persistDashboardFilterState,
+  persistDashboardGroupOnlyMode,
+  persistDashboardSelectedCompany,
+  readDashboardSelectedCompanyId,
+  readPersistedDashboardGcFilter,
   resolveBootCompanyId,
   resolveInitialSelectedGroupFromSession,
 } from "../../../utils/company/sharedCompanyFilter.js";
@@ -25,6 +36,24 @@ import {
   paymentMaintenanceScopeCacheKey,
   paymentMaintenanceScopeIsReady,
 } from "./paymentMaintenanceScope.js";
+
+function readInitialMaintenanceSelectedGroup() {
+  try {
+    const saved = sessionStorage.getItem(DASHBOARD_GROUP_FILTER_KEY);
+    return saved ? String(saved).trim().toUpperCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function readInitialMaintenanceCompanyId() {
+  const persisted = readPersistedDashboardGcFilter();
+  if (isDashboardGroupOnlyMode() || persisted.groupOnly) return null;
+  const saved = readDashboardSelectedCompanyId();
+  if (saved != null) return saved;
+  if (persisted.selectedGroup) return null;
+  return null;
+}
 import "../../../../public/css/accountCSS.css";
 import "../../../../public/css/date-range-picker.css";
 import "../../../../public/css/customer_report.css";
@@ -42,6 +71,8 @@ import {
 import { notifyTransactionListInvalidated } from "../../transaction/lib/transactionPaymentLogic.js";
 import { useLoginLang } from "../../../utils/i18n/useLoginLang.js";
 import { getMaintenanceText, MAINTENANCE_I18N } from "../../../translateFile/pages/maintenanceTranslate.js";
+import { useRealtimeDomain } from "../../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../../lib/realtime/realtimeEvents.js";
 
 // Components
 import PaymentMaintenanceFilters from "./components/PaymentMaintenanceFilters.jsx";
@@ -140,8 +171,9 @@ export default function PaymentMaintenancePage() {
         companyId,
         groupsAllMode,
         groupAllMode,
+        me,
       }),
-    [companies, selectedGroup, companyId, groupsAllMode, groupAllMode],
+    [companies, selectedGroup, companyId, groupsAllMode, groupAllMode, me],
   );
 
   const paymentScopeKey = useMemo(
@@ -258,31 +290,68 @@ export default function PaymentMaintenancePage() {
         if (cancelled) return;
         setCompanies(rows);
 
-        // Set Initial Company
+        const groupFilterOptOut =
+          typeof sessionStorage !== "undefined" &&
+          sessionStorage.getItem(DASHBOARD_GROUP_FILTER_OPT_OUT_KEY) === "1";
+        const initialUiCompanyId = readInitialMaintenanceCompanyId();
         let initialCompanyId = resolveBootCompanyId({
           sessionCompanyId: u.company_id,
           defaultRowId: rows[0]?.id,
         });
+        if (groupFilterOptOut && initialUiCompanyId != null) {
+          initialCompanyId = initialUiCompanyId;
+        } else if (groupFilterOptOut && initialCompanyId == null) {
+          initialCompanyId = null;
+        } else if (
+          !groupFilterOptOut &&
+          (isDashboardGroupOnlyMode() || readPersistedDashboardGcFilter().groupOnly)
+        ) {
+          initialCompanyId = null;
+        } else if (initialUiCompanyId != null) {
+          initialCompanyId = initialUiCompanyId;
+        }
         const currentComp =
           initialCompanyId != null
             ? rows.find((c) => Number(c.id) === initialCompanyId)
             : null;
-        const bootGroup = resolveInitialSelectedGroupFromSession(rows, currentComp);
+        const bootGroup = groupFilterOptOut
+          ? null
+          : resolveInitialSelectedGroupFromSession(rows, currentComp, u);
         setSelectedGroup(bootGroup);
-        if (isDashboardGroupOnlyMode()) {
+        const persistedGc = readPersistedDashboardGcFilter();
+        const sessionGroup = readInitialMaintenanceSelectedGroup();
+        let groupOnlyBoot = isMaintenanceGroupOnlyBoot({
+          groupFilterOptOut,
+          sessionGroup: bootGroup ?? sessionGroup,
+          initialUiCompanyId,
+          persistedGc,
+        });
+        if (
+          !groupOnlyBoot &&
+          !groupFilterOptOut &&
+          (isMaintenanceSessionGroupEntityBoot(currentComp, u) ||
+            (bootGroup && initialUiCompanyId == null && canUseGroupOnlyMode(u, bootGroup)))
+        ) {
+          groupOnlyBoot = true;
+        }
+        if (groupOnlyBoot) {
+          persistDashboardGroupOnlyMode(true);
+          persistDashboardSelectedCompany(null);
           setCompanyId(null);
           setCompanyCode("");
           companyIdRef.current = null;
+          const effectiveGroup = bootGroup ?? sessionGroup;
           const bootScope = resolvePaymentMaintenanceScope({
             companies: rows,
-            selectedGroup: bootGroup,
+            selectedGroup: effectiveGroup,
             companyId: null,
+            me: u,
           });
           const currList = await fetchCompanyCurrencies(null, bootScope);
           if (cancelled) return;
           setCurrencies(currList);
           setSelectedCurrency(pickPaymentMaintenanceCurrency(currList, bootScope));
-          if (bootGroup) sessionStorage.setItem("dashboard_group_filter", bootGroup);
+          if (effectiveGroup) sessionStorage.setItem("dashboard_group_filter", effectiveGroup);
           skipMetaAfterBootRef.current = true;
           return;
         }
@@ -297,6 +366,7 @@ export default function PaymentMaintenancePage() {
             companies: rows,
             selectedGroup: bootGroup,
             companyId: initialCompanyId,
+            me: u,
           });
 
           const currList = await fetchCompanyCurrencies(null, bootScope);
@@ -386,6 +456,7 @@ export default function PaymentMaintenancePage() {
           companies,
           selectedGroup: overrides.selectedGroup ?? selectedGroup,
           companyId: overrides.companyId ?? companyId,
+          me,
         });
       if (!paymentMaintenanceScopeIsReady(effectiveScope) || !dateFrom || !dateTo) return;
 
@@ -448,6 +519,10 @@ export default function PaymentMaintenancePage() {
     [companies, selectedGroup, companyId, dateFrom, dateTo, transactionType, query, selectedCurrency, notify, t],
   );
 
+  useRealtimeDomain(REALTIME_DOMAINS.MAINTENANCE, () => {
+    void performSearch();
+  }, { enabled: listQueryEnabled });
+
   // Auto-search when filters change（defer 0ms；切换公司已手动 performSearch 时跳过一轮避免重复）
   useEffect(() => {
     if (!listQueryEnabled) return;
@@ -506,6 +581,7 @@ export default function PaymentMaintenancePage() {
             companies,
             selectedGroup: g,
             companyId: null,
+            me,
           });
           const nextCurrency = await reloadScopeMeta(scope);
           await performSearch({
@@ -519,7 +595,7 @@ export default function PaymentMaintenancePage() {
         }
       })();
     },
-    [companies, selectedGroup, reloadScopeMeta, performSearch, resetAnchorSessionRef],
+    [companies, selectedGroup, reloadScopeMeta, performSearch, resetAnchorSessionRef, me],
   );
 
   const onPrepareCompanySelect = useCallback((c) => {
@@ -539,6 +615,7 @@ export default function PaymentMaintenancePage() {
         companies,
         selectedGroup: newGroup,
         companyId: nextId,
+        me,
       });
       try {
         const nextCurrency = await reloadScopeMeta(nextScope);
@@ -553,7 +630,7 @@ export default function PaymentMaintenancePage() {
         notify(err.message || t("failedLoadCompanyMetadata"), "error");
       }
     })();
-  }, [companies, reloadScopeMeta, performSearch, notify, t]);
+  }, [companies, reloadScopeMeta, performSearch, notify, t, me]);
 
   onPrepareCompanySelectRef.current = onPrepareCompanySelect;
 
@@ -582,6 +659,7 @@ export default function PaymentMaintenancePage() {
             companies,
             selectedGroup: newGroup,
             companyId: nextId,
+            me,
           });
           try {
             const nextCurrency = await reloadScopeMeta(nextScope);

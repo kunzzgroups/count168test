@@ -6,6 +6,7 @@ import { useAuthBackground } from "./useAuthBackground.js";
 import { sendResetTac, submitResetPassword } from "./resetPassword.js";
 import { sanitizeEmailInput, validateEmail } from "../../utils/input/emailValidation.js";
 import { spaPath } from "../../utils/routing/pageRoutes.js";
+import PasswordInput from "../../components/PasswordInput.jsx";
 
 function AlertModal({ open, title, message, confirmText, onClose }) {
   useEffect(() => {
@@ -264,24 +265,28 @@ export default function ResetPasswordPage() {
 
               <div className="input-group">
                 <i className="fas fa-lock input-icon" />
-                <input
-                  type="password"
+                <PasswordInput
                   placeholder={i18n.newPasswordPlaceholder}
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
                   required
+                  showLabel={i18n.showPassword}
+                  hideLabel={i18n.hidePassword}
+                  autoComplete="new-password"
                 />
               </div>
 
               <div className="input-group">
                 <i className="fas fa-lock input-icon" />
-                <input
-                  type="password"
+                <PasswordInput
                   placeholder={i18n.confirmPasswordPlaceholder}
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   className={!passwordMatched && confirmPassword ? "input--mismatch" : undefined}
                   required
+                  showLabel={i18n.showPassword}
+                  hideLabel={i18n.hidePassword}
+                  autoComplete="new-password"
                 />
               </div>
 

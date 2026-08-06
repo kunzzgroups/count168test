@@ -1,53 +1,12 @@
 /* Payment history — dense expandable ledger (Acc table parity) */
 
 .m-tx-hist-sticky {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   border-radius: var(--m-radius-card-lg);
   background: var(--m-color-surface);
-  padding: 0.625rem 0.75rem;
+  padding: 0.55rem 0.65rem;
   box-shadow: var(--m-shadow-card);
   outline: 1px solid var(--m-color-ring-soft);
   font-size: var(--m-text-compact);
-}
-
-.m-tx-hist-back {
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex-shrink: 0;
-  place-items: center;
-  border-radius: 0.75rem;
-  background: var(--m-color-surface-muted);
-  color: var(--m-color-text-secondary);
-}
-
-.m-tx-hist-back i {
-  font-size: 1em;
-}
-
-.m-tx-hist-head {
-  min-width: 0;
-  flex: 1;
-}
-
-.m-tx-hist-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 1em;
-  font-weight: 700;
-  color: var(--m-color-text);
-}
-
-.m-tx-hist-sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 1em;
-  font-weight: 500;
-  color: var(--m-color-muted);
 }
 
 .m-tx-hist-export {
@@ -56,7 +15,7 @@
   height: 2.25rem;
   flex-shrink: 0;
   place-items: center;
-  border-radius: 0.75rem;
+  border-radius: 999px;
   background: var(--m-color-primary);
   color: #fff;
 }
@@ -131,7 +90,7 @@
   border-collapse: separate;
   border-spacing: 0;
   table-layout: auto;
-  font-size: 0.8125rem;
+  font-size: var(--m-text-secondary);
 }
 
 .m-tx-hist-dense-th,
@@ -161,7 +120,7 @@
 
 .m-tx-hist-dense-th {
   padding: 0.5rem 0.25rem;
-  font-size: 0.8125rem;
+  font-size: var(--m-text-secondary);
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -287,7 +246,7 @@
 }
 
 .m-tx-hist-chev {
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   opacity: 0.75;
 }
 
@@ -299,7 +258,7 @@
   white-space: nowrap;
   border-radius: 0.25rem;
   padding: 0.0625rem 0.25rem;
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   font-weight: 700;
   letter-spacing: 0.02em;
   vertical-align: middle;
@@ -358,7 +317,7 @@
 }
 
 .m-tx-hist-detail-label {
-  font-size: 0.625rem;
+  font-size: var(--m-text-caption);
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -368,7 +327,7 @@
 
 .m-tx-hist-detail-desc {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--m-text-secondary);
   font-weight: 600;
   line-height: 1.45;
   color: #1e293b;
@@ -383,7 +342,7 @@
 
 .m-tx-hist-detail-value {
   min-width: 0;
-  font-size: 0.8125rem;
+  font-size: var(--m-text-secondary);
   font-weight: 700;
   color: #1e293b;
   word-break: break-word;

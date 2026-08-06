@@ -147,6 +147,17 @@ function historyFormatRateMax6($value): string
     return historyDisplayDecimal($value, 6);
 }
 
+/**
+ * @param array $dataPayload Keys: account, date_range, history
+ */
+function historyApiEchoSuccess(array $dataPayload): void
+{
+    echo json_encode([
+        'success' => true,
+        'data' => $dataPayload,
+    ]);
+}
+
 /** Payment History：业务日 Y-m-d，按日历旧→新排序（与 Date 列同一业务含义） */
 function historySortDateYmdFromRaw($raw): string
 {
@@ -269,7 +280,8 @@ function mapEntryTypeToProduct($entryType)
         'RATE_TRANSFER_FROM' => 'RATE',
         'RATE_TRANSFER_TO' => 'RATE',
         'RATE_MIDDLEMAN' => 'RATE',
-        'RATE_FEE' => 'RATE',
+        'RATE_FEE' => 'Fee',
+        'RATE_PLATFORM_FEE' => 'Fee',
         'NORMAL_FROM' => 'TRANSFER',
         'NORMAL_TO' => 'TRANSFER'
     ];
@@ -290,7 +302,7 @@ function historyRateLegSortGroup(?string $entryType): int
     if (in_array($t, ['RATE_FIRST_TO', 'RATE_TRANSFER_TO'], true)) {
         return 1;
     }
-    if ($t === 'RATE_MIDDLEMAN' || $t === 'RATE_FEE') {
+    if ($t === 'RATE_MIDDLEMAN' || $t === 'RATE_FEE' || $t === 'RATE_PLATFORM_FEE') {
         return 2;
     }
     return 3;
@@ -1441,13 +1453,10 @@ try {
                 $date_to_db,
                 $currency_id ? (int) $currency_id : null
             );
-        echo json_encode([
-            'success' => true,
-            'data' => [
-                'account' => $virtual['account'],
-                'date_range' => ['from' => $date_from, 'to' => $date_to],
-                'history' => $virtual['history']
-            ]
+        historyApiEchoSuccess([
+            'account' => $virtual['account'],
+            'date_range' => ['from' => $date_from, 'to' => $date_to],
+            'history' => $virtual['history'],
         ]);
         exit;
     }
@@ -2684,6 +2693,7 @@ try {
         }
 
         $description = $row['entry_description'] ?: 'RATE';
+        $platformFeeRemark = null;
 
         // RATE 后缀：仅 TO 侧显示净汇率（exchange_rate - middleman_rate），FROM 侧保持原始汇率。
         // 适用于第一行与第二行（RATE_FIRST_TO / RATE_TRANSFER_TO）。
@@ -2701,14 +2711,21 @@ try {
         }
 
         if ($entryType === 'RATE_MIDDLEMAN') {
+            $rawMiddleDesc = (string) ($row['entry_description'] ?? '');
+            if (preg_match('/\n\[\[PFEE_REMARK\]\](.+)$/s', $rawMiddleDesc, $pfeeMatch)) {
+                $platformFeeRemark = trim((string) ($pfeeMatch[1] ?? ''));
+                $rawMiddleDesc = preg_replace('/\n\[\[PFEE_REMARK\]\].+$/s', '', $rawMiddleDesc);
+            }
             $description = formatMarkupDescription(
-                $description,
+                $rawMiddleDesc,
                 $row['from_currency_code'] ?? null,
                 $row['to_currency_code'] ?? null,
                 $row['rate_middleman_rate'] ?? null,
                 $row['rate_from_amount'] ?? null,
                 $row['rate_transfer_from_account_code'] ?? null
             );
+        } elseif (in_array($entryType, ['RATE_FEE', 'RATE_PLATFORM_FEE'], true)) {
+            // Keep Fee / Platform Fee descriptions as stored (Charge … Service Fees / PlatForm Fee).
         } else {
             $description = formatExchangeRateDescription(
                 $description,
@@ -2736,12 +2753,17 @@ try {
             $transactionCreatedBy = $row['created_by_owner_name'];
         }
 
-        $rateFirstRowRemark = null;
-        if (in_array($entryType, ['RATE_FIRST_FROM', 'RATE_FIRST_TO'], true)) {
+        // Desktop: Service Fee is its own RATE_FEE row — RATE_TRANSFER_TO has no Fee Remark.
+        // Mobile/legacy: header sms still carries "Service Fees" → keep as Remark on TRANSFER_TO.
+        // Negative Platform Fee: remark-only on RATE_MIDDLEMAN.
+        $rateServiceFeeRemark = null;
+        if ($entryType === 'RATE_TRANSFER_TO') {
             $headerSms = trim((string) ($row['sms'] ?? ''));
             if ($headerSms !== '') {
-                $rateFirstRowRemark = $headerSms;
+                $rateServiceFeeRemark = $headerSms;
             }
+        } elseif ($entryType === 'RATE_MIDDLEMAN' && !empty($platformFeeRemark)) {
+            $rateServiceFeeRemark = $platformFeeRemark;
         }
 
         $events[] = [
@@ -2764,7 +2786,7 @@ try {
             'description' => $description,
             'entry_description_raw' => (string) ($row['entry_description'] ?? ''),
             'sms' => '-',
-            'remark' => $rateFirstRowRemark,
+            'remark' => $rateServiceFeeRemark,
             'created_by' => $transactionCreatedBy,
             'from_currency_code' => $row['from_currency_code'] ?? null,
             'to_currency_code' => $row['to_currency_code'] ?? null,
@@ -2976,21 +2998,18 @@ try {
     }
 
     // 返回结果
-    echo json_encode([
-        'success' => true,
-        'data' => [
-            'account' => [
-                'id' => $account['id'],
-                'account_id' => $account['account_id'],
-                'name' => $account['name'],
-                'currency' => $bfCurrency
-            ],
-            'date_range' => [
-                'from' => $date_from,
-                'to' => $date_to
-            ],
-            'history' => $history
-        ]
+    historyApiEchoSuccess([
+        'account' => [
+            'id' => $account['id'],
+            'account_id' => $account['account_id'],
+            'name' => $account['name'],
+            'currency' => $bfCurrency,
+        ],
+        'date_range' => [
+            'from' => $date_from,
+            'to' => $date_to,
+        ],
+        'history' => $history,
     ]);
 
 } catch (PDOException $e) {

@@ -66,7 +66,7 @@
 
 .m-more-copy small {
   color: var(--m-color-muted);
-  font-size: 0.65rem;
+  font-size: var(--m-text-caption);
   line-height: 1.35;
 }
 
@@ -75,7 +75,7 @@
   align-items: center;
   gap: 0.35rem;
   color: var(--m-color-primary);
-  font-size: 0.62rem;
+  font-size: var(--m-text-caption);
   font-weight: 800;
 }
 

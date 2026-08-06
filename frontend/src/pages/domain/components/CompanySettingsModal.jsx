@@ -102,7 +102,7 @@ export default function CompanySettingsModal({
   });
   const [expDisplay, setExpDisplay] = useState(initCompany.expiration_date ? formatDate(initCompany.expiration_date) : t("notSet"));
   const [permissions, setPermissions] = useState(
-    isGroup ? [] : (Array.isArray(initCompany.permissions) ? initCompany.permissions : [])
+    isGroup ? ["Games"] : (Array.isArray(initCompany.permissions) ? initCompany.permissions : [])
   );
   const [chargeOnSave, setChargeOnSave] = useState(!!initCompany.apply_commission_payments_on_domain_save);
   const startDateHandlerRef = useRef(null);
@@ -387,6 +387,21 @@ export default function CompanySettingsModal({
       return;
     }
 
+    let expDate = company.expiration_date || null;
+    if (period) {
+      const base = startDate || new Date().toISOString().split("T")[0];
+      expDate = calculateExpirationDate(period, base);
+    }
+    if (!renameLocked && (!expDate || String(expDate).trim() === "")) {
+      showDomainAlert(
+        t("expirationRequiredBeforeConfirm", {
+          id: apiEntityCode || company.company_id || company.group_code || "",
+        }),
+        "danger"
+      );
+      return;
+    }
+
     // Validate permissions (company only — groups do not use Process List / Data Capture categories)
     if (!isGroup && SINGLE_CATEGORY_MODE) {
       if (permissions.length === 0) { showDomainAlert(t("pleaseSelectOneCategory"), "danger"); return; }
@@ -396,12 +411,6 @@ export default function CompanySettingsModal({
     const newEntityCode = await validateEntityCodeForSave();
     if (!newEntityCode) return;
     const renameFields = buildRenameFields(newEntityCode);
-
-    let expDate = company.expiration_date || null;
-    if (period) {
-      const base = startDate || new Date().toISOString().split("T")[0];
-      expDate = calculateExpirationDate(period, base);
-    }
 
     if (isGroup) {
       const updated = {
@@ -414,7 +423,7 @@ export default function CompanySettingsModal({
         startDate,
         isExtending: company.isExtending,
         originalExpirationDate: company.originalExpirationDate,
-        permissions: [],
+        permissions: ["Games"],
         fee_share_allocations: cleanFsa,
         apply_commission_payments_on_domain_save: chargeOnSave,
       };
@@ -534,6 +543,15 @@ export default function CompanySettingsModal({
   }
 
   // ─── Share % helpers（周期变更时按 Price 中对应金额重算，含 C168 行） ─────
+  const effectiveExpiration =
+    (period
+      ? calculateExpirationDate(period, startDate || new Date().toISOString().split("T")[0])
+      : null) ||
+    company.expiration_date ||
+    null;
+  const saveBlockedByExpiration =
+    !commissionOnly && !renameLocked && (!effectiveExpiration || String(effectiveExpiration).trim() === "");
+
   const shareAmountPeriod = commissionOnly ? (sharePricePeriod || period) : period;
   const effectiveFeePrice = resolveDomainFeePriceForPeriod(
     domainPeriodPrices,
@@ -909,7 +927,19 @@ export default function CompanySettingsModal({
 
           {/* Footer actions — 与量测图：Save 蓝 / Reset 红 / Cancel 灰 */}
           <div className="form-actions company-settings-form-actions">
-            <button type="button" className="btn btn-save" disabled={submitting} onClick={() => runGuarded(handleSave)}>
+            <button
+              type="button"
+              className="btn btn-save"
+              disabled={submitting || saveBlockedByExpiration}
+              title={
+                saveBlockedByExpiration
+                  ? t("expirationRequiredBeforeConfirm", {
+                      id: originalEntityCode || company.company_id || company.group_code || "",
+                    })
+                  : undefined
+              }
+              onClick={() => runGuarded(handleSave)}
+            >
               {submitting ? t("saving") : t("save")}
             </button>
             {!commissionOnly ? (

@@ -65,15 +65,23 @@ try {
     }
 
     $permCompanyId = (int) ($accountCtx['company_id'] ?? 0);
-    if ($permCompanyId <= 0) {
+    $groupPk = (int) ($accountCtx['group_pk'] ?? 0);
+    $isPureGroup = ($accountCtx['mode'] ?? '') === 'group' && $groupPk > 0;
+    if ($permCompanyId <= 0 && !$isPureGroup) {
         throw new Exception('用户未登录或缺少公司信息');
     }
 
     $groupCode = (string) ($accountCtx['group_code'] ?? '');
-    if ($groupCode !== '' && gc_is_group_login()) {
+    if ($permCompanyId > 0 && $groupCode !== '' && gc_is_group_login()) {
         gc_assert_company_id_allowed_for_login_scope($pdo, $permCompanyId, $groupCode);
+    } elseif ($isPureGroup && $groupCode !== '') {
+        if (!gc_session_can_access_group_ledger($pdo, $groupCode)) {
+            throw new Exception('无权限访问该集团');
+        }
     }
-    validateCompanyAccess($pdo, $permCompanyId, $groupCode !== '' ? $groupCode : null);
+    if ($permCompanyId > 0) {
+        validateCompanyAccess($pdo, $permCompanyId, $groupCode !== '' ? $groupCode : null);
+    }
 
     $account_id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 

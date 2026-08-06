@@ -153,10 +153,12 @@ export async function getCompanyCurrencies({
   return safeJson(res);
 }
 
-export async function getUserCurrencyOrder({ companyId, signal } = {}) {
+export async function getUserCurrencyOrder({ companyId, groupId, signal } = {}) {
   const params = new URLSearchParams({ _t: String(Date.now()) });
   const cid = companyId != null && companyId !== "" ? Number(companyId) : 0;
   if (Number.isFinite(cid) && cid > 0) params.set("company_id", String(cid));
+  const gid = groupId != null ? String(groupId).trim().toUpperCase() : "";
+  if (gid && !(Number.isFinite(cid) && cid > 0)) params.set("group_id", gid);
   const res = await fetch(
     buildApiUrl(`api/transactions/user_currency_order_api.php?${params.toString()}`),
     { credentials: "include", signal },
@@ -165,12 +167,15 @@ export async function getUserCurrencyOrder({ companyId, signal } = {}) {
 }
 
 /** Same contract as legacy JS: POST JSON `{ order: string[] }` (see api/transactions/user_currency_order_api.php). */
-export async function saveUserCurrencyOrder(order, { companyId } = {}) {
+export async function saveUserCurrencyOrder(order, { companyId, groupId } = {}) {
   const codes = Array.isArray(order) ? order.map((c) => String(c || "").trim()).filter(Boolean) : [];
   const body = { order: codes };
   const cid = companyId != null && companyId !== "" ? Number(companyId) : 0;
   if (Number.isFinite(cid) && cid > 0) {
     body.company_id = cid;
+  } else {
+    const gid = groupId != null ? String(groupId).trim().toUpperCase() : "";
+    if (gid) body.group_id = gid;
   }
   const res = await fetch(buildApiUrl("api/transactions/user_currency_order_api.php"), {
     method: "POST",
@@ -306,6 +311,7 @@ export async function searchTransactions({
   typeAccountIds,
   typeSearchFormType,
   signal,
+  skipCache = false,
 } = {}) {
   const params = new URLSearchParams();
   appendTransactionScope(params, {
@@ -320,6 +326,9 @@ export async function searchTransactions({
   params.set("show_inactive", showInactive ? "1" : "0");
   params.set("show_capture_only", showCaptureOnly ? "1" : "0");
   params.set("hide_zero_balance", hideZeroBalance ? "1" : "0");
+  if (skipCache) {
+    params.set("skip_cache", "1");
+  }
   if (typeSearch) {
     params.set("type_search", "1");
     const ids = Array.isArray(typeAccountIds)

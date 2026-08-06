@@ -927,70 +927,20 @@ function seedCompanySessionFlagsFromOwnerRows(rows) {
 
 /**
  * Sidebar Games/Bank flags for a group tab.
- * Aggregates gambling from group row / subsidiaries so Data Capture stays visible on IG.
- * Bank (bankprocess maintenance) is company-scoped — omit unless `includeBank` (Company "All").
+ * Phase 2 contract (docs/group-tenant-contract.md): Group category is fixed Games, never Bank.
+ * Does not union subsidiary company.permissions.
  *
  * @param {{ includeBank?: boolean }} [options]
  */
-export function resolveGroupCategoryFlagsForSidebar(groupCode, options = {}) {
-  const includeBank = options.includeBank === true;
+export function resolveGroupCategoryFlagsForSidebar(groupCode, _options = {}) {
   const g = String(groupCode ?? "")
     .trim()
     .toUpperCase();
   if (!g) return null;
-
-  if (ownerGroupsCache instanceof Map) {
-    const groupRow = ownerGroupsCache.get(g);
-    if (groupRow && Array.isArray(groupRow.permissions) && groupRow.permissions.length) {
-      const hasGambling = permissionsIncludeGames(groupRow.permissions);
-      const hasBank = includeBank && permissionsIncludeBank(groupRow.permissions);
-      if (hasGambling || hasBank) {
-        return { hasGambling, hasBank };
-      }
-    }
-  }
-
-  const companies = getCachedOwnerCompanies();
-  if (!companies?.length) return null;
-
-  let hasGambling = false;
-  let hasBank = false;
-
-  const anchor = pickGroupAnchorCompany(companies, g);
-  if (anchor?.id) {
-    const anchorFlags = peekCompanySessionFlags(Number(anchor.id));
-    if (anchorFlags) {
-      hasGambling = hasGambling || Boolean(anchorFlags.has_gambling);
-      if (includeBank) {
-        hasBank = hasBank || Boolean(anchorFlags.has_bank);
-      }
-    }
-  }
-
-  for (const row of companiesNativeInGroupList(companies, g)) {
-    const cid = Number(row.id);
-    if (!Number.isFinite(cid) || cid <= 0) continue;
-    const cached = peekCompanySessionFlags(cid);
-    if (cached) {
-      hasGambling = hasGambling || Boolean(cached.has_gambling);
-      if (includeBank) {
-        hasBank = hasBank || Boolean(cached.has_bank);
-      }
-      continue;
-    }
-    const fromRow = resolveCompanyCategoryFlagsFromRow(row);
-    if (fromRow) {
-      hasGambling = hasGambling || fromRow.hasGambling;
-      if (includeBank) {
-        hasBank = hasBank || fromRow.hasBank;
-      }
-    }
-  }
-
-  return { hasGambling, hasBank: includeBank ? hasBank : false };
+  return { hasGambling: true, hasBank: false };
 }
 
-/** Group-only sidebar: aggregate gambling from group row / subsidiaries; bank stays off. */
+/** Group-only sidebar: fixed Games; bank stays off. */
 export function resolveGroupOnlySidebarGambling(groupCode) {
   const flags = resolveGroupCategoryFlagsForSidebar(groupCode, { includeBank: false });
   if (!flags) return null;
@@ -1275,6 +1225,8 @@ export function shouldHideSidebarProcess(pathname, me = null) {
 /**
  * Bankprocess maintenance is company-scoped — hidden in group-only dashboard filter (e.g. IG, no company).
  * Under group "Company All", show when any company in the group has bank permission.
+ * When a subsidiary is selected, prefer that company's Bank category flags over stale session `me`
+ * (Group login often keeps Games identity until session sync finishes).
  */
 export function shouldShowBankprocessMaintenanceInSidebar(me) {
   const filter = readPersistedDashboardGcFilter();
@@ -1283,6 +1235,13 @@ export function shouldShowBankprocessMaintenanceInSidebar(me) {
   if (filter.groupAllMode && sidebarGroup) {
     const flags = resolveGroupCategoryFlagsForSidebar(sidebarGroup, { includeBank: true });
     return Boolean(flags?.hasBank);
+  }
+  const cid =
+    filter.companyId != null && filter.companyId !== "" ? Number(filter.companyId) : Number.NaN;
+  if (Number.isFinite(cid) && cid > 0) {
+    const row = findOwnerCompanyById(cid);
+    const flags = resolveCompanyCategoryFlags(row);
+    if (flags) return Boolean(flags.hasBank);
   }
   return Boolean(me?.company_has_bank);
 }
@@ -1600,6 +1559,12 @@ export function resolveInitialSelectedGroupFromSession(companies, currentCompany
   ) {
     selGroup = savedGroup;
   } else if (savedGroup && !groups.includes(savedGroup)) {
+    // Empty / pure group tenants have no company.group_id rows — keep filter when
+    // login scope or accessible_group_ids still authorize this group code.
+    const accessible = loginMe ? resolveAccessibleGroupIds(loginMe, companies) : [];
+    if (accessible.includes(savedGroup)) {
+      return savedGroup;
+    }
     sessionStorage.removeItem(DASHBOARD_GROUP_FILTER_KEY);
     sessionStorage.removeItem(DASHBOARD_GROUP_ONLY_KEY);
     sessionStorage.removeItem(DASHBOARD_SELECTED_COMPANY_KEY);
@@ -1625,13 +1590,17 @@ export function pickDefaultCompanyForGroup(companies, groupId, options = {}) {
     preferredCompanyId = null,
     preferredCompanyCode = null,
     nativeOnly = false,
+    /** Native subsidiaries + external partner remaps (company pills); excludes virtual link rows. */
+    forPicker = false,
     groupEntityOnly = false,
   } = options;
   const list = groupEntityOnly
     ? companiesGroupEntityList(companies, groupId)
-    : nativeOnly
-      ? companiesNativeInGroupList(companies, groupId)
-      : companiesInGroupList(companies, groupId);
+    : forPicker
+      ? companiesPickerInGroupList(companies, groupId)
+      : nativeOnly
+        ? companiesNativeInGroupList(companies, groupId)
+        : companiesInGroupList(companies, groupId);
   if (!list.length) return null;
 
   const loginCode =
@@ -1716,6 +1685,52 @@ export function companiesNativeInGroupList(companies, gid) {
   });
 }
 
+/** Owner portfolio row linked via company_ownership (is_external=1), not a group_ownership virtual duplicate. */
+export function companyRowIsExternalPartnerMapped(companyRow) {
+  if (!companyRow || isVirtualGroupLinkCompanyRow(companyRow)) return false;
+  const v = companyRow.is_external ?? companyRow.isExternal;
+  return v === true || v === 1 || v === "1";
+}
+
+/**
+ * External partner companies remapped onto display group T
+ * (`COALESCE(partner_group_id, native)` → group_id=T, native_group_id may still be S).
+ * Virtual group-link rows stay excluded (those use link_source_group).
+ */
+export function companiesExternalRemappedInGroupList(companies, gid) {
+  const g = String(gid || "").trim().toUpperCase();
+  if (!g) return [];
+  return filterCompaniesWithDisplayId(companies).filter((c) => {
+    if (!companyRowIsExternalPartnerMapped(c)) return false;
+    if (normalizeCompanyGroupId(c) !== g) return false;
+    // Already counted as native under this group — avoid duplicate work for callers that merge.
+    return normalizeNativeCompanyGroupId(c) !== g;
+  });
+}
+
+/**
+ * Company-pill / Group-All merge list for a group tab: native subsidiaries + external partner remaps.
+ * Still excludes virtual group_ownership link duplicates.
+ */
+export function companiesPickerInGroupList(companies, gid) {
+  if (!gid) {
+    return companiesNativeInGroupList(companies, null);
+  }
+  const g = String(gid).trim().toUpperCase();
+  const seen = new Set();
+  const merged = [];
+  for (const row of [
+    ...companiesNativeInGroupList(companies, g),
+    ...companiesExternalRemappedInGroupList(companies, g),
+  ]) {
+    const id = Number(row?.id);
+    if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    merged.push(row);
+  }
+  return merged;
+}
+
 /**
  * Group entity only (e.g. AP itself) — not subsidiaries such as C168 under group_id AP.
  * Matches company_id === group code, or GROUPONLY placeholder (empty company_id, group_id set).
@@ -1772,8 +1787,8 @@ export function excludeGroupLabelsFromCompanyPicker(companies, groupIds = null) 
 /** Companies shown in the Company row when a GroupID is selected (Dashboard-aligned). */
 export function companiesForCompanyPicker(companies, selectedGroup, groupIds = null) {
   const list = selectedGroup
-    ? companiesNativeInGroupList(companies, selectedGroup)
-    : companiesNativeInGroupList(companies, null);
+    ? companiesPickerInGroupList(companies, selectedGroup)
+    : companiesPickerInGroupList(companies, null);
   return excludeGroupLabelsFromCompanyPicker(list, groupIds);
 }
 
@@ -1793,9 +1808,9 @@ export function pickDefaultSubsidiaryForGroup(companies, groupId, options = {}) 
   const g = String(groupId || "").trim().toUpperCase();
   if (!g) return null;
   const gids = sortedUniqueGroupIds(companies);
-  const pick = pickDefaultCompanyForGroup(companies, g, { ...options, nativeOnly: true });
+  const pick = pickDefaultCompanyForGroup(companies, g, { ...options, forPicker: true });
   if (pick && isSubsidiaryCompanyRow(pick, gids)) return pick;
-  const list = excludeGroupLabelsFromCompanyPicker(companiesNativeInGroupList(companies, g), gids);
+  const list = companiesForCompanyPicker(companies, g, gids);
   return list[0] ?? null;
 }
 
@@ -1916,7 +1931,7 @@ export function allGroupedCompaniesForPicker(companies, groupIds = null) {
   const seen = new Set();
   const merged = [];
   for (const gid of gids) {
-    for (const row of companiesNativeInGroupList(companies, gid)) {
+    for (const row of companiesPickerInGroupList(companies, gid)) {
       const id = Number(row?.id);
       if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
       seen.add(id);
@@ -1974,21 +1989,19 @@ export function resolveCompanyWhenPickingAllGroups(companies, currentCompanyId, 
 }
 
 /**
- * When closing an active GroupID pill: keep the current company if it is independent,
- * otherwise activate the first independent company in picker order.
+ * When closing an active GroupID pill:
+ * 1) keep the currently selected company when possible (incl. subsidiary under that group);
+ * 2) else first independent company in picker order.
  */
 export function resolveCompanyWhenClosingGroup(companies, currentCompanyId, groupIds = null) {
   const gids = groupIds?.length ? groupIds : sortedUniqueGroupIds(companies);
-  const independents = independentCompaniesForPicker(companies, gids);
-  if (!independents.length) return null;
+  const list = Array.isArray(companies) ? companies : [];
   const cid = currentCompanyId != null ? Number(currentCompanyId) : Number.NaN;
   if (Number.isFinite(cid) && cid > 0) {
-    const currentRow = (companies || []).find((c) => Number(c.id) === cid);
-    if (currentRow && companyRowIsIndependent(currentRow, gids)) {
-      const inPicker = independents.find((c) => Number(c.id) === cid);
-      if (inPicker) return inPicker;
-    }
+    const currentRow = list.find((c) => Number(c.id) === cid);
+    if (currentRow) return currentRow;
   }
+  const independents = independentCompaniesForPicker(list, gids);
   return independents[0] ?? null;
 }
 

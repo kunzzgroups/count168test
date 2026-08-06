@@ -8,7 +8,8 @@ import {
   shouldRestoreFromUrl,
   stripRestoreParamFromUrl,
 } from "../lib/dataCaptureStorage.js";
-import { isGroupOnlyProcessId, isGroupPayrollDraftProcessId } from "../lib/dataCaptureGroupOnlyProcesses.js";
+import { isGroupOnlyProcessId } from "../lib/dataCaptureGroupOnlyProcesses.js";
+import { resolvePayrollDraftProcessKey } from "../lib/dataCaptureGamesPayrollProcesses.js";
 import {
   cancelAllScheduledServerDraftSaves,
   flushGroupOnlyTableDraftToServer,
@@ -27,6 +28,10 @@ import {
 } from "../lib/dataCaptureFormRules.js";
 import { fetchProcessDetail, fetchGroupProcessIdByCode } from "../lib/dataCaptureApi.js";
 import {
+  dataCaptureScopeLedgerCompanyId,
+  isPureGroupCaptureScope,
+} from "../lib/dataCaptureScope.js";
+import {
   applyConvertTableOnSubmitToGrid,
   convertTableFormatForSubmit,
 } from "../lib/dataCaptureConvertTableOnSubmit.js";
@@ -42,7 +47,6 @@ import { buildSpaPath } from "../../../utils/core/apiUrl.js";
 import { pushDataCaptureNotification } from "../lib/dataCaptureNotify.js";
 import { translateDataCaptureMessage } from "../../../translateFile/pages/dataCaptureTranslate.js";
 import { markSummaryFreshNavigation } from "../../datacapturesummary/lib/summaryStorage.js";
-import { dataCaptureScopeLedgerCompanyId } from "../lib/dataCaptureScope.js";
 import { prefetchRouteModule } from "../../../utils/routing/routePrefetch.js";
 import { prefetchSummaryPopulateData } from "../../datacapturesummary/lib/summaryPrefetch.js";
 import { useDataCaptureContext } from "../context/DataCaptureContext.jsx";
@@ -64,6 +68,7 @@ function buildProcessCapturePayload(form, captureType, currencies, selectedDescr
     process: form.selectedProcess?.id,
     processName: form.selectedProcess?.displayText || "",
     processCode: form.selectedProcess?.process_id || "",
+    enableSaveDraft: Boolean(form.selectedProcess?.enable_save_draft),
     dataCaptureType: captureType,
     descriptions: getActiveDescriptions(form.descriptionDisplay, selectedDescriptions),
     currency: form.currencyId,
@@ -183,18 +188,23 @@ export function useDataCaptureSubmitReset({
           form.selectedProcess?.process_id ||
           processData.processCode ||
           String(processData.process || "").toUpperCase();
-        let numericId;
-        try {
-          numericId = await fetchGroupProcessIdByCode(captureScope, code, form.currencyId);
-        } catch (resolveErr) {
-          pushDataCaptureNotification(
-            resolveErr?.message || t("failedCaptureData"),
-            "danger"
-          );
-          return;
-        }
-        processData.process = numericId;
         processData.processCode = String(code).trim().toUpperCase();
+        // Pure / empty group: fixed payroll codes only — no process table row.
+        if (!isPureGroupCaptureScope(captureScope, processData)) {
+          let numericId;
+          try {
+            numericId = await fetchGroupProcessIdByCode(captureScope, code, form.currencyId);
+          } catch (resolveErr) {
+            pushDataCaptureNotification(
+              resolveErr?.message || t("failedCaptureData"),
+              "danger"
+            );
+            return;
+          }
+          processData.process = numericId;
+        } else {
+          processData.process = processData.processCode;
+        }
       }
 
       const capturedAfterConvert = convertTableFormatForSubmit(activeCaptureType, preConvertSnapshot);
@@ -208,20 +218,17 @@ export function useDataCaptureSubmitReset({
       }
 
       const draftBucket = payrollDraftBucket || selectedGroup;
-      if (
-        groupPayrollUi &&
-        draftBucket &&
-        isGroupPayrollDraftProcessId(form.selectedProcess?.id)
-      ) {
+      const draftProcessKey = resolvePayrollDraftProcessKey(form.selectedProcess, groupPayrollUi);
+      if (draftBucket && draftProcessKey) {
         const draftPayload = {
           tableData: preConvertSnapshot,
           captureType: activeCaptureType,
         };
         const draftOptions = { captureScope, serverSync: payrollDraftServerSync };
-        saveGroupOnlyTableDraft(draftBucket, form.selectedProcess.id, form.currencyId, draftPayload, draftOptions);
+        saveGroupOnlyTableDraft(draftBucket, draftProcessKey, form.currencyId, draftPayload, draftOptions);
         await flushGroupOnlyTableDraftToServer(
           draftBucket,
-          form.selectedProcess.id,
+          draftProcessKey,
           form.currencyId,
           draftPayload,
           captureScope,
@@ -246,6 +253,7 @@ export function useDataCaptureSubmitReset({
         captureScope,
         companyId: dataCaptureScopeLedgerCompanyId(captureScope, processData),
         processId: processData.process,
+        processCode: processData.processCode || "",
         tableData: finalTableData,
       });
 
@@ -266,27 +274,25 @@ export function useDataCaptureSubmitReset({
 
   const reset = useCallback(() => {
     const draftBucket = payrollDraftBucket || selectedGroup;
-    const groupOnlyProcessId =
-      groupPayrollUi && draftBucket && isGroupPayrollDraftProcessId(form.selectedProcess?.id)
-        ? form.selectedProcess.id
-        : null;
+    const draftProcessKey = resolvePayrollDraftProcessKey(form.selectedProcess, groupPayrollUi);
+
+    if (draftBucket && draftProcessKey && form.currencyId) {
+      const activeCaptureType = getBridgeCaptureType(captureType || "1.Text");
+      const tableData = captureTableSnapshot(activeCaptureType, gridRef.current);
+      if (tableSnapshotHasData(tableData)) {
+        saveGroupOnlyTableDraft(
+          draftBucket,
+          draftProcessKey,
+          form.currencyId,
+          { tableData, captureType: activeCaptureType },
+          { captureScope, flush: true, serverSync: payrollDraftServerSync },
+        );
+      } else {
+        cancelAllScheduledServerDraftSaves();
+      }
+    }
 
     if (groupPayrollUi && draftBucket) {
-      if (groupOnlyProcessId && form.currencyId) {
-        const activeCaptureType = getBridgeCaptureType(captureType || "1.Text");
-        const tableData = captureTableSnapshot(activeCaptureType, gridRef.current);
-        if (tableSnapshotHasData(tableData)) {
-          saveGroupOnlyTableDraft(
-            draftBucket,
-            groupOnlyProcessId,
-            form.currencyId,
-            { tableData, captureType: activeCaptureType },
-            { captureScope, flush: true, serverSync: payrollDraftServerSync },
-          );
-        } else {
-          cancelAllScheduledServerDraftSaves();
-        }
-      }
       callDataCaptureRuntime("clearGroupOnlyProcessForTableReset");
     } else {
       callDataCaptureRuntime("reactFormReset");
@@ -318,7 +324,7 @@ export function useDataCaptureSubmitReset({
     selectedGroup,
     captureScope,
     captureType,
-    form.selectedProcess?.id,
+    form.selectedProcess,
     form.currencyId,
     clearSelectedDescriptions,
     gridRef,

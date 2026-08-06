@@ -4,11 +4,12 @@ import { buildAccountsUrl } from "./accountLogic.js";
 const accountListRouteWarmCache = new Map();
 const accountListRouteWarmInflight = new Map();
 
-function buildGroupAccountsUrl(groupId, searchTerm, showInactive, showAll) {
+function buildGroupAccountsUrl(groupId, searchTerm, showInactive, showAll, showActive = false) {
   const url = new URL(buildApiUrl("api/accounts/accountlistapi.php"));
   url.searchParams.set("group_id", String(groupId));
   url.searchParams.set("group_only", "1");
   if (String(searchTerm || "").trim()) url.searchParams.set("search", String(searchTerm || "").trim());
+  if (showActive) url.searchParams.set("showActive", "1");
   if (showInactive) url.searchParams.set("showInactive", "1");
   if (showAll) url.searchParams.set("showAll", "1");
   return url;
@@ -18,12 +19,13 @@ function accountListRouteCacheKey({
   companyId = null,
   groupId = null,
   search = "",
+  showActive = false,
   showInactive = false,
   showAll = false,
 } = {}) {
   const cid = companyId != null ? Number(companyId) : null;
   const gid = groupId ? String(groupId).trim().toUpperCase() : "";
-  return `${cid ?? ""}|${gid}|${String(search || "").trim()}|${showInactive ? 1 : 0}|${showAll ? 1 : 0}`;
+  return `${cid ?? ""}|${gid}|${String(search || "").trim()}|${showActive ? 1 : 0}|${showInactive ? 1 : 0}|${showAll ? 1 : 0}`;
 }
 
 function hasAccountRows(rows) {
@@ -34,6 +36,7 @@ async function fetchAccountListSlice({
   companyId = null,
   groupId = null,
   search = "",
+  showActive = false,
   showInactive = false,
   showAll = false,
   signal,
@@ -42,9 +45,9 @@ async function fetchAccountListSlice({
   const gid = groupId ? String(groupId).trim().toUpperCase() : "";
   const url =
     cid != null && Number.isFinite(cid) && cid > 0
-      ? buildAccountsUrl(cid, search, showInactive, showAll, { groupId: gid || null })
+      ? buildAccountsUrl(cid, search, showInactive, showAll, { groupId: gid || null, showActive })
       : gid
-        ? buildGroupAccountsUrl(gid, search, showInactive, showAll)
+        ? buildGroupAccountsUrl(gid, search, showInactive, showAll, showActive)
         : null;
   if (!url) return null;
 
@@ -59,13 +62,14 @@ export function warmAccountListRouteCache({
   companyId = null,
   groupId = null,
   search = "",
+  showActive = false,
   showInactive = false,
   showAll = false,
 } = {}) {
-  const key = accountListRouteCacheKey({ companyId, groupId, search, showInactive, showAll });
+  const key = accountListRouteCacheKey({ companyId, groupId, search, showActive, showInactive, showAll });
   if (accountListRouteWarmCache.has(key) || accountListRouteWarmInflight.has(key)) return;
 
-  const promise = fetchAccountListSlice({ companyId, groupId, search, showInactive, showAll })
+  const promise = fetchAccountListSlice({ companyId, groupId, search, showActive, showInactive, showAll })
     .then((rows) => {
       if (hasAccountRows(rows)) accountListRouteWarmCache.set(key, rows);
       return rows;
@@ -83,6 +87,12 @@ export function consumeAccountListRouteCache(opts = {}) {
   const cached = accountListRouteWarmCache.get(key) || null;
   if (cached) accountListRouteWarmCache.delete(key);
   return cached;
+}
+
+/** Drop all sidebar warm entries so remount cannot skip a stale paint-only boot. */
+export function clearAccountListRouteWarmCache() {
+  accountListRouteWarmCache.clear();
+  accountListRouteWarmInflight.clear();
 }
 
 /** Use sidebar warm cache, in-flight warm, or return null (page fetches). */

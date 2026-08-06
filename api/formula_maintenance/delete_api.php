@@ -51,8 +51,9 @@ try {
     $formula_scope_group = (bool) $scopeCtx['is_group_scope'];
 
     if ($formula_scope_group) {
-        if ($company_id <= 0) {
-            throw new Exception('集团范围无效或未配置集团公司');
+        $groupPk = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+        if ($groupPk <= 0 && $company_id <= 0) {
+            throw new Exception('集团范围无效');
         }
     } elseif ($company_id > 0 && dcCompanyIdIsGroupEntity($pdo, $company_id)) {
         throw new Exception('公司范围不能操作集团实体公式');
@@ -94,6 +95,19 @@ try {
         $stmt->execute($validIds);
         $totalDeleted = $stmt->rowCount();
         $pdo->commit();
+        require_once __DIR__ . '/../includes/realtime.php';
+        if ($formula_scope_group) {
+            $listScope = [
+                'mode' => 'group',
+                'company_id' => $company_id,
+                'group_scope_id' => (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0),
+            ];
+            realtime_publish_scope($listScope, 'maintenance', 'formula_delete');
+            realtime_publish_scope($listScope, 'datacapture', 'formula_delete');
+        } elseif ($company_id > 0) {
+            realtime_publish_companies([$company_id], 'maintenance', 'formula_delete');
+            realtime_publish_companies([$company_id], 'datacapture', 'formula_delete');
+        }
         jsonResponse(true, "已删除 {$totalDeleted} 条记录", ['deleted' => $totalDeleted]);
     } catch (Exception $e) {
         $pdo->rollBack();

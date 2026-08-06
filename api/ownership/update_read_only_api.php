@@ -43,6 +43,7 @@ try {
         if ($companyId > 0) {
             $savedBy = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
             ownership_history_snapshot_company_from_live($pdo, $companyId, $savedBy);
+            ownership_realtime_publish_for_company($companyId, 'update_read_only');
         }
     }
 

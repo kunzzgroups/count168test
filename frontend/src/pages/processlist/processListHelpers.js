@@ -29,6 +29,7 @@ export const EMPTY_FORM = {
   replace_word_to: "",
   remark: "",
   status: "active",
+  enable_save_draft: false,
   dts_modified: "",
   modified_by: "",
   dts_created: "",
@@ -72,6 +73,7 @@ export function buildOptimisticProcessRows(created, form, { currencies = [], day
     currency: currency?.code || "",
     day_use: dayNames,
     has_transactions: false,
+    enable_save_draft: Boolean(form?.enable_save_draft),
   }));
 }
 

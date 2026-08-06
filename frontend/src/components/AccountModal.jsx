@@ -4,6 +4,7 @@ import { accountModalOverlayZIndex, accountCompanyPickerZIndex } from "./Process
 import SimpleSelect from "./SimpleSelect.jsx";
 import { useSubmitGuard } from "../hooks/useSubmitGuard.js";
 import { formatAccountRoleDisplay } from "../translateFile/pages/accountTranslate.js";
+import PasswordInput from "./PasswordInput.jsx";
 
 function upper(v) {
   return String(v || "").toUpperCase();
@@ -363,12 +364,14 @@ export default function AccountModal({
 
               <div className="account-form-group">
                 <label>{isEditMode ? text("password") : text("passwordRequired")}</label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                   required={!isEditMode}
                   placeholder={isEditMode ? text("passwordEditHint") : undefined}
+                  showLabel={text("showPassword")}
+                  hideLabel={text("hidePassword")}
+                  autoComplete="new-password"
                 />
               </div>
               {paymentAlertOn ? (

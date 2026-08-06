@@ -1,8 +1,10 @@
 <?php
 /**
- * Resolve whether the login form identifier is a company code or a group id.
  * If both match (e.g. AP exists as company_id and group_id), prefer group scope
  * so Group login opens in group context instead of pinning a company.
+ *
+ * Phase 7: `groups.group_code` is enough for scope=group even when subsidiaries exist
+ * under company.group_id (Owner must not be pinned to the first subsidiary).
  */
 require_once __DIR__ . '/group_scope_resolve.php';
 
@@ -26,6 +28,11 @@ function resolve_login_identifier_scope(PDO $pdo, string $loginInput): array
         }
     }
 
+    // First-class group tenant wins even when subsidiaries carry the same group_id.
+    if ($hasGroupTenant) {
+        return ['scope' => 'group', 'identifier' => $id];
+    }
+
     $stmt = $pdo->prepare('SELECT 1 FROM company WHERE UPPER(company_id) = ? LIMIT 1');
     $stmt->execute([$id]);
     $hasCompanyCode = (bool) $stmt->fetchColumn();
@@ -34,7 +41,7 @@ function resolve_login_identifier_scope(PDO $pdo, string $loginInput): array
     $stmt->execute([$id]);
     $hasGroupIdOnCompany = (bool) $stmt->fetchColumn();
 
-    if ($hasGroupTenant || $hasGroupIdOnCompany) {
+    if ($hasGroupIdOnCompany) {
         return ['scope' => 'group', 'identifier' => $id];
     }
 

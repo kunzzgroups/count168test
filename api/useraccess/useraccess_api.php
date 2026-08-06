@@ -229,6 +229,8 @@ try {
                 $pdo->commit();
 
                 if ($successCount === count($affectedUserIds)) {
+                    require_once __DIR__ . '/../includes/realtime.php';
+                    realtime_publish_companies([(int) $current_company_id], 'users', 'update_permissions');
                     $msg = $input['source_type'] === 'template'
                         ? "Successfully updated permissions for $successCount user(s) based on template: {$templateUser['name']} ({$templateUser['login_id']})"
                         : "Successfully updated permissions for $successCount user(s) with manually selected permissions";

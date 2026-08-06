@@ -69,7 +69,7 @@ function fetchFormulaListRaw(
                 dct.enable_source_percent,
                 dct.last_source_value,
                 dct.description,
-                p.process_id AS process_code,
+                COALESCE(p.process_id, dct.process_id) AS process_code,
                 p.description_id,
                 d.name AS description_name,
                 " . formulaMaintenanceSqlProcessOnGroupEntityFlag('p') . " AS process_on_group_entity,
@@ -77,7 +77,7 @@ function fetchFormulaListRaw(
                 a.name AS account_name,
                 c.code AS currency_code
             FROM data_capture_templates dct
-            " . formulaMaintenanceSqlTemplateProcessJoin($pdo, $companyId, $processIdFilter, $isGroupScope) . "
+            " . formulaMaintenanceSqlTemplateProcessJoin($pdo, $companyId, $isGroupScope) . "
             LEFT JOIN description d ON p.description_id = d.id
             LEFT JOIN account a ON dct.account_id = a.id
             LEFT JOIN currency c ON dct.currency_id = c.id
@@ -86,7 +86,7 @@ function fetchFormulaListRaw(
     if ($scopeProcessSql !== '') {
         $sql .= $scopeProcessSql;
     }
-    // processIdFilter is enforced in formulaMaintenanceSqlTemplateProcessJoin().
+    $sql .= formulaMaintenanceSqlTemplateProcessFilter($pdo, $companyId, $processIdFilter, $isGroupScope);
     if ($search !== '') {
         $like = '%' . $search . '%';
         $sql .= " AND (
@@ -215,7 +215,9 @@ try {
     $scopeProcessSql = (string) $scopeCtx['scope_process_sql'];
 
     if ($formula_scope_group) {
-        if ($companyId <= 0) {
+        $groupPk = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+        // Dual-tenant pure Group: company_id may be 0; ledger uses scope_id.
+        if ($companyId <= 0 && (empty($scopeCtx['dual_tenant']) || $groupPk <= 0)) {
             jsonResponse(true, 'success', ['list' => [], 'total' => 0]);
             exit;
         }

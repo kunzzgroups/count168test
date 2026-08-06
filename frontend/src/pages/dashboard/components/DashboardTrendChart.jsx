@@ -66,64 +66,71 @@ export function DashboardTrendChart({
       </div>
       <div className="dashboard-panel-chart-body">
         {hasChartData ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              key={chartSessionKey}
-              data={chartRows}
-              baseValue={0}
-              margin={{ top: 8, right: 16, left: 0, bottom: chartXAxisLayout.marginBottom }}
-            >
-              <DashboardTrendAreaDefs />
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-              <Customized component={DashboardChartBaseline} />
-              <XAxis
-                dataKey="label"
-                interval={chartXAxisLayout.interval}
-                minTickGap={chartXAxisLayout.minTickGap}
-                tick={chartXAxisLayout.tick}
-                height={chartXAxisLayout.height}
-                tickMargin={0}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                domain={yDomain}
-                tick={{ fontSize: 11 }}
-                stroke="#94a3b8"
-                tickFormatter={(v) => formatCurrency(v)}
-                width={72}
-              />
-              <Tooltip
-                formatter={(value) => formatCurrency(value)}
-                labelFormatter={(_, items) => {
-                  const d = items?.[0]?.payload?.date;
-                  return formatChartTooltipLabel(d, i18n.locale);
-                }}
-              />
-              {chartSeries.map((s) => {
-                if (!chartVisible[s.idx]) return null;
-                const areaFill = resolveTrendAreaFill(s.dataKey) || s.fill;
-                return (
-                  <Area
-                    key={s.dataKey}
-                    type="monotone"
-                    dataKey={s.dataKey}
-                    name={s.label}
-                    stroke={s.color}
-                    fill={areaFill}
-                    strokeWidth={2}
-                    baseValue={0}
-                    dot={false}
-                    activeDot={{ r: 8, strokeWidth: 2, stroke: s.color, fill: "#fff" }}
-                    isAnimationActive={false}
-                    className="dashboard-trend-area"
-                  />
-                );
-              })}
-            </AreaChart>
-          </ResponsiveContainer>
+          <div className="dashboard-panel-chart-real">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                key={chartSessionKey}
+                data={chartRows}
+                baseValue={0}
+                margin={{ top: 8, right: 16, left: 0, bottom: chartXAxisLayout.marginBottom }}
+              >
+                <DashboardTrendAreaDefs />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                <Customized component={DashboardChartBaseline} />
+                <XAxis
+                  dataKey="label"
+                  interval={chartXAxisLayout.interval}
+                  minTickGap={chartXAxisLayout.minTickGap}
+                  tick={chartXAxisLayout.tick}
+                  height={chartXAxisLayout.height}
+                  tickMargin={0}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  domain={yDomain}
+                  tick={{ fontSize: 11 }}
+                  stroke="#94a3b8"
+                  tickFormatter={(v) => formatCurrency(v)}
+                  width={72}
+                />
+                <Tooltip
+                  formatter={(value) => formatCurrency(value)}
+                  labelFormatter={(_, items) => {
+                    const d = items?.[0]?.payload?.date;
+                    return formatChartTooltipLabel(d, i18n.locale);
+                  }}
+                />
+                {chartSeries.map((s) => {
+                  if (!chartVisible[s.idx]) return null;
+                  const areaFill = resolveTrendAreaFill(s.dataKey) || s.fill;
+                  return (
+                    <Area
+                      key={s.dataKey}
+                      type="monotone"
+                      dataKey={s.dataKey}
+                      name={s.label}
+                      stroke={s.color}
+                      fill={areaFill}
+                      strokeWidth={2}
+                      baseValue={0}
+                      dot={false}
+                      activeDot={{ r: 8, strokeWidth: 2, stroke: s.color, fill: "#fff" }}
+                      isAnimationActive={false}
+                      className="dashboard-trend-area"
+                    />
+                  );
+                })}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         ) : (
-          <div className="dashboard-panel-chart-placeholder" aria-hidden="true" />
+          <div className="dashboard-panel-chart-placeholder" aria-hidden="true">
+            <span className="dashboard-panel-chart-placeholder-line" />
+            <span className="dashboard-panel-chart-placeholder-line" />
+            <span className="dashboard-panel-chart-placeholder-line" />
+            <span className="dashboard-panel-chart-placeholder-line dashboard-panel-chart-placeholder-line--base" />
+          </div>
         )}
       </div>
     </div>

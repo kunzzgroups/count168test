@@ -52,7 +52,7 @@ export function buildSubmitRowsFromModel(rows, parsedProcessData, accounts = [],
     const isSourceOne = Math.abs(parseFloat(sourcePercent) - 1) < 0.0001;
     const formulaToSend =
       isSourceOne && formulaDisplay
-        ? removeTrailingSourcePercentExpression(formulaDisplay) || formulaDisplay
+        ? removeTrailingSourcePercentExpression(formulaDisplay, sourcePercent) || formulaDisplay
         : formulaDisplay;
 
     const finalProcessedAmount = resolveSubmitProcessedAmount(row, globalRateInput);

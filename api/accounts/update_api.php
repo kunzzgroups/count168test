@@ -71,17 +71,25 @@ try {
         throw new Exception($e->getMessage());
     }
     $company_id = (int) ($accountCtx['company_id'] ?? 0);
-    if ($company_id <= 0) {
+    $groupPk = (int) ($accountCtx['group_pk'] ?? 0);
+    $isGroupScope = (($accountCtx['mode'] ?? '') === 'group');
+    $isPureGroup = $isGroupScope && $groupPk > 0;
+    // Empty group / dual-tenant group ledger: company_id may be 0; scope_id carries the ledger.
+    if ($company_id <= 0 && !$isPureGroup) {
         throw new Exception('用户未登录或缺少公司信息');
     }
-    $isGroupScope = (($accountCtx['mode'] ?? '') === 'group');
     $groupCode = (string) ($accountCtx['group_code'] ?? '');
-    if ($groupCode !== '' && gc_is_group_login()) {
+    if ($company_id > 0 && $groupCode !== '' && gc_is_group_login()) {
         gc_assert_company_id_allowed_for_login_scope($pdo, $company_id, $groupCode);
+    } elseif ($isPureGroup && $groupCode !== '') {
+        if (!gc_session_can_access_group_ledger($pdo, $groupCode)) {
+            throw new Exception('无权限访问该集团');
+        }
     }
 
     $id = (int) $_POST['id'];
-    $name = trim($_POST['name']);
+    // Canonical store: uppercase names (callers may send CSS-only "uppercase" visual values).
+    $name = strtoupper(trim($_POST['name']));
     $role = trim($_POST['role']);
     $password = trim($_POST['password']);
     $payment_alert = isset($_POST['payment_alert']) ? (int) $_POST['payment_alert'] : 0;
@@ -129,7 +137,7 @@ try {
 
     $alert_day = $alert_type;
     $alert_specific_date = $alert_start_date;
-    $remark = !empty($_POST['remark']) ? trim($_POST['remark']) : null;
+    $remark = !empty($_POST['remark']) ? strtoupper(trim($_POST['remark'])) : null;
 
     $submitted_company_ids = null;
     if (isset($_POST['company_ids']) && $_POST['company_ids'] !== '') {
@@ -245,7 +253,8 @@ try {
         }
     }
 
-    if (isset($_POST['linked_account_ids'])) {
+    // Account links are company-scoped; skip when updating a pure group ledger (no anchor company).
+    if (isset($_POST['linked_account_ids']) && $company_id > 0) {
         $has_account_link_table = false;
         try {
             $has_account_link_table = $pdo->query("SHOW TABLES LIKE 'account_link'")->rowCount() > 0;
@@ -301,6 +310,17 @@ try {
     $err = $stmt->errorInfo();
     if ($err[0] !== '00000' && $err[0] !== null) {
         throw new Exception('数据库更新错误: ' . ($err[2] ?? '未知错误'));
+    }
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    if ($isPureGroup && $groupPk > 0) {
+        realtime_publish_scope([
+            'mode' => 'group',
+            'group_scope_id' => $groupPk,
+            'company_id' => $company_id,
+        ], 'accounts', 'update');
+    } elseif ($company_id > 0) {
+        realtime_publish_companies([$company_id], 'accounts', 'update');
     }
 
     jsonResponse(true, 'Account updated successfully', null);

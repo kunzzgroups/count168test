@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link, Navigate, useOutletContext, useSearchParams } from "react-router-dom";
+import { Navigate, useOutletContext, useSearchParams } from "react-router-dom";
 import MobileShell from "../../components/layout/MobileShell.jsx";
+import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx";
 import {
   formatHistoryBalanceMoney,
   formatHistoryMoney,
@@ -153,25 +154,23 @@ export default function TransactionHistoryPage() {
 
   const stickyBar = (
     <div className="m-tx-hist-sticky">
-      <Link to="/transaction" className="m-tx-hist-back tap-scale" aria-label={m.backToList}>
-        <i className="fas fa-arrow-left" aria-hidden="true" />
-      </Link>
-      <div className="m-tx-hist-head">
-        <p className="m-tx-hist-title">{title}</p>
-        <p className="m-tx-hist-sub">
-          {scope.dateFrom} — {scope.dateTo}
-          {scope.currency ? ` · ${scope.currency}` : ""}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => setExportOpen(true)}
-        className="m-tx-hist-export tap-scale"
-        aria-label={m.exportPdf}
-        title={m.exportPdf}
-      >
-        <i className="fas fa-file-pdf" aria-hidden="true" />
-      </button>
+      <MobileSubpageHeader
+        backTo="/transaction"
+        backAriaLabel={m.backToList}
+        title={title}
+        subtitle={`${scope.dateFrom} — ${scope.dateTo}${scope.currency ? ` · ${scope.currency}` : ""}`}
+        trailing={
+          <button
+            type="button"
+            onClick={() => setExportOpen(true)}
+            className="m-tx-hist-export tap-scale"
+            aria-label={m.exportPdf}
+            title={m.exportPdf}
+          >
+            <i className="fas fa-file-pdf" aria-hidden="true" />
+          </button>
+        }
+      />
     </div>
   );
 

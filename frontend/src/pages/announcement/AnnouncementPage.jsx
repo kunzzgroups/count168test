@@ -23,6 +23,8 @@ import {
   splitAnnouncementSection,
 } from "../../components/announcements/announcementSectionLabel.js";
 import { publishMaintenanceModeEvent } from "../../utils/maintenance/maintenanceRealtimeBus.js";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
 
 export default function AnnouncementPage() {
   const navigate = useNavigate();
@@ -126,6 +128,15 @@ export default function AnnouncementPage() {
       }
     } catch (err) { showNotice(t("loadMaintenanceFailed", { message: err.message }), "error"); }
   }, [showNotice, t]);
+
+  useRealtimeDomain(
+    [REALTIME_DOMAINS.ANNOUNCEMENTS, REALTIME_DOMAINS.MAINTENANCE],
+    () => {
+      void loadAnnouncements();
+      void loadMaintenance();
+    },
+    { enabled: sessionReady && Boolean(me) },
+  );
 
   const loadMaintenanceMode = useCallback(async () => {
     try {

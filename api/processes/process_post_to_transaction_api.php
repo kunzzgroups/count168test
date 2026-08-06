@@ -193,21 +193,29 @@ function clearTransactionSearchCache(): void
 }
 
 /**
- * 截断到2位小数（不四舍五入）
+ * 入账落库：截断到 MONEY_TX_STORE_SCALE（默认 6）位，不 Half Up。
+ * 展示 Half Up 2 位只在前端 / search 展示层做。
  */
+function txnStoreAmount($value): string
+{
+    return money_normalize($value, MONEY_TX_STORE_SCALE);
+}
+
+/** @deprecated 兼容旧名；实际为 6 位落库口径。 */
 function txnTrunc2($value): string
 {
-    return money_normalize($value, 2);
+    return txnStoreAmount($value);
 }
 
 function txnFormat2($value): string
 {
-    return txnTrunc2($value);
+    return txnStoreAmount($value);
 }
 
+/** Description 可读金额：Half Up 到分（不写库）。 */
 function txnDescriptionAmount($value): string
 {
-    return money_out($value, 2);
+    return money_round_half_up($value, 2);
 }
 
 /** Pro-rated cost/price/profit for partial first month (day_start to end of that month) */
@@ -225,9 +233,9 @@ function partialFirstMonthAmounts(string $dayStart, string $cost, string $price,
     }
     $ratio = money_div((string) $daysRemaining, (string) $daysInMonth, MONEY_CALC_SCALE);
     return [
-        'cost' => money_mul($cost, $ratio, 2),
-        'price' => money_mul($price, $ratio, 2),
-        'profit' => money_mul($profit, $ratio, 2),
+        'cost' => money_mul($cost, $ratio, MONEY_TX_STORE_SCALE),
+        'price' => money_mul($price, $ratio, MONEY_TX_STORE_SCALE),
+        'profit' => money_mul($profit, $ratio, MONEY_TX_STORE_SCALE),
     ];
 }
 
@@ -246,9 +254,9 @@ function prorateToMonthEndFromStart(string $startYmd, string $cost, string $pric
     $daysRemaining = max(0, $daysInMonth - $dayOfMonth + 1);
     $ratio = money_div((string) $daysRemaining, (string) $daysInMonth, MONEY_CALC_SCALE);
     return [
-        'cost' => money_mul($cost, $ratio, 2),
-        'price' => money_mul($price, $ratio, 2),
-        'profit' => money_mul($profit, $ratio, 2),
+        'cost' => money_mul($cost, $ratio, MONEY_TX_STORE_SCALE),
+        'price' => money_mul($price, $ratio, MONEY_TX_STORE_SCALE),
+        'profit' => money_mul($profit, $ratio, MONEY_TX_STORE_SCALE),
     ];
 }
 
@@ -403,18 +411,19 @@ function contractExclusiveEndYmdForFrequency(string $startYmd, ?string $contract
 
 function prorateInclusiveDateRange(string $fromYmd, string $toYmd, string $cost, string $price, string $profit): array
 {
+    $zero = money_normalize('0', MONEY_TX_STORE_SCALE);
     if ($fromYmd > $toYmd) {
-        return ['cost' => '0.00000000', 'price' => '0.00000000', 'profit' => '0.00000000'];
+        return ['cost' => $zero, 'price' => $zero, 'profit' => $zero];
     }
     try {
         $cur = new DateTimeImmutable($fromYmd);
         $end = new DateTimeImmutable($toYmd);
     } catch (Throwable $e) {
-        return ['cost' => '0.00000000', 'price' => '0.00000000', 'profit' => '0.00000000'];
+        return ['cost' => $zero, 'price' => $zero, 'profit' => $zero];
     }
-    $tc = '0.00000000';
-    $tp = '0.00000000';
-    $tf = '0.00000000';
+    $tc = '0';
+    $tp = '0';
+    $tf = '0';
     while ($cur <= $end) {
         $dim = (int) $cur->format('t');
         $monthEnd = $cur->modify('last day of this month');
@@ -431,9 +440,9 @@ function prorateInclusiveDateRange(string $fromYmd, string $toYmd, string $cost,
         $cur = $chunkEnd->modify('+1 day');
     }
     return [
-        'cost' => txnTrunc2($tc),
-        'price' => txnTrunc2($tp),
-        'profit' => txnTrunc2($tf),
+        'cost' => txnStoreAmount($tc),
+        'price' => txnStoreAmount($tp),
+        'profit' => txnStoreAmount($tf),
     ];
 }
 
@@ -1083,7 +1092,7 @@ function parseProfitSharingString(string $profitSharing): array
             $accountText = trim(substr($t, 0, $dash));
             $amountStr = trim(substr($t, $dash + 3));
             if ($accountText !== '' && money_is_valid($amountStr) && money_cmp($amountStr, '0') > 0) {
-                $result[] = ['account_text' => $accountText, 'amount' => txnTrunc2($amountStr)];
+                $result[] = ['account_text' => $accountText, 'amount' => txnStoreAmount($amountStr)];
             }
         }
     }
@@ -1479,9 +1488,9 @@ try {
         // 1+1/1+2/1+3：active 期间统一按 1 个月价格入账；仅 manual_inactive 才按赔付月数放大。
         if ($periodType === 'manual_inactive') {
             $mult = getManualInactiveMultiplierFromContract($p['contract'] ?? null);
-            $cost = money_mul($cost, (string) $mult, 2);
-            $price = money_mul($price, (string) $mult, 2);
-            $profit = money_mul($profit, (string) $mult, 2);
+            $cost = money_mul($cost, (string) $mult, MONEY_TX_STORE_SCALE);
+            $price = money_mul($price, (string) $mult, MONEY_TX_STORE_SCALE);
+            $profit = money_mul($profit, (string) $mult, MONEY_TX_STORE_SCALE);
         }
         $isManualInactiveCompensation = ($periodType === 'manual_inactive' && getExtraMonthsFromContract($p['contract'] ?? null) > 0);
 
@@ -1649,7 +1658,7 @@ try {
         if (!empty($p['card_merchant_id']) && money_cmp($cost, '0') > 0) {
             $txn = $baseTxn;
             $txn['account_id'] = (int) $p['card_merchant_id'];
-            $txn['amount'] = txnTrunc2($cost);
+            $txn['amount'] = txnStoreAmount($cost);
             $txn['description'] = $isManualInactiveCompensation
                 ? ("Compensation " . $compMonthLabel . ' ' . txnDescriptionAmount($cost))
                 : ("Process: Buy Price for $processLabel" . $suffix . $resendEndMarker . $dailyRangeMarker);
@@ -1674,7 +1683,7 @@ try {
             $txn = $baseTxn;
             $txn['transaction_type'] = 'LOSE';
             $txn['account_id'] = (int) $p['customer_id'];
-            $txn['amount'] = txnTrunc2($price);
+            $txn['amount'] = txnStoreAmount($price);
             $txn['description'] = $isManualInactiveCompensation
                 ? ("Compensation " . $compMonthLabel . ' ' . txnDescriptionAmount($price))
                 : ("Process: Sell Price for $processLabel" . $suffix . $resendEndMarker . $dailyRangeMarker);
@@ -1722,7 +1731,7 @@ try {
         foreach ($profitSharingEntries as $entry) {
             $accId = resolveAccountIdByText($pdo, $companyId, $entry['account_text']);
             if ($accId !== null && money_cmp($entry['amount'], '0') > 0) {
-                $proratedAmount = money_mul(money_mul($entry['amount'], $psRatio, MONEY_CALC_SCALE), (string) $psMult, 2);
+                $proratedAmount = money_mul(money_mul($entry['amount'], $psRatio, MONEY_CALC_SCALE), (string) $psMult, MONEY_TX_STORE_SCALE);
                 if (money_cmp($proratedAmount, '0') > 0) {
                     $profitSharingResolved[] = ['account_id' => $accId, 'amount' => $proratedAmount, 'account_text' => $entry['account_text']];
                     $totalPs = money_add($totalPs, $proratedAmount);
@@ -1731,16 +1740,16 @@ try {
         }
         // bank_process.profit：新版前端存「净毛利」(sell−buy−已扣 PS)，旧版/JS 存「毛利」(sell−buy)。
         // 公司 Profit 必须以本笔入账的 sell/buy 差额为毛利再扣 PS；若用 profit 再减 PS，净毛利会重复扣除分成（Once 等场景 Win/Loss 与 Description 不符）。
-        $grossProfitForTxn = money_sub($price, $cost, 2);
-        $companyProfit = money_sub($grossProfitForTxn, $totalPs, 2);
+        $grossProfitForTxn = money_sub($price, $cost, MONEY_TX_STORE_SCALE);
+        $companyProfit = money_sub($grossProfitForTxn, $totalPs, MONEY_TX_STORE_SCALE);
         if (money_cmp(money_abs($companyProfit), '0.00001') < 0) {
-            $companyProfit = '0.00000000';
+            $companyProfit = money_normalize('0', MONEY_TX_STORE_SCALE);
         }
         // Profit 被 Share 抵消为 0.00 时，也要保留一条 Profit 记录给 Transaction Payment / History。
         if (!empty($p['profit_account_id']) && money_cmp($companyProfit, '0') >= 0) {
             $txn = $baseTxn;
             $txn['account_id'] = (int) $p['profit_account_id'];
-            $txn['amount'] = txnTrunc2($companyProfit);
+            $txn['amount'] = txnStoreAmount($companyProfit);
             $txn['description'] = $isManualInactiveCompensation
                 ? ("Compensation " . $compMonthLabel . ' ' . txnDescriptionAmount($profit))
                 : ("Process: Profit for $processLabel" . $suffix . $resendEndMarker . $dailyRangeMarker);
@@ -1763,10 +1772,10 @@ try {
         foreach ($profitSharingResolved as $ps) {
             $txn = $baseTxn;
             $txn['account_id'] = (int) $ps['account_id'];
-            $txn['amount'] = txnTrunc2($ps['amount']);
+            $txn['amount'] = txnStoreAmount($ps['amount']);
             $txn['description'] = $isManualInactiveCompensation
                 ? ("Compensation " . $compMonthLabel . ' ' . txnDescriptionAmount($ps['amount']))
-                : ("Process: Profit Sharing for $processLabel (" . $ps['account_text'] . ' ' . money_out($ps['amount'], 2) . ')' . $suffix . $resendEndMarker . $dailyRangeMarker);
+                : ("Process: Profit Sharing for $processLabel (" . $ps['account_text'] . ' ' . txnDescriptionAmount($ps['amount']) . ')' . $suffix . $resendEndMarker . $dailyRangeMarker);
             if ($has_approval_status) {
                 applyBankProcessPostApprovalFields(
                     $pdo,
@@ -1982,6 +1991,16 @@ try {
 
     // 入账成功后立刻清理 Transaction List 缓存，避免 Resend 后短时间显示旧账单。
     clearTransactionSearchCache();
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    require_once __DIR__ . '/../includes/ledger_realtime.php';
+    $listScope = [
+        'mode' => 'company',
+        'company_id' => (int) $company_id,
+        'group_scope_id' => 0,
+    ];
+    realtime_publish_scope($listScope, 'processes', 'post_to_transaction');
+    tx_ledger_realtime_publish_scope($listScope, 'post_to_transaction');
 
     if ($createdCount === 0 && $skippedFutureMonthlyDueCount > 0) {
         jsonResponse(true, "未到应付日，暂不生成交易记录（Resend 除外）。", [

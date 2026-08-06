@@ -1,4 +1,5 @@
 import { buildApiUrl } from "../utils/apiUrl.js";
+import { orderCurrencyCodesForCompany } from "./currencyOrder.js";
 import { fetchJson, assertApiOk } from "./fetchJson.js";
 import {
   appendTransactionMaintenanceScope,
@@ -170,4 +171,123 @@ export function formatMaintenanceAmount(value) {
   const val = parseFloat(value);
   if (Number.isNaN(val)) return "-";
   return val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Soft-deleted bankprocess-maintenance rows cannot be selected. */
+export function isBankprocessMaintenanceRowSelectable(row) {
+  if (!row) return false;
+  return !(row.is_deleted === 1 || row.is_deleted === "1" || row.is_deleted === true);
+}
+
+/** One Post/Resend batch: same DTS + bank process + period + transaction date. */
+export function bankprocessMaintenanceBatchKey(row) {
+  const ts = String(row?.dts_created ?? "").trim();
+  const bpId = Number(row?.source_bank_process_id) || 0;
+  const pt = String(row?.period_type ?? "monthly").trim().toLowerCase() || "monthly";
+  const txDate = String(row?.date ?? "").trim();
+  if (ts && bpId > 0) return `${ts}|${bpId}|${pt}|${txDate}`;
+  if (ts) return ts;
+  const tid = row?.transaction_id;
+  return tid != null && tid !== "" ? `__tid_${tid}` : "";
+}
+
+function bankprocessMaintenanceIdsInBatch(rows, batchKey) {
+  if (!batchKey || !Array.isArray(rows)) return [];
+  const ids = [];
+  for (const row of rows) {
+    if (!isBankprocessMaintenanceRowSelectable(row)) continue;
+    if (bankprocessMaintenanceBatchKey(row) !== batchKey) continue;
+    const tid = Number(row.transaction_id);
+    if (Number.isFinite(tid) && tid > 0) ids.push(tid);
+  }
+  return ids;
+}
+
+/** Toggle all selectable rows in the same Post/Resend batch (desktop parity). */
+export function toggleBankprocessMaintenanceBatchSelection(selectedIds, rows, clickedTransactionId) {
+  const clickedId = Number(clickedTransactionId);
+  if (!Number.isFinite(clickedId) || clickedId <= 0) return selectedIds;
+
+  const clickedRow = rows.find((r) => Number(r.transaction_id) === clickedId);
+  if (!clickedRow || !isBankprocessMaintenanceRowSelectable(clickedRow)) return selectedIds;
+
+  const batchKey = bankprocessMaintenanceBatchKey(clickedRow);
+  const batchIds = bankprocessMaintenanceIdsInBatch(rows, batchKey);
+  if (batchIds.length === 0) return selectedIds;
+
+  const prev = selectedIds instanceof Set ? [...selectedIds] : Array.isArray(selectedIds) ? selectedIds : [];
+  const selecting = !prev.includes(clickedId);
+  if (selecting) {
+    const next = new Set(prev);
+    batchIds.forEach((id) => next.add(id));
+    return next;
+  }
+  return new Set(prev.filter((id) => !batchIds.includes(id)));
+}
+
+export function bankprocessMaintenanceRowKey(row, index) {
+  const id = Number(row?.transaction_id);
+  if (Number.isFinite(id) && id > 0) return `bp-${id}`;
+  return `bp-v-${index}-${String(row?.dts_created ?? "")}`;
+}
+
+/** Company currency codes for Bankprocess Maintenance filter (desktop company order). */
+export async function fetchCompanyCurrencies(companyId, signal) {
+  const params = new URLSearchParams();
+  if (companyId) params.set("company_id", String(companyId));
+  const qs = params.toString();
+  const { res, json } = await fetchJson(
+    buildApiUrl(`api/transactions/get_company_currencies_api.php${qs ? `?${qs}` : ""}`),
+    { signal },
+  );
+  if (!res.ok || !json?.success) return [];
+  const raw = Array.isArray(json.data) ? json.data : [];
+  const codes = raw
+    .map((item) => {
+      if (typeof item === "string") return item.trim().toUpperCase();
+      return String(item?.code ?? item?.currency ?? item?.currency_code ?? "")
+        .trim()
+        .toUpperCase();
+    })
+    .filter(Boolean);
+  return orderCurrencyCodesForCompany(codes, companyId, signal);
+}
+
+/**
+ * Bankprocess Maintenance search (transactions with source_bank_process_id).
+ * Company scope only — API does not support group aggregate.
+ */
+export async function searchBankprocessMaintenance({
+  companyId,
+  dateFrom,
+  dateTo,
+  currency,
+  query,
+  signal,
+}) {
+  const params = new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+  });
+  if (companyId) params.set("company_id", String(companyId));
+  if (currency) params.set("currency", String(currency).toUpperCase());
+  if (query?.trim()) params.set("q", query.trim().toUpperCase());
+
+  const { res, json } = await fetchJson(
+    buildApiUrl(`api/bankprocess_maintenance/search_api.php?${params.toString()}`),
+    { signal },
+  );
+  assertApiOk(res, json, "Search failed");
+  return Array.isArray(json.data) ? json.data : [];
+}
+
+/** Soft-delete bank-process-sourced transactions. */
+export async function deleteBankprocessMaintenanceRecords({ transactionIds, signal }) {
+  const { res, json } = await fetchJson(buildApiUrl("api/bankprocess_maintenance/delete_api.php"), {
+    method: "POST",
+    body: JSON.stringify({ transaction_ids: transactionIds }),
+    signal,
+  });
+  assertApiOk(res, json, "Delete failed");
+  return json.data || {};
 }

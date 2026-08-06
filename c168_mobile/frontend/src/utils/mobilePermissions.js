@@ -68,6 +68,15 @@ export function canAccessPaymentMaintenance(me) {
   return canAccessFullMaintenance(me);
 }
 
+/**
+ * Bankprocess Maintenance (audit/delete bank-process-sourced txs).
+ * Desktop: full maintenance + company_has_bank.
+ */
+export function canAccessBankprocessMaintenance(me) {
+  if (!canAccessFullMaintenance(me)) return false;
+  return Boolean(me?.company_has_bank);
+}
+
 /** Maintenance hub / More entry visibility. */
 export function canAccessMaintenance(me) {
   return canAccessTransactionMaintenance(me);

@@ -35,6 +35,7 @@ require_once __DIR__ . '/../../includes/session_user_payload_cache.php';
     require_once __DIR__ . '/../../includes/maintenance_gate.php';
     require_once __DIR__ . '/../../includes/login_scope.php';
     require_once __DIR__ . '/../../includes/group_company_access.php';
+    require_once __DIR__ . '/../../includes/group_tenant_v2.php';
     require_once __DIR__ . '/../../includes/company_expiration.php';
     require_once __DIR__ . '/../../includes/auth_invalidation.php';
 } catch (Throwable $e) {
@@ -204,19 +205,99 @@ try {
         exit;
     }
     
-    $stmt = $pdo->prepare("
-        SELECT 
-            u.*,
-            c.id AS company_numeric_id,
-            c.company_id AS company_code,
-            c.group_id,
-            c.expiration_date
-        FROM user u
-        INNER JOIN user_company_map ucm ON u.id = ucm.user_id
-        INNER JOIN company c ON ucm.company_id = c.id
-        WHERE UPPER(u.login_id) = UPPER(?) AND (UPPER(c.company_id) = ? OR UPPER(c.group_id) = ?) AND u.status = 'active'
-    ");
-    $stmt->execute([$login_id, $company_id, $company_id]);
+    $isGroupTenantLogin = function_exists('gt_v2_is_active_group_tenant_code')
+        && gt_v2_is_active_group_tenant_code($pdo, $company_id);
+
+    // Phase 7: first-class group tenant → prefer user_group_map auth (no subsidiary pin).
+    if ($isGroupTenantLogin) {
+        $gtUserEarly = function_exists('gt_v2_try_authenticate_user')
+            ? gt_v2_try_authenticate_user($pdo, $login_id, $password, $company_id)
+            : ['ok' => false];
+        if (!empty($gtUserEarly['ok']) && !empty($gtUserEarly['user']) && !empty($gtUserEarly['group'])) {
+            $user = $gtUserEarly['user'];
+            $groupRow = $gtUserEarly['group'];
+            $_SESSION['user_id'] = $user['id'];
+            session_user_payload_cache_clear();
+            $_SESSION['login_id'] = $user['login_id'];
+            $_SESSION['name'] = $user['name'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['user_type'] = 'user';
+            $_SESSION['company_id'] = null;
+            $_SESSION['company_code'] = gt_v2_normalize_group_code((string) ($groupRow['group_code'] ?? $company_id));
+            $_SESSION['last_activity'] = time();
+            $_SESSION['read_only'] = isset($user['read_only']) ? (int) $user['read_only'] : 1;
+            $_SESSION['secondary_password_verified'] = true;
+
+            $remember_me = isset($_POST['remember_me']) ? $_POST['remember_me'] : false;
+            if ($remember_me) {
+                $remember_token = bin2hex(random_bytes(32));
+                $stmt = $pdo->prepare("UPDATE user SET remember_token = ?, remember_token_expires = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?");
+                $stmt->execute([$remember_token, $user['id']]);
+                setcookie('remember_token', $remember_token, time() + (30 * 24 * 60 * 60), "/", "", false, true);
+            } else {
+                invalidate_user_remember_token($pdo, (int) $user['id']);
+                clear_remember_token_cookie();
+            }
+
+            auth_store_password_fingerprint((string) ($user['password'] ?? ''));
+            $userStoredPassword = (string) ($user['password'] ?? '');
+            $userRehashed = maybe_rehash_password($password, $userStoredPassword);
+            if ($userRehashed !== null) {
+                $pdo->prepare('UPDATE user SET password = ? WHERE id = ?')->execute([$userRehashed, $user['id']]);
+                auth_store_password_fingerprint($userRehashed);
+            }
+            $pdo->prepare("UPDATE user SET last_login = NOW() WHERE id = ?")->execute([$user['id']]);
+
+            gt_v2_apply_group_login_session($groupRow, $company_id);
+            if (function_exists('gc_hydrate_session_assigned_tenants')) {
+                gc_hydrate_session_assigned_tenants($pdo);
+            }
+            $loginFilter = resolve_login_identifier_scope($pdo, $company_id);
+            echo json_encode([
+                'status' => 'success',
+                'redirect' => '/dashboard',
+                'company_id' => null,
+                'login_scope' => $loginFilter['scope'],
+                'login_identifier' => $loginFilter['identifier'],
+            ]);
+            exit;
+        }
+        if (!empty($gtUserEarly['password_match']) && !empty($gtUserEarly['expired'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Company or Group has expired.']);
+            exit;
+        }
+    }
+
+    // Group-tenant login: match company_id only (never pin via c.group_id → first subsidiary).
+    if ($isGroupTenantLogin) {
+        $stmt = $pdo->prepare("
+            SELECT 
+                u.*,
+                c.id AS company_numeric_id,
+                c.company_id AS company_code,
+                c.group_id,
+                c.expiration_date
+            FROM user u
+            INNER JOIN user_company_map ucm ON u.id = ucm.user_id
+            INNER JOIN company c ON ucm.company_id = c.id
+            WHERE UPPER(u.login_id) = UPPER(?) AND UPPER(c.company_id) = ? AND u.status = 'active'
+        ");
+        $stmt->execute([$login_id, $company_id]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT 
+                u.*,
+                c.id AS company_numeric_id,
+                c.company_id AS company_code,
+                c.group_id,
+                c.expiration_date
+            FROM user u
+            INNER JOIN user_company_map ucm ON u.id = ucm.user_id
+            INNER JOIN company c ON ucm.company_id = c.id
+            WHERE UPPER(u.login_id) = UPPER(?) AND (UPPER(c.company_id) = ? OR UPPER(c.group_id) = ?) AND u.status = 'active'
+        ");
+        $stmt->execute([$login_id, $company_id, $company_id]);
+    }
     $matched_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $user = null;
@@ -326,15 +407,141 @@ try {
             echo json_encode(['status' => 'error', 'message' => 'Company or Group has expired.']);
             exit;
         }
+
+        // Phase 1 (group tenant v2): Admin via user_group_map when no company under group
+        $gtUser = function_exists('gt_v2_try_authenticate_user')
+            ? gt_v2_try_authenticate_user($pdo, $login_id, $password, $company_id)
+            : ['ok' => false];
+        if (!empty($gtUser['ok']) && !empty($gtUser['user']) && !empty($gtUser['group'])) {
+            $user = $gtUser['user'];
+            $groupRow = $gtUser['group'];
+            $_SESSION['user_id'] = $user['id'];
+            session_user_payload_cache_clear();
+            $_SESSION['login_id'] = $user['login_id'];
+            $_SESSION['name'] = $user['name'];
+            $_SESSION['role'] = $user['role'];
+            $_SESSION['user_type'] = 'user';
+            $_SESSION['company_id'] = null;
+            $_SESSION['company_code'] = gt_v2_normalize_group_code((string) ($groupRow['group_code'] ?? $company_id));
+            $_SESSION['last_activity'] = time();
+            $_SESSION['read_only'] = isset($user['read_only']) ? (int) $user['read_only'] : 1;
+            $_SESSION['secondary_password_verified'] = true;
+
+            $remember_me = isset($_POST['remember_me']) ? $_POST['remember_me'] : false;
+            if ($remember_me) {
+                $remember_token = bin2hex(random_bytes(32));
+                $stmt = $pdo->prepare("UPDATE user SET remember_token = ?, remember_token_expires = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE id = ?");
+                $stmt->execute([$remember_token, $user['id']]);
+                setcookie('remember_token', $remember_token, time() + (30 * 24 * 60 * 60), "/", "", false, true);
+            } else {
+                invalidate_user_remember_token($pdo, (int) $user['id']);
+                clear_remember_token_cookie();
+            }
+
+            auth_store_password_fingerprint((string) ($user['password'] ?? ''));
+            $userStoredPassword = (string) ($user['password'] ?? '');
+            $userRehashed = maybe_rehash_password($password, $userStoredPassword);
+            if ($userRehashed !== null) {
+                $pdo->prepare('UPDATE user SET password = ? WHERE id = ?')->execute([$userRehashed, $user['id']]);
+                auth_store_password_fingerprint($userRehashed);
+            }
+            $pdo->prepare("UPDATE user SET last_login = NOW() WHERE id = ?")->execute([$user['id']]);
+
+            gt_v2_apply_group_login_session($groupRow, $company_id);
+            if (function_exists('gc_hydrate_session_assigned_tenants')) {
+                gc_hydrate_session_assigned_tenants($pdo);
+            }
+            $loginFilter = resolve_login_identifier_scope($pdo, $company_id);
+            echo json_encode([
+                'status' => 'success',
+                'redirect' => '/dashboard',
+                'company_id' => null,
+                'login_scope' => $loginFilter['scope'],
+                'login_identifier' => $loginFilter['identifier'],
+            ]);
+            exit;
+        }
+        if (!empty($gtUser['password_match']) && !empty($gtUser['expired'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Company or Group has expired.']);
+            exit;
+        }
+
         // User 表找不到，尝试从 owner 表验证
-        // 通过 company 表关联查询 owner
-        $stmt = $pdo->prepare("
-            SELECT o.*, c.id AS company_numeric_id, c.company_id AS company_code, c.group_id, c.expiration_date
-            FROM owner o
-            INNER JOIN company c ON c.owner_id = o.id
-            WHERE UPPER(o.owner_code) = UPPER(?) AND (UPPER(c.company_id) = ? OR UPPER(c.group_id) = ?)
-        ");
-        $stmt->execute([$login_id, $company_id, $company_id]);
+        // Phase 7: active groups.group_code → Owner group session (no subsidiary pin via c.group_id).
+        $isGroupTenantOwnerLogin = function_exists('gt_v2_is_active_group_tenant_code')
+            && gt_v2_is_active_group_tenant_code($pdo, $company_id);
+
+        if ($isGroupTenantOwnerLogin) {
+            $gtOwnerEarly = function_exists('gt_v2_try_authenticate_owner')
+                ? gt_v2_try_authenticate_owner($pdo, $login_id, $password, $company_id)
+                : ['ok' => false];
+            if (!empty($gtOwnerEarly['ok']) && !empty($gtOwnerEarly['owner']) && !empty($gtOwnerEarly['group'])) {
+                $owner = $gtOwnerEarly['owner'];
+                $groupRow = $gtOwnerEarly['group'];
+                $passwordForFingerprint = (string) ($owner['password'] ?? '');
+                if (!empty($gtOwnerEarly['upgrade_plain'])) {
+                    $hashed_password = secure_hash_password($password);
+                    $pdo->prepare('UPDATE owner SET password = ? WHERE id = ?')->execute([$hashed_password, $owner['id']]);
+                    $passwordForFingerprint = $hashed_password;
+                } else {
+                    $ownerRehashed = maybe_rehash_password($password, $passwordForFingerprint);
+                    if ($ownerRehashed !== null) {
+                        $pdo->prepare('UPDATE owner SET password = ? WHERE id = ?')->execute([$ownerRehashed, $owner['id']]);
+                        $passwordForFingerprint = $ownerRehashed;
+                    }
+                }
+
+                $_SESSION['user_id'] = $owner['id'];
+                session_user_payload_cache_clear();
+                $_SESSION['login_id'] = $owner['owner_code'];
+                $_SESSION['name'] = $owner['name'];
+                $_SESSION['role'] = 'owner';
+                $_SESSION['user_type'] = 'owner';
+                $_SESSION['owner_id'] = $owner['id'];
+                $_SESSION['real_owner_id'] = $owner['id'];
+                $_SESSION['owner_code'] = $owner['owner_code'];
+                $_SESSION['company_id'] = null;
+                $_SESSION['company_code'] = gt_v2_normalize_group_code((string) ($groupRow['group_code'] ?? $company_id));
+                $_SESSION['last_activity'] = time();
+                unset($_SESSION['secondary_password_verified']);
+
+                auth_store_password_fingerprint($passwordForFingerprint);
+                gt_v2_apply_group_login_session($groupRow, $company_id);
+                $loginFilter = resolve_login_identifier_scope($pdo, $company_id);
+                echo json_encode([
+                    'status' => 'success',
+                    'redirect' => '/owner-secondary-password',
+                    'user_type' => 'owner',
+                    'company_id' => null,
+                    'login_scope' => $loginFilter['scope'],
+                    'login_identifier' => $loginFilter['identifier'],
+                ]);
+                exit;
+            }
+            if (!empty($gtOwnerEarly['password_match']) && !empty($gtOwnerEarly['expired'])) {
+                echo json_encode(['status' => 'error', 'message' => 'Company or Group has expired.']);
+                exit;
+            }
+        }
+
+        // 通过 company 表关联查询 owner（group-tenant：仅 company_id，禁止 group_id pin）
+        if ($isGroupTenantOwnerLogin) {
+            $stmt = $pdo->prepare("
+                SELECT o.*, c.id AS company_numeric_id, c.company_id AS company_code, c.group_id, c.expiration_date
+                FROM owner o
+                INNER JOIN company c ON c.owner_id = o.id
+                WHERE UPPER(o.owner_code) = UPPER(?) AND UPPER(c.company_id) = ?
+            ");
+            $stmt->execute([$login_id, $company_id]);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT o.*, c.id AS company_numeric_id, c.company_id AS company_code, c.group_id, c.expiration_date
+                FROM owner o
+                INNER JOIN company c ON c.owner_id = o.id
+                WHERE UPPER(o.owner_code) = UPPER(?) AND (UPPER(c.company_id) = ? OR UPPER(c.group_id) = ?)
+            ");
+            $stmt->execute([$login_id, $company_id, $company_id]);
+        }
         $matched_owners = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         $owner = null;
@@ -415,7 +622,54 @@ try {
                 'login_identifier' => $loginFilter['identifier'],
             ]);
         } else {
-            if ($owner_password_match && $owner_has_expired) {
+            // Phase 1: Owner owns groups row with zero companies
+            $gtOwner = function_exists('gt_v2_try_authenticate_owner')
+                ? gt_v2_try_authenticate_owner($pdo, $login_id, $password, $company_id)
+                : ['ok' => false];
+            if (!empty($gtOwner['ok']) && !empty($gtOwner['owner']) && !empty($gtOwner['group'])) {
+                $owner = $gtOwner['owner'];
+                $groupRow = $gtOwner['group'];
+                $passwordForFingerprint = (string) ($owner['password'] ?? '');
+                if (!empty($gtOwner['upgrade_plain'])) {
+                    $hashed_password = secure_hash_password($password);
+                    $pdo->prepare('UPDATE owner SET password = ? WHERE id = ?')->execute([$hashed_password, $owner['id']]);
+                    $passwordForFingerprint = $hashed_password;
+                } else {
+                    $ownerRehashed = maybe_rehash_password($password, $passwordForFingerprint);
+                    if ($ownerRehashed !== null) {
+                        $pdo->prepare('UPDATE owner SET password = ? WHERE id = ?')->execute([$ownerRehashed, $owner['id']]);
+                        $passwordForFingerprint = $ownerRehashed;
+                    }
+                }
+
+                $_SESSION['user_id'] = $owner['id'];
+                session_user_payload_cache_clear();
+                $_SESSION['login_id'] = $owner['owner_code'];
+                $_SESSION['name'] = $owner['name'];
+                $_SESSION['role'] = 'owner';
+                $_SESSION['user_type'] = 'owner';
+                $_SESSION['owner_id'] = $owner['id'];
+                $_SESSION['real_owner_id'] = $owner['id'];
+                $_SESSION['owner_code'] = $owner['owner_code'];
+                $_SESSION['company_id'] = null;
+                $_SESSION['company_code'] = gt_v2_normalize_group_code((string) ($groupRow['group_code'] ?? $company_id));
+                $_SESSION['last_activity'] = time();
+                unset($_SESSION['secondary_password_verified']);
+
+                auth_store_password_fingerprint($passwordForFingerprint);
+                gt_v2_apply_group_login_session($groupRow, $company_id);
+                $loginFilter = resolve_login_identifier_scope($pdo, $company_id);
+                echo json_encode([
+                    'status' => 'success',
+                    'redirect' => '/owner-secondary-password',
+                    'user_type' => 'owner',
+                    'company_id' => null,
+                    'login_scope' => $loginFilter['scope'],
+                    'login_identifier' => $loginFilter['identifier'],
+                ]);
+            } elseif (!empty($gtOwner['password_match']) && !empty($gtOwner['expired'])) {
+                echo json_encode(['status' => 'error', 'message' => 'Company or Group has expired.']);
+            } elseif ($owner_password_match && $owner_has_expired) {
                 echo json_encode(['status' => 'error', 'message' => 'Company or Group has expired.']);
             } else {
                 echo json_encode(['status' => 'error', 'message' => 'Username or password is incorrect']);

@@ -48,6 +48,8 @@ import { useSummaryOverlays } from "./hooks/useSummaryOverlays.js";
 import { fetchSummaryAccountList } from "./lib/summaryApi.js";
 import { saveSummaryTemplatePure } from "./formula/summarySaveTemplatePure.js";
 import { recalculateRowAmounts } from "./table/summaryRowAmount.js";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
 import { pushSummaryNotification } from "./lib/summaryNotify.js";
 
 import { spaPath } from "../../utils/routing/pageRoutes.js";
@@ -214,6 +216,8 @@ function DataCaptureSummaryPureInner() {
 
     processId: capture.processId,
 
+    processCode: capture.processCode,
+
     tableData: capture.transformedTableData,
 
     rows,
@@ -235,6 +239,21 @@ function DataCaptureSummaryPureInner() {
     setAccounts(accounts);
 
   }, [captureScope, setAccounts]);
+
+
+
+  useRealtimeDomain(
+    [REALTIME_DOMAINS.DATACAPTURE, REALTIME_DOMAINS.MAINTENANCE],
+    (detail) => {
+      void refreshAccountList();
+      const src = String(detail?.source || "");
+      // Formula / capture maintenance writes — refresh grid, not only accounts.
+      if (/^(formula_|capture_|summary_|restore)/.test(src)) {
+        void pageActions.handleRefresh();
+      }
+    },
+    { enabled: sessionReady && Boolean(captureScope) },
+  );
 
 
 

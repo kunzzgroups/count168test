@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useEffect, useCallback, useRef } from "react";
-import { Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useOutletContext, useSearchParams } from "react-router-dom";
 import TransactionPaymentHistoryPage from "./TransactionPaymentHistoryPage.jsx";
 import { isPaymentHistoryView } from "./lib/transactionPaymentHistoryUrl.js";
 import TransactionAddSection from "./components/TransactionAddSection.jsx";
@@ -24,6 +24,7 @@ import { getTransactionText, TRANSACTION_I18N } from "../../translateFile/pages/
 import { transactionScopeApiParams } from "./lib/transactionScope.js";
 import { clearInlineScrollLock } from "../../utils/layout/clearInlineScrollLock.js";
 import { spaPath } from "../../utils/routing/pageRoutes.js";
+import { consumeSidebarPageSoftRefresh } from "../../utils/routing/sidebarPageSoftRefresh.js";
 
 /** Cleared on mount so SPA navigation cannot leave stale route classes on `body` before paint (e.g. Process uses `useEffect`; this page uses `useLayoutEffect`, which runs first). */
 const ROUTE_BODY_CLASSES_TO_CLEAR = [
@@ -51,6 +52,7 @@ const TYPE_SEARCH_FULL_ACCOUNT_LEDGER_TYPES = new Set([
   "RATE",
   "ADJUSTMENT",
   "PROFIT",
+  "ALL",
 ]);
 
 export default function TransactionPaymentPage() {
@@ -63,6 +65,7 @@ export default function TransactionPaymentPage() {
 
 function TransactionPaymentPageMain() {
   const location = useLocation();
+  const { pageRefreshKey = 0 } = useOutletContext() || {};
   const todayDmy = useMemo(() => formatDmy(new Date()), []);
   
   // Translation
@@ -142,6 +145,16 @@ function TransactionPaymentPageMain() {
     rateDate: form.rateDate,
     setRateDate: form.setRateDate,
   });
+
+  // Sidebar same-page re-click: force filters back to defaults (keep company/group).
+  const lastHandledSoftRefreshKeyRef = useRef(0);
+  useLayoutEffect(() => {
+    if (!pageRefreshKey) return;
+    if (!consumeSidebarPageSoftRefresh("transaction")) return;
+    if (pageRefreshKey === lastHandledSoftRefreshKeyRef.current) return;
+    lastHandledSoftRefreshKeyRef.current = pageRefreshKey;
+    void search.resetPageFiltersToDefaults?.();
+  }, [pageRefreshKey, search.resetPageFiltersToDefaults]);
 
   // 7. Sync & Lifecycle
   const canApproveContra = useMemo(() => {
@@ -234,10 +247,9 @@ function TransactionPaymentPageMain() {
   }, [search.runTypeSearch, form.txType]);
 
   const onExitTypeSearch = useCallback(async () => {
+    // Keep right form date (users often book many payments on the same day).
     await search.exitTypeSearchAndRefresh();
-    form.setTxDate(todayDmy);
-    form.setRateDate(todayDmy);
-  }, [search.exitTypeSearchAndRefresh, form.setTxDate, form.setRateDate, todayDmy]);
+  }, [search.exitTypeSearchAndRefresh]);
 
   const onSearch = useCallback(() => {
     search.runSearch({ silent: false });

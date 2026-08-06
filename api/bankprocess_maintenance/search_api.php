@@ -9,6 +9,7 @@ session_start();
 session_write_close(); // 释放 session 锁，允许并发 AJAX 请求并行执行
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/config.php';
+require_once __DIR__ . '/../../includes/group_company_access.php';
 require_once __DIR__ . '/../transactions/bank_process_bill_display.php';
 
 /**
@@ -456,6 +457,9 @@ try {
     }
 
     jsonResponse(true, '查询成功', $data);
-} catch (Exception $e) {
-    jsonResponse(false, $e->getMessage(), null, 400);
+} catch (Throwable $e) {
+    error_log('Bank Process Maintenance Search failed: ' . $e->getMessage());
+    $httpCode = $e instanceof Exception ? 400 : 500;
+    $message = $e instanceof Exception ? $e->getMessage() : '查询失败，请稍后重试';
+    jsonResponse(false, $message, null, $httpCode);
 }

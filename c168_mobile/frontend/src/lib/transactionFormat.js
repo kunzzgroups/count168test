@@ -92,6 +92,10 @@ export function formatHistoryBalanceMoney(v) {
 
 const RATE_MAX_DECIMALS = 8;
 const RATE_HISTORY_MAX_DECIMALS = 6;
+/** Non-RATE manual submit store scale (display still round-2). */
+export const TX_STORE_MAX_DECIMALS = 6;
+/** RATE amount store scale (display still round-2). */
+export const RATE_STORE_MAX_DECIMALS = 8;
 
 /** Same as legacy `js/transaction.js` countDecimalPlaces (RATE token width checks). */
 export function countRateDecimalPlaces(value) {
@@ -110,6 +114,19 @@ function truncateDecimalString(value, scale) {
   const frac = fracRaw.slice(0, Math.max(0, scale));
   if (!frac) return negative ? `-${intPart}` : intPart;
   return negative ? `-${intPart}.${frac}` : `${intPart}.${frac}`;
+}
+
+/**
+ * Persist amounts without round-2. Truncates to `scale` (RATE=8, other=6).
+ * UI display should keep using formatRateAmount / half-up 2dp.
+ */
+export function formatAmountForStore(value, scale = RATE_STORE_MAX_DECIMALS) {
+  try {
+    const normalized = MoneyDecimal.toDecimal(value || "0").toString();
+    return truncateDecimalString(normalized, scale);
+  } catch {
+    return "0";
+  }
 }
 
 function normalizeRateForSubmit(value) {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { assetUrl, buildApiUrl } from "../../utils/core/apiUrl.js";
 import "../../../public/css/domain.css";
@@ -7,13 +7,13 @@ import "../../../public/css/accountCSS.css";
 import "../../../public/css/userlist.css";
 import { spaPath } from "../../utils/routing/pageRoutes.js";
 import {
-  ROWS_PER_PAGE,
   MAX_VISIBLE_CHIPS,
   hasProtectedCompany,
   forceSearchValue,
   normalizeDomainFeeSettingsFromApi,
-  formatDomainFeeToolbarChip,
 } from "./domainHelpers.js";
+import { useAutoListPageSize } from "../../hooks/useAutoListPageSize.js";
+import { PAGE_SIZE_MIN, PAGE_SIZE_MAX } from "../../constants/listPageSize.js";
 
 // Sub-components
 import DomainNotification, { showDomainAlert } from "./components/DomainNotification.jsx";
@@ -26,6 +26,8 @@ import { getDomainText } from "../../translateFile/pages/domainTranslate.js";
 import { useAuthSession } from "../../context/AuthSessionContext.jsx";
 import { canAccessC168DomainPages } from "../../utils/company/loginScope.js";
 import { fetchOwnerCompaniesAll, readPersistedDashboardGcFilter } from "../../utils/company/sharedCompanyFilter.js";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
 
 export default function DomainPage() {
   const navigate = useNavigate();
@@ -67,6 +69,7 @@ export default function DomainPage() {
   // ── Search / Pagination ────────────────────────────────────────────────────
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const listRegionRef = useRef(null);
 
   // ── Checkboxes for delete ──────────────────────────────────────────────────
   const [checkedIds, setCheckedIds] = useState(new Set());
@@ -81,16 +84,44 @@ export default function DomainPage() {
   const [expModal, setExpModal] = useState(null);       // companies array
   const [groupExpModal, setGroupExpModal] = useState(null); // groups array
 
-  // ── Domain fee price (for share calc + toolbar chips) ─────────────────────
+  // ── Domain fee price (for share calc + Price modal) ───────────────────────
   const [domainPeriodPrices, setDomainPeriodPrices] = useState(null);
-  const feeChipCompany = useMemo(
-    () => (domainPeriodPrices ? formatDomainFeeToolbarChip(domainPeriodPrices.company) : ""),
-    [domainPeriodPrices]
-  );
-  const feeChipGroup = useMemo(
-    () => (domainPeriodPrices ? formatDomainFeeToolbarChip(domainPeriodPrices.group) : ""),
-    [domainPeriodPrices]
-  );
+
+  // ── Fee summary ────────────────────────────────────────────────────────────
+  function refreshFeeSummary() {
+    fetch(buildApiUrl("api/domain/domain_api.php"), {
+      cache: "no-cache", method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "get_domain_fee_settings" }),
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          setDomainPeriodPrices(normalizeDomainFeeSettingsFromApi(res.data));
+        }
+      })
+      .catch(() => {});
+  }
+
+  const loadDomains = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const r2 = await fetch(buildApiUrl("api/domain/domain_api.php"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list" }),
+      });
+      const j2 = await r2.json();
+      if (!r2.ok || !j2?.success) {
+        if (!silent) setLoadError(j2?.message || getDomainText(lang, "failedToLoadDomainData"));
+        return;
+      }
+      setDomains(Array.isArray(j2?.data?.domains) ? j2.data.domains : []);
+      refreshFeeSummary();
+    } catch {
+      if (!silent) setLoadError(getDomainText(lang, "failedToLoadDomainData"));
+    }
+  }, [lang]);
 
   // ── Initial data load (session from AuthenticatedLayout) ─────────────────────
   useEffect(() => {
@@ -111,44 +142,19 @@ export default function DomainPage() {
           navigate(spaPath("dashboard"), { replace: true });
           return;
         }
-
-        const r2 = await fetch(buildApiUrl("api/domain/domain_api.php"), {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "list" }),
-        });
-        const j2 = await r2.json();
-        if (!r2.ok || !j2?.success) {
-          if (!cancelled) setLoadError(j2?.message || t("failedToLoadDomainData"));
-          return;
-        }
-        if (!cancelled) setDomains(Array.isArray(j2?.data?.domains) ? j2.data.domains : []);
-        refreshFeeSummary();
+        if (!cancelled) await loadDomains();
       } catch {
-        if (!cancelled) setLoadError(t("failedToLoadDomainData"));
+        if (!cancelled) setLoadError(getDomainText(lang, "failedToLoadDomainData"));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [sessionReady, me, navigate]);
+  }, [sessionReady, me, navigate, loadDomains, lang]);
 
-  // ── Fee summary ────────────────────────────────────────────────────────────
-  function refreshFeeSummary() {
-    fetch(buildApiUrl("api/domain/domain_api.php"), {
-      cache: "no-cache", method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get_domain_fee_settings" }),
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && res.data) {
-          setDomainPeriodPrices(normalizeDomainFeeSettingsFromApi(res.data));
-        }
-      })
-      .catch(() => {});
-  }
+  useRealtimeDomain(REALTIME_DOMAINS.DOMAIN, () => {
+    void loadDomains({ silent: true });
+  }, { enabled: sessionReady && Boolean(me) });
 
   // ── Filtered + paginated list ──────────────────────────────────────────────
   const filteredDomains = useMemo(() => {
@@ -167,12 +173,23 @@ export default function DomainPage() {
     });
   }, [domains, searchTerm]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredDomains.length / ROWS_PER_PAGE));
+  const pageSize = useAutoListPageSize({
+    listRegionRef,
+    rowSelector: ".domain-list-row",
+    headerSelector: ".domain-list-table-header",
+    paginationSelector: ".pagination-container",
+    minRows: PAGE_SIZE_MIN,
+    maxRows: PAGE_SIZE_MAX,
+    stableRowHeight: true,
+    remeasureDeps: [filteredDomains.length, searchTerm, lang, currentPage],
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredDomains.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
   const pagedDomains = useMemo(() => {
-    const start = (safePage - 1) * ROWS_PER_PAGE;
-    return filteredDomains.slice(start, start + ROWS_PER_PAGE);
-  }, [filteredDomains, safePage]);
+    const start = (safePage - 1) * pageSize;
+    return filteredDomains.slice(start, start + pageSize);
+  }, [filteredDomains, safePage, pageSize]);
 
   // Reset to page 1 on search change
   useEffect(() => { setCurrentPage(1); }, [searchTerm]);
@@ -352,26 +369,6 @@ export default function DomainPage() {
             >
               {t("price")}
             </button>
-            {domainPeriodPrices && (
-              <div className="domain-fee-price-chips" aria-label={t("displayPrices")}>
-                <button
-                  type="button"
-                  className="domain-fee-price-chip domain-fee-price-chip--company"
-                  title={t("feeChipCompanyAria")}
-                  onClick={() => setFeeModal(true)}
-                >
-                  C {feeChipCompany}
-                </button>
-                <button
-                  type="button"
-                  className="domain-fee-price-chip domain-fee-price-chip--group"
-                  title={t("feeChipGroupAria")}
-                  onClick={() => setFeeModal(true)}
-                >
-                  G {feeChipGroup}
-                </button>
-              </div>
-            )}
           </div>
           <div className="domain-toolbar-right">
             <button
@@ -391,7 +388,7 @@ export default function DomainPage() {
           </div>
         </div>
 
-        <div className="table-container domain-list-table">
+        <div className="table-container domain-list-table" ref={listRegionRef}>
           <div className="domain-list-table-inner">
             <div className="table-header domain-list-table-header">
               <div>{t("no")}</div>
@@ -405,7 +402,7 @@ export default function DomainPage() {
             </div>
             <div className="domain-cards" id="domainTableBody">
             {pagedDomains.map((domain, idx) => {
-              const globalIdx = (safePage - 1) * ROWS_PER_PAGE + idx + 1;
+              const globalIdx = (safePage - 1) * pageSize + idx + 1;
               const companiesFull = Array.isArray(domain.companies_full) ? domain.companies_full : [];
               const companyList = companiesFull.map((c) => c.company_id).filter(Boolean);
               const visible = companyList.slice(0, MAX_VISIBLE_CHIPS);

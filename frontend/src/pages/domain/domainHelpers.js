@@ -6,7 +6,6 @@ import { formatDmyDash, formatYmd, parseDdMmYyyyToYmd, parseYmd } from "../../ut
 // true: Company Settings 弹窗中 Permissions 只能选择一个分类（互斥）
 export const SINGLE_CATEGORY_MODE = true;
 
-export const ROWS_PER_PAGE = 20;
 export const MAX_VISIBLE_CHIPS = 3;
 
 // ===================== Date Helpers =====================
@@ -292,11 +291,10 @@ export function companyToDomainPayloadEntry(c) {
 export function createEmptyGroup(groupCode) {
   const code = String(groupCode || "").trim().toUpperCase();
   const today = new Date().toISOString().split("T")[0];
-  const exp = calculateExpirationDate("1month", today);
   return {
     group_code: code,
-    expiration_date: exp,
-    originalExpirationDate: exp,
+    expiration_date: null,
+    originalExpirationDate: null,
     startDate: today,
     selectedPeriod: null,
     isExtending: false,
@@ -367,6 +365,32 @@ export function normalizeDomainStartDateYmd(raw) {
     return "";
   }
   return parseDdMmYyyyToYmd(s) || "";
+}
+
+/**
+ * Non-C168 companies/groups must have an expiration date before domain Confirm.
+ * @returns {{ id: string, kind: 'company'|'group' }|null}
+ */
+export function findMissingExpirationDate(companies, groups) {
+  const cos = Array.isArray(companies) ? companies : [];
+  for (const c of cos) {
+    const id = String(c?.company_id ?? "").trim().toUpperCase();
+    if (!id || id === "C168") continue;
+    const exp = c?.expiration_date;
+    if (exp == null || String(exp).trim() === "") {
+      return { id, kind: "company" };
+    }
+  }
+  const gs = Array.isArray(groups) ? groups : [];
+  for (const g of gs) {
+    const id = String(g?.group_code ?? "").trim().toUpperCase();
+    if (!id || id === "C168") continue;
+    const exp = g?.expiration_date;
+    if (exp == null || String(exp).trim() === "") {
+      return { id, kind: "group" };
+    }
+  }
+  return null;
 }
 
 /**
@@ -525,19 +549,7 @@ export function resolveDomainFeePriceForPeriod(feeSettings, period, feeKind = "c
   return 0;
 }
 
-/** 工具栏紧凑标签：仅 6 个月 / 1 年，如 6M/1Y: 1200/2400 */
-export function formatDomainFeeToolbarChip(periodPrices) {
-  if (!periodPrices || typeof periodPrices !== "object") {
-    return "6M/1Y: 0.00/0.00";
-  }
-  const six = formatDomainFeeDisplay2(periodPrices["6months"]);
-  const one = formatDomainFeeDisplay2(periodPrices["1year"]);
-  const sixDisp = six === "—" ? "0.00" : six;
-  const oneDisp = one === "—" ? "0.00" : one;
-  return `6M/1Y: ${sixDisp}/${oneDisp}`;
-}
-
-/** 工具栏摘要：列出已配置的非零周期价 */
+/** 摘要：列出已配置的非零周期价 */
 export function formatDomainPeriodPricesInlineSummary(periodPrices, t) {
   if (!periodPrices || typeof periodPrices !== "object") return "";
   const parts = [];

@@ -189,6 +189,8 @@ try {
     $savedBy = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
     ownership_history_snapshot_company_from_live_safe($pdo, (int) $company_id, $savedBy);
 
+    ownership_realtime_publish_for_company((int) $company_id, 'add_external_partner');
+
     echo json_encode([
         'status' => 'success',
         'message' => $isSameOwnerGroupLink

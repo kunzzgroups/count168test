@@ -331,6 +331,22 @@ CREATE TABLE `currency_backup` (
   `company_id` int(10) UNSIGNED NOT NULL COMMENT '公司ID',
   `company_name` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Table structure for table `fx_daily_rates`
+--
+
+CREATE TABLE `fx_daily_rates` (
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `base_code` varchar(10) NOT NULL,
+  `quote_code` varchar(10) NOT NULL,
+  `rate_date` date NOT NULL COMMENT 'Frankfurter rate calendar date',
+  `rate` decimal(24,12) NOT NULL COMMENT '1 base = rate quote',
+  `source` varchar(32) NOT NULL DEFAULT 'frankfurter',
+  `fetched_at` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_fx_base_quote_date` (`base_code`, `quote_code`, `rate_date`),
+  KEY `idx_fx_base_date` (`base_code`, `rate_date`),
+  KEY `idx_fx_fetched_at` (`fetched_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 -- Table structure for table `data_captures`
 --
 
@@ -1148,7 +1164,7 @@ CREATE TABLE `transaction_entry` (
   `account_id` int(11) NOT NULL,
   `currency_id` int(11) NOT NULL,
   `amount` decimal(25,8) NOT NULL,
-  `entry_type` enum('NORMAL_FROM','NORMAL_TO','RATE_FIRST_FROM','RATE_FIRST_TO','RATE_TRANSFER_FROM','RATE_TRANSFER_TO','RATE_MIDDLEMAN','RATE_FEE') NOT NULL,
+  `entry_type` enum('NORMAL_FROM','NORMAL_TO','RATE_FIRST_FROM','RATE_FIRST_TO','RATE_TRANSFER_FROM','RATE_TRANSFER_TO','RATE_MIDDLEMAN','RATE_FEE','RATE_PLATFORM_FEE') NOT NULL,
   `description` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1164,7 +1180,7 @@ CREATE TABLE `transaction_entry_backup` (
   `account_id` int(11) NOT NULL,
   `currency_id` int(11) NOT NULL,
   `amount` decimal(18,2) NOT NULL,
-  `entry_type` enum('NORMAL_FROM','NORMAL_TO','RATE_FIRST_FROM','RATE_FIRST_TO','RATE_TRANSFER_FROM','RATE_TRANSFER_TO','RATE_MIDDLEMAN','RATE_FEE') NOT NULL,
+  `entry_type` enum('NORMAL_FROM','NORMAL_TO','RATE_FIRST_FROM','RATE_FIRST_TO','RATE_TRANSFER_FROM','RATE_TRANSFER_TO','RATE_MIDDLEMAN','RATE_FEE','RATE_PLATFORM_FEE') NOT NULL,
   `description` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `backup_created_at` timestamp NULL DEFAULT current_timestamp() COMMENT '备份创建时间，用于自动清理'

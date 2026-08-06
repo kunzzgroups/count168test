@@ -29,11 +29,12 @@ export const dataCaptureQueryKeys = {
     "permissions",
     companyCode ?? "none",
   ],
-  submissions: (scopeKey, captureDate) => [
+  submissions: (scopeKey, captureDate, permissionCategory = "") => [
     ...dataCaptureQueryKeys.root(),
     "submissions",
     scopeKey || "none",
     captureDate || "",
+    String(permissionCategory || "").trim().toUpperCase(),
   ],
   companyFormCatalog: (scopeKey) => [
     ...dataCaptureQueryKeys.root(),
@@ -298,11 +299,15 @@ export async function fetchGroupProcessIdByCode(scope, processCode, currencyId =
 }
 
 /** Same as legacy `loadSubmittedProcesses`: GET get_submissions_by_capture_date */
-export async function fetchSubmissionsByCaptureDate(captureDate, scope) {
+export async function fetchSubmissionsByCaptureDate(captureDate, scope, permissionCategory = "") {
   const params = new URLSearchParams({
     action: "get_submissions_by_capture_date",
     capture_date: captureDate,
   });
+  const permission = String(permissionCategory || "").trim();
+  if (permission) {
+    params.set("permission", permission);
+  }
   appendDataCaptureScopeParams(params, scope);
   const url = buildApiUrl(`${DATA_CAPTURE_SUBMISSIONS_API}?${params.toString()}`);
   const response = await fetch(url, { credentials: "include" });

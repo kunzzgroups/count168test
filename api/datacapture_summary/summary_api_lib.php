@@ -2156,12 +2156,14 @@ function fetchTemplates(PDO $pdo, array $ids, ?int $processId = null, ?array &$r
 
     $ledgerSql = ' AND dct.company_id = ? ';
     $ledgerParams = [];
+    $isGroupLedger = !empty($capture_scope_group);
 
     if (!empty($capture_scope_ctx) && is_array($capture_scope_ctx)) {
         require_once __DIR__ . '/../formula_maintenance/formula_maintenance_scope.php';
         $ledger = formulaMaintenanceBuildTemplateLedgerFilter($pdo, $capture_scope_ctx, 'dct');
         $ledgerSql = $ledger['sql'];
         $ledgerParams = $ledger['params'];
+        $isGroupLedger = !empty($capture_scope_ctx['is_group_scope']) || $isGroupLedger;
     } elseif (!empty($capture_scope_group)) {
         $groupCode = dcNormalizeGroupId($scopeParams['view_group'] ?? $scopeParams['group_id'] ?? '');
         $templateCompanyId = $groupCode !== '' ? dcResolveGroupCaptureCompanyId($pdo, $groupCode) : 0;
@@ -2185,6 +2187,18 @@ function fetchTemplates(PDO $pdo, array $ids, ?int $processId = null, ?array &$r
         $ledgerSql = ' AND dct.company_id = ? ' . dcSqlCaptureOnSubsidiaryCompany('dct');
         $ledgerParams = [$companyId];
     }
+
+    // Group ledger: also claim historical templates saved with process_id NULL (aligned with Formula Maintenance).
+    $processCode = '';
+    if ($isGroupLedger) {
+        $codeStmt = $pdo->prepare('SELECT UPPER(TRIM(process_id)) FROM process WHERE id = ? LIMIT 1');
+        $codeStmt->execute([(int) $processId]);
+        $processCode = strtoupper(trim((string) ($codeStmt->fetchColumn() ?: '')));
+    }
+    $includeOrphanNull = $isGroupLedger && $processCode !== '' && dcIsGroupPayrollProcessCode($processCode);
+    $processMatchSql = $includeOrphanNull
+        ? '(dct.process_id = ? OR dct.process_id IS NULL OR dct.process_id = 0)'
+        : 'dct.process_id = ?';
 
     // 前端传的是 normalize 后的 id（如 ALLBET95MS、MY EARNINGS），库里有完整 id（如 ALLBET95MS(SV)MYR、MY EARNINGS : (RINGGIT...)），
     // 需同时按「前缀」匹配；括号前带 " : " 的 id 再按「去掉尾部空格和冒号」匹配，与前端一致。
@@ -2218,7 +2232,7 @@ function fetchTemplates(PDO $pdo, array $ids, ?int $processId = null, ?array &$r
             dct.formula_variant,
             dct.updated_at
         FROM data_capture_templates dct
-        WHERE dct.process_id = ?
+        WHERE {$processMatchSql}
           {$ledgerSql}
           AND (
             (dct.product_type = 'main' AND (
@@ -2262,7 +2276,8 @@ function fetchTemplates(PDO $pdo, array $ids, ?int $processId = null, ?array &$r
 
     $templates = [];
     foreach ($results as $row) {
-        // Formula 只绑定当前 process：不再 claim process_id IS NULL 的模板，避免在其他 process 呈现
+        // Group payroll: orphan NULL process_id templates are included above (Maintenance-aligned).
+        // Company / non-payroll: exact process_id match only.
 
         // Ensure source_percent is always a string to preserve decimal values and expressions
         // This is important because decimal fields might be returned as numbers, losing precision

@@ -79,6 +79,10 @@ try {
     }
 
     $action = $group_id ? "joined group \"$group_id\"" : "removed from group";
+
+    require_once __DIR__ . '/../includes/realtime.php';
+    realtime_publish_companies([$company_id], 'ownership', 'update_company_group');
+
     echo json_encode(['status' => 'success', 'message' => "Company $action successfully"]);
 
 } catch (PDOException $e) {

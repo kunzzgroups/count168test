@@ -105,7 +105,7 @@
 
 /* Shared form controls */
 .m-tx-form-label {
-  font-size: 0.75rem;
+  font-size: var(--m-text-secondary);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -196,7 +196,7 @@
   justify-content: center;
   border-radius: 0.75rem;
   padding: 0.625rem 0;
-  font-size: 0.75rem;
+  font-size: var(--m-text-secondary);
   font-weight: 700;
 }
 
@@ -217,7 +217,7 @@
 
 .m-tx-form-hint {
   margin-top: 0.5rem;
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   font-weight: 500;
   line-height: 1.375;
   color: var(--m-color-muted);
@@ -303,7 +303,7 @@
 
 .m-tx-date-label {
   display: block;
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -333,7 +333,7 @@
   border-radius: 0.375rem;
   background: #e0f2fe;
   padding: 0.125rem 0.375rem;
-  font-size: 0.625rem;
+  font-size: var(--m-text-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -341,7 +341,7 @@
 }
 
 .m-tx-date-chevron {
-  font-size: 0.6875rem;
+  font-size: var(--m-text-secondary);
   color: #cbd5e1;
 }
 

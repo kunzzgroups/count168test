@@ -1,6 +1,10 @@
 import { buildApiUrl } from "../utils/apiUrl.js";
 import { DASHBOARD_BOOTSTRAP_API } from "./dashboardConstants.js";
-import { attachGroupAggregateEarningsFields, mergeGroupData } from "./dashboardMerge.js";
+import {
+  attachGroupAggregateEarningsFields,
+  finalizeMergedGroupLedgerDashboard,
+  mergeGroupData,
+} from "./dashboardMerge.js";
 import {
   companiesInGroup,
   normalizeGroupId,
@@ -8,6 +12,7 @@ import {
   resolveViewGroupForCompany,
   sortedUniqueGroupIds,
 } from "./dashboardScope.js";
+import { canAccessGroupLedgerForGroup } from "./loginScope.js";
 import { assertApiOk, fetchJson } from "./fetchJson.js";
 
 const MERGE_POOL = 5;
@@ -266,8 +271,8 @@ async function buildMergedEarningsByCurrency({
  * Load dashboard like desktop:
  * - group-only (Group pill, no company) → group_only bootstrap
  * - single company → one bootstrap (with subsidiary scope when in a group)
- * - Company All / Groups All → parallel per-company bootstrap + mergeGroupData
- * - Group All (+ single group) → enrich with group_only ledger expenses/ownership
+ * - Company All (single group) → parallel per-company bootstrap + merge + ledger enrich
+ * - Groups All (no company) → per-group ledger bootstrap merge (desktop parity)
  * - All modes → fan-out per-currency merge into earnings.current (hero / pie parity)
  */
 export async function loadMobileDashboardData(scopeState, { signal, loadError } = {}) {
@@ -281,12 +286,121 @@ export async function loadMobileDashboardData(scopeState, { signal, loadError } 
     groupAllMode,
     groupsAllMode,
     companies,
+    me,
   } = scopeState;
 
   const group = normalizeGroupId(selectedGroup);
   const cidNum = Number(companyId);
   const hasCompany = Number.isFinite(cidNum) && cidNum > 0;
   const groupOnlyMode = Boolean(group && !groupAllMode && !groupsAllMode && !hasCompany);
+
+  // Groups All (desktop): merge each accessible group's ledger books — not subsidiary fan-out.
+  if (groupsAllMode && !groupAllMode && !hasCompany) {
+    const gids = sortedUniqueGroupIds(companies).filter((gid) =>
+      canAccessGroupLedgerForGroup(me, gid, companies),
+    );
+    if (!gids.length) throw new Error(loadError || "Failed to load dashboard");
+
+    const primaryCode = String(currency || (currencies && currencies[0]) || "MYR").toUpperCase();
+    const settled = await mapPool(gids, MERGE_POOL, async (gid) => {
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      try {
+        const q = buildGroupLedgerBootstrapQuery({
+          dateFrom,
+          dateTo,
+          currency: primaryCode,
+          groupKey: gid,
+        });
+        const data = await fetchBootstrapData(q, signal, loadError);
+        const markLedger = (payload) =>
+          payload
+            ? {
+                ...payload,
+                has_ownership_setup: !!payload.has_group_ownership || !!payload.has_ownership_setup,
+                _group_aggregate_earnings: true,
+              }
+            : payload;
+        return {
+          current: markLedger(data.current),
+          previous: markLedger(data.previous),
+          previous_date_range: data.previous_date_range || null,
+        };
+      } catch (e) {
+        if (e?.name === "AbortError") throw e;
+        return null;
+      }
+    });
+
+    const pairs = settled.filter(Boolean);
+    if (!pairs.length) throw new Error(loadError || "Failed to load dashboard");
+
+    const currentList = pairs.map((p) => p.current).filter(Boolean);
+    const previousList = pairs.map((p) => p.previous).filter(Boolean);
+    let current = finalizeMergedGroupLedgerDashboard(
+      mergeGroupData(currentList, { startDate: dateFrom, endDate: dateTo }),
+      currentList,
+    );
+    let previous = previousList.length
+      ? finalizeMergedGroupLedgerDashboard(
+          mergeGroupData(previousList, { startDate: dateFrom, endDate: dateTo }),
+          previousList,
+        )
+      : null;
+    const previous_date_range = pairs.find((p) => p.previous_date_range)?.previous_date_range || null;
+
+    let earnings = null;
+    const codes = [
+      ...new Set(
+        [primaryCode, ...(currencies || [])]
+          .map((c) => String(c || "").trim().toUpperCase())
+          .filter((c) => /^[A-Z]{3}$/.test(c)),
+      ),
+    ];
+    if (codes.length > 1) {
+      const entries = await mapPool(codes, CURRENCY_FANOUT_POOL, async (code) => {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        if (code === primaryCode) return { code, payload: current };
+        try {
+          const perGroup = await mapPool(gids, MERGE_POOL, async (gid) => {
+            const q = buildGroupLedgerBootstrapQuery({
+              dateFrom,
+              dateTo,
+              currency: code,
+              groupKey: gid,
+            });
+            q.set("bootstrap_scope", "kpi");
+            const data = await fetchBootstrapData(q, signal, loadError);
+            return data.current
+              ? { ...data.current, _group_aggregate_earnings: true }
+              : null;
+          });
+          const list = perGroup.filter(Boolean);
+          if (!list.length) return { code, payload: null };
+          return {
+            code,
+            payload: finalizeMergedGroupLedgerDashboard(
+              mergeGroupData(list, { startDate: dateFrom, endDate: dateTo }),
+              list,
+            ),
+          };
+        } catch (e) {
+          if (e?.name === "AbortError") throw e;
+          return { code, payload: null };
+        }
+      });
+      earnings = { current: entries.filter((e) => e?.code), previous: [] };
+    } else {
+      earnings = { current: [{ code: primaryCode, payload: current }], previous: [] };
+    }
+
+    return {
+      current,
+      previous,
+      previous_date_range,
+      earnings,
+      _mobile_scope: { mode: "groupsAllLedger", count: pairs.length, groups: gids },
+    };
+  }
 
   if (groupOnlyMode) {
     const primaryCode = String(currency || (currencies && currencies[0]) || "MYR").toUpperCase();
@@ -496,8 +610,9 @@ export function resolveMobileKpiOwnershipOpts({
   if (groupAllMode && selectedGroup) {
     return { groupAggregateEarnings: true, groupAllCompaniesEarningsSum: true };
   }
+  // Groups All (no company): desktop uses group-ledger aggregate — not subsidiary earnings sum
   if (groupsAllMode && !groupAllMode) {
-    return { groupAggregateEarnings: true, groupAllCompaniesEarningsSum: true };
+    return { groupAggregateEarnings: true };
   }
   // Group pill only (no company): group ledger books — use ownership when API returns it
   if (group && !groupAllMode && !groupsAllMode && !hasCompany) {

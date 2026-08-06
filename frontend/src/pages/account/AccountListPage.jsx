@@ -41,6 +41,8 @@ import {
   resolveAccountListRouteCache,
   warmAccountListRouteCache,
 } from "./accountRoutePrefetch.js";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
 import {
   canClearCompanySelection,
   canUseGroupOnlyMode,
@@ -109,14 +111,13 @@ import { useAuthSession } from "../../context/AuthSessionContext.jsx";
 import { useAutoListPageSize } from "../../hooks/useAutoListPageSize.js";
 import { PAGE_SIZE_MAX, PAGE_SIZE_MIN } from "../../constants/listPageSize.js";
 
-function resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll) {
-  return `${scopeKey}|${String(searchTerm || "").trim()}|${showInactive ? "1" : "0"}|${showAll ? "1" : "0"}`;
+function resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll, showActive = false) {
+  return `${scopeKey}|${String(searchTerm || "").trim()}|${showActive ? "1" : "0"}|${showInactive ? "1" : "0"}|${showAll ? "1" : "0"}`;
 }
 
-function accountRowVisibleAfterStatusChange(newStatus, { showInactive, showAll }) {
+function accountRowVisibleAfterStatusChange(newStatus, { showActive = false, showInactive = false } = {}) {
   const status = String(newStatus || "").toLowerCase();
-  if (showAll && showInactive) return status === "inactive";
-  if (showAll) return status === "active";
+  if (showActive && showInactive) return status === "active" || status === "inactive";
   if (showInactive) return status === "inactive";
   return status === "active";
 }
@@ -213,6 +214,7 @@ export default function AccountListPage() {
 
   // -- Filters --
   const [searchTerm, setSearchTerm] = useState("");
+  const [showActive, setShowActive] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [sortColumn, setSortColumn] = useState("account");
@@ -221,6 +223,7 @@ export default function AccountListPage() {
   const listRegionRef = useRef(null);
   const [selectedGroup, setSelectedGroup] = useState(() => initialBootGc.selectedGroup);
   const [selectedDeleteIds, setSelectedDeleteIds] = useState(new Set());
+  const [selectAllAccounts, setSelectAllAccounts] = useState(false);
 
   // -- Modals & Forms --
   const [toast, setToast] = useState(null);
@@ -253,11 +256,23 @@ export default function AccountListPage() {
     modalLedgerScopeRef.current = scope;
     setModalLedgerScope(scope);
   }, []);
-  const [settingCurrencyId, setSettingCurrencyId] = useState(null);
+  const [settingCurrencyIds, setSettingCurrencyIds] = useState(() => new Set());
   const [settingLinked, setSettingLinked] = useState(new Set());
-  const [settingInitial, setSettingInitial] = useState(new Set());
+  /** Per selected currency: account ids linked at last load (for save diff / unlink). */
+  const [settingInitialByCurrency, setSettingInitialByCurrency] = useState(() => new Map());
   const [settingSearch, setSettingSearch] = useState("");
   const [settingRole, setSettingRole] = useState("");
+  const settingCurrencyIdsKey = useMemo(
+    () => [...settingCurrencyIds].map(Number).filter((id) => id > 0).sort((a, b) => a - b).join(","),
+    [settingCurrencyIds],
+  );
+  const settingInitialAccountCount = useMemo(() => {
+    const union = new Set();
+    settingInitialByCurrency.forEach((ids) => {
+      ids.forEach((id) => union.add(id));
+    });
+    return union.size;
+  }, [settingInitialByCurrency]);
 
   const toastTimerRef = useRef(null);
   const bootFetchedAccountsKeyRef = useRef(null);
@@ -277,10 +292,10 @@ export default function AccountListPage() {
   const bootForUserRef = useRef(null);
   const onSwitchCompanyRef = useRef(null);
   const gcScopeRef = useRef({});
-  const listFiltersRef = useRef({ showInactive: false, showAll: false, searchTerm: "" });
+  const listFiltersRef = useRef({ showActive: false, showInactive: false, showAll: false, searchTerm: "" });
   const listPaginationScopeRef = useRef("");
   const accountsLenRef = useRef(0);
-  listFiltersRef.current = { showInactive, showAll, searchTerm };
+  listFiltersRef.current = { showActive, showInactive, showAll, searchTerm };
   accountsLenRef.current = accounts.length;
 
   const accountModalCurrencies = useMemo(() => {
@@ -325,7 +340,8 @@ export default function AccountListPage() {
 
     return () => {
       document.body.classList.remove("account-page", "account-page--show-all", "bg");
-      document.body.classList.add("dashboard-page");
+      // Layout owns dashboard/process body classes by pathname — do not re-add dashboard-page
+      // here (causes Acc→Process middle flash when cleanup races the process-page layout effect).
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
@@ -368,9 +384,9 @@ export default function AccountListPage() {
         isListScopeReady: ready,
         groupOnlyMode: useGroupOnly,
       });
-      lastAccountsFetchKeyRef.current = buildAccountsFetchKey(scopeKey, searchTerm, showInactive, showAll);
+      lastAccountsFetchKeyRef.current = buildAccountsFetchKey(scopeKey, searchTerm, showInactive, showAll, showActive);
     },
-    [searchTerm, showInactive, showAll, resolveGroupOnlyFetch],
+    [searchTerm, showActive, showInactive, showAll, resolveGroupOnlyFetch],
   );
 
   const resolveListPaginationScopeKey = useCallback(
@@ -391,6 +407,7 @@ export default function AccountListPage() {
   const resetAccountListPagination = useCallback(() => {
     setCurrentPage(1);
     setSelectedDeleteIds(new Set());
+    setSelectAllAccounts(false);
   }, []);
 
   const resetPaginationForGcScope = useCallback(
@@ -430,6 +447,7 @@ export default function AccountListPage() {
   const matchesLiveListFilters = useCallback((requested) => {
     const live = listFiltersRef.current;
     return (
+      live.showActive === requested.showActive &&
       live.showInactive === requested.showInactive &&
       live.showAll === requested.showAll &&
       String(live.searchTerm || "").trim() === String(requested.searchTerm || "").trim()
@@ -450,14 +468,14 @@ export default function AccountListPage() {
       } = scope;
       if (!ready) return;
 
-      const requestedFilters = { showInactive, showAll, searchTerm };
+      const requestedFilters = { showActive, showInactive, showAll, searchTerm };
       const useGroupOnly = groupOnly ?? resolveGroupOnlyFetch(scope);
       const scopeKey = resolveAccountScopeKey({
         companyId: cid,
         selectedGroup: sg,
         groupOnly: useGroupOnly,
       });
-      const cacheKey = resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll);
+      const cacheKey = resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll, showActive);
 
       listFetchAbortRef.current?.abort();
       const ac = new AbortController();
@@ -492,6 +510,7 @@ export default function AccountListPage() {
         if (cid) {
           const listUrl = buildAccountsUrl(cid, searchTerm, showInactive, showAll, {
             groupId: sg || null,
+            showActive,
           });
           const res = await fetch(listUrl.toString(), {
             credentials: "include",
@@ -506,6 +525,7 @@ export default function AccountListPage() {
           const merged = await fetchMergedAccounts({
             companyIds: mergeIds,
             searchTerm,
+            showActive,
             showInactive,
             showAll,
             signal: ac.signal,
@@ -518,6 +538,7 @@ export default function AccountListPage() {
           const merged = await fetchMergedAccounts({
             groupIds: groupIdsForGroupsAllAggregate(companies, gids),
             searchTerm,
+            showActive,
             showInactive,
             showAll,
             signal: ac.signal,
@@ -528,7 +549,7 @@ export default function AccountListPage() {
           nextAccounts = merged.accounts;
         } else if (useGroupOnly && sg) {
           const res = await fetch(
-            buildGroupAccountsUrl(sg, searchTerm, showInactive, showAll, { groupOnly: true }).toString(),
+            buildGroupAccountsUrl(sg, searchTerm, showInactive, showAll, { groupOnly: true, showActive }).toString(),
             { credentials: "include", signal: ac.signal },
           );
           const json = await res.json();
@@ -554,7 +575,7 @@ export default function AccountListPage() {
         if (!silent) notifyApi(e?.message, "failedToLoadAccounts", "danger");
       }
     },
-    [companies, searchTerm, showInactive, showAll, applyAccountListResult, notifyApi, resolveGroupOnlyFetch, matchesLiveListFilters],
+    [companies, searchTerm, showActive, showInactive, showAll, applyAccountListResult, notifyApi, resolveGroupOnlyFetch, matchesLiveListFilters],
   );
 
   const applyAccountListCache = useCallback(
@@ -571,7 +592,7 @@ export default function AccountListPage() {
         selectedGroup: sg,
         groupOnly: useGroupOnly,
       });
-      const cacheKey = resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll);
+      const cacheKey = resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll, showActive);
       const cached = accountListCacheRef.current.get(cacheKey);
       if (!cached) return false;
       setAccounts((prev) =>
@@ -579,7 +600,7 @@ export default function AccountListPage() {
       );
       return true;
     },
-    [searchTerm, showInactive, showAll, resolveGroupOnlyFetch],
+    [searchTerm, showActive, showInactive, showAll, resolveGroupOnlyFetch],
   );
 
   const applyCacheOrClearAccounts = useCallback(
@@ -603,11 +624,12 @@ export default function AccountListPage() {
         selectedGroup: sg,
         groupOnly: useGroupOnly,
       });
-      const listCacheKey = resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll);
+      const listCacheKey = resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll, showActive);
       const routeWarm = consumeAccountListRouteCache({
         companyId: cid,
         groupId: sg,
         search: searchTerm,
+        showActive,
         showInactive,
         showAll,
       });
@@ -620,7 +642,7 @@ export default function AccountListPage() {
       }
       return applyAccountListCache(gcScope, { groupOnly: useGroupOnly });
     },
-    [applyAccountListCache, resolveGroupOnlyFetch, resetPaginationForGcScope, searchTerm, showInactive, showAll],
+    [applyAccountListCache, resolveGroupOnlyFetch, resetPaginationForGcScope, searchTerm, showActive, showInactive, showAll],
   );
 
   const invalidateAccountListCacheForScope = useCallback(
@@ -632,10 +654,10 @@ export default function AccountListPage() {
         selectedGroup: sg,
         groupOnly: useGroupOnly,
       });
-      const cacheKey = resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll);
+      const cacheKey = resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll, showActive);
       accountListCacheRef.current.delete(cacheKey);
     },
-    [searchTerm, showInactive, showAll, resolveGroupOnlyFetch],
+    [searchTerm, showActive, showInactive, showAll, resolveGroupOnlyFetch],
   );
 
   const loadRoles = useCallback(async ({ companyId: cid = null, groupId = null } = {}) => {
@@ -657,8 +679,11 @@ export default function AccountListPage() {
       }
       const res = await fetch(url.toString(), { credentials: "include" });
       const json = await res.json();
-      if (json?.success && Array.isArray(json?.data?.roles)) {
+      if (json?.success && Array.isArray(json?.data?.roles) && json.data.roles.length) {
         setRoles(json.data.roles);
+      } else {
+        // Keep prior roles; modal uses ROLE_PRIORITY fallback when still empty.
+        setRoles((prev) => (Array.isArray(prev) && prev.length ? prev : []));
       }
     } catch {
       /* roles are optional for list; modal refetch on open */
@@ -681,6 +706,10 @@ export default function AccountListPage() {
     },
     [fetchAccounts, invalidateAccountListCacheForScope, resolveGroupOnlyFetch],
   );
+
+  useRealtimeDomain(REALTIME_DOMAINS.ACCOUNTS, () => {
+    refreshAccountList({ silent: true });
+  });
 
   const sessionUserId = sessionMe?.user_id ?? sessionMe?.id ?? null;
 
@@ -751,6 +780,7 @@ export default function AccountListPage() {
         }
 
         const initialSearchTerm = toUpper(url.searchParams.get("search") || "");
+        const initialShowActive = url.searchParams.get("showActive") === "1";
         const initialShowInactive = url.searchParams.get("showInactive") === "1";
         const initialShowAll = url.searchParams.get("showAll") === "1";
 
@@ -842,6 +872,7 @@ export default function AccountListPage() {
         setCompanyId(resolvedCompanyId);
         setSelectedGroup(bootGroup);
         setSearchTerm(initialSearchTerm);
+        setShowActive(initialShowActive);
         setShowInactive(initialShowInactive);
         setShowAll(initialShowAll);
         skipInitialGcSyncRef.current = true;
@@ -883,10 +914,10 @@ export default function AccountListPage() {
               : null
           : null;
         const listCacheKey = scopeKey
-          ? resolveAccountListCacheKey(scopeKey, initialSearchTerm, initialShowInactive, initialShowAll)
+          ? resolveAccountListCacheKey(scopeKey, initialSearchTerm, initialShowInactive, initialShowAll, initialShowActive)
           : null;
         const fetchKey = scopeKey
-          ? buildAccountsFetchKey(scopeKey, initialSearchTerm, initialShowInactive, initialShowAll)
+          ? buildAccountsFetchKey(scopeKey, initialSearchTerm, initialShowInactive, initialShowAll, initialShowActive)
           : null;
 
         const warmed = scopeKey
@@ -894,6 +925,7 @@ export default function AccountListPage() {
               companyId: groupOnlyBoot ? null : resolvedCompanyId,
               groupId: groupOnlyBoot ? bootGroup : null,
               search: initialSearchTerm,
+              showActive: initialShowActive,
               showInactive: initialShowInactive,
               showAll: initialShowAll,
             })
@@ -1047,7 +1079,7 @@ export default function AccountListPage() {
         selectedGroup: vg,
         groupOnly: false,
       });
-      const fetchKey = buildAccountsFetchKey(scopeKey, searchTerm, showInactive, showAll);
+      const fetchKey = buildAccountsFetchKey(scopeKey, searchTerm, showInactive, showAll, showActive);
       bootFetchedAccountsKeyRef.current = fetchKey;
 
       const fetchScope = {
@@ -1087,6 +1119,7 @@ export default function AccountListPage() {
       notify,
       notifyApi,
       searchTerm,
+      showActive,
       showInactive,
       showAll,
       selectedGroup,
@@ -1418,11 +1451,12 @@ export default function AccountListPage() {
         companyId: cid,
         groupId: gid,
         search: searchTerm,
+        showActive,
         showInactive,
         showAll,
       });
     },
-    [searchTerm, showInactive, showAll, selectedGroup],
+    [searchTerm, showActive, showInactive, showAll, selectedGroup],
   );
 
   const onPickCompanyPill = useCallback(
@@ -1683,7 +1717,7 @@ export default function AccountListPage() {
 
   useLayoutEffect(() => {
     if (bootLoading) return;
-    const filterKey = `${String(searchTerm || "").trim()}|${showInactive ? "1" : "0"}|${showAll ? "1" : "0"}`;
+    const filterKey = `${String(searchTerm || "").trim()}|${showActive ? "1" : "0"}|${showInactive ? "1" : "0"}|${showAll ? "1" : "0"}`;
     const combined = `${accountsListFetchScopeKey}|${filterKey}`;
     if (!accountsListFetchScopeKey) return;
     if (combined === listPaginationScopeRef.current) return;
@@ -1693,6 +1727,7 @@ export default function AccountListPage() {
     bootLoading,
     accountsListFetchScopeKey,
     searchTerm,
+    showActive,
     showInactive,
     showAll,
     resetAccountListPagination,
@@ -1755,7 +1790,7 @@ export default function AccountListPage() {
 
   useEffect(() => {
     bootFetchedAccountsKeyRef.current = null;
-  }, [showInactive, showAll, searchTerm]);
+  }, [showActive, showInactive, showAll, searchTerm]);
 
   useEffect(() => {
     if (!accountsListFetchScopeKey) return;
@@ -1764,18 +1799,18 @@ export default function AccountListPage() {
       searchTerm,
       showInactive,
       showAll,
+      showActive,
     );
     if (skipCompanyFetchEffectRef.current) {
       skipCompanyFetchEffectRef.current = false;
       return;
     }
     if (bootFetchedAccountsKeyRef.current === fetchKey) {
+      // Warm/boot may have painted; always silent-refetch so remount cannot stick on stale warm.
       bootFetchedAccountsKeyRef.current = null;
       lastAccountsFetchKeyRef.current = fetchKey;
-      const bootCacheHit = applyAccountListCache(gcScopeRef.current);
-      if (!bootCacheHit) {
-        void fetchAccounts(gcScopeRef.current, { silent: true, trustRequestScope: true });
-      }
+      applyAccountListCache(gcScopeRef.current);
+      void fetchAccounts(gcScopeRef.current, { silent: true, trustRequestScope: true });
       return;
     }
     postBootEmptyRetryRef.current = false;
@@ -1786,7 +1821,7 @@ export default function AccountListPage() {
     }
     void fetchAccounts(scope, { silent: true });
     const settleRetryTimer = window.setTimeout(() => {
-      if (!matchesLiveListFilters({ showInactive, showAll, searchTerm })) return;
+      if (!matchesLiveListFilters({ showActive, showInactive, showAll, searchTerm })) return;
       if (accountsLenRef.current > 0) return;
       void fetchAccounts(gcScopeRef.current, { silent: true, trustRequestScope: true });
     }, 320);
@@ -1794,6 +1829,7 @@ export default function AccountListPage() {
   }, [
     accountsListFetchScopeKey,
     searchTerm,
+    showActive,
     showInactive,
     showAll,
     fetchAccounts,
@@ -1858,6 +1894,9 @@ export default function AccountListPage() {
 
   const accountMutationsBlocked = usePartnershipAuditReadOnlyLocked(sessionMe);
 
+  /** 仅「显示停用」模式展示批量删除勾选列；与 Admin User List 一致 */
+  const showBulkDeleteColumn = showInactive;
+
   const pageSize = useAutoListPageSize({
     listRegionRef,
     enabled: !showAll,
@@ -1870,6 +1909,7 @@ export default function AccountListPage() {
     remeasureDeps: [
       filteredForMode.length,
       showAll,
+      showActive,
       showInactive,
       searchTerm,
       lang,
@@ -1879,6 +1919,7 @@ export default function AccountListPage() {
       selectedGroup,
       groupAllMode,
       groupsAllMode,
+      showBulkDeleteColumn,
     ],
   });
 
@@ -1945,8 +1986,11 @@ export default function AccountListPage() {
   );
 
   useEffect(() => {
-    if (!showInactive && !showAll) setSelectedDeleteIds(new Set());
-  }, [showInactive, showAll]);
+    if (!showInactive) {
+      setSelectedDeleteIds(new Set());
+      setSelectAllAccounts(false);
+    }
+  }, [showInactive]);
 
   const togglePaymentAlert = async (id) => {
     if (accountMutationsBlocked) {
@@ -1980,7 +2024,7 @@ export default function AccountListPage() {
         setAccounts((prev) => {
           const updated = prev.map((a) => (Number(a.id) === Number(id) ? { ...a, status: next } : a));
           const visible = updated.filter((a) =>
-            accountRowVisibleAfterStatusChange(a.status, { showInactive, showAll }),
+            accountRowVisibleAfterStatusChange(a.status, { showActive, showInactive }),
           );
           return visible;
         });
@@ -2103,7 +2147,7 @@ export default function AccountListPage() {
     } catch { /* silent */ }
   };
 
-  const openAdd = () => {
+  const openAdd = async () => {
     if (accountMutationsBlocked) {
       notify(t("readOnlyActionBlocked"), "danger");
       return;
@@ -2115,12 +2159,21 @@ export default function AccountListPage() {
     setHiddenCurrencyIds([]);
     syncModalLedgerScope(null);
     setAddModalOpen(true);
-    if (!groupOnlyAccountMode && companyId) {
+    if (groupOnlyAccountMode && selectedGroup) {
+      const groupCode = String(selectedGroup).trim().toUpperCase();
+      setSelectedCompanyIds(groupCode ? [groupCode] : []);
+    } else if (!groupOnlyAccountMode && companyId) {
       setSelectedCompanyIds([String(companyId)]);
     }
-    void loadRoles({ companyId, groupId: selectedGroup });
+    await loadRoles({ companyId, groupId: selectedGroup });
     loadSelectionMeta(null, false);
   };
+
+  const clearCurrencySettingSelection = useCallback(() => {
+    setSettingCurrencyIds(new Set());
+    setSettingLinked(new Set());
+    setSettingInitialByCurrency(new Map());
+  }, []);
 
   const openCurrencySetting = () => {
     if (accountMutationsBlocked) {
@@ -2129,15 +2182,9 @@ export default function AccountListPage() {
     }
     if (!hasAccountMutationScope) return;
     syncModalLedgerScope(null);
+    clearCurrencySettingSelection();
     setCurrencySettingOpen(true);
     void loadSelectionMeta(null, false, { forcePageLedgerScope: true });
-    if (settingCurrencyId) void loadCurrencyLinks(settingCurrencyId);
-  };
-
-  const clearCurrencySettingSelection = () => {
-    setSettingCurrencyId(null);
-    setSettingLinked(new Set());
-    setSettingInitial(new Set());
   };
 
   const openEdit = async (id) => {
@@ -2194,6 +2241,7 @@ export default function AccountListPage() {
       if (!json.success) return notifyApi(json.message, "deleteFailed", "danger");
       setConfirmDeleteOpen(false);
       setSelectedDeleteIds(new Set());
+      setSelectAllAccounts(false);
       notifyApi(json.message, "accountsDeletedSuccessfully");
       refreshAccountList();
     } catch { notify(t("deleteFailed"), "danger"); }
@@ -2230,7 +2278,8 @@ export default function AccountListPage() {
     appendAccountScopeParams(fd);
     if (!isEditMode && !groupOnlyAccountMode && companyId) {
       fd.set("company_id", String(companyId));
-      if (selectedCurrencyIds.length) fd.set("currency_ids", JSON.stringify(selectedCurrencyIds));
+      const validCurrencyIds = selectedCurrencyIds.map(Number).filter((id) => Number.isFinite(id) && id > 0);
+      if (validCurrencyIds.length) fd.set("currency_ids", JSON.stringify(validCurrencyIds));
     }
     try {
       const ep = isEditMode ? "api/accounts/update_api.php" : "api/accounts/addaccountapi.php";
@@ -2238,8 +2287,9 @@ export default function AccountListPage() {
       const json = await res.json();
       if (!json.success) return notifyApi(json.message, "saveFailed", "danger");
       let postSaveCurrencyError = null;
-      if (!isEditMode && json?.data?.id && selectedCurrencyIds.length) {
-        for (const cid of selectedCurrencyIds) {
+      const validCurrencyIds = selectedCurrencyIds.map(Number).filter((id) => Number.isFinite(id) && id > 0);
+      if (!isEditMode && json?.data?.id && validCurrencyIds.length) {
+        for (const cid of validCurrencyIds) {
           const currencyRes = await fetch(accountCurrencyApiUrl("add_currency"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -2254,8 +2304,8 @@ export default function AccountListPage() {
         }
       }
       if (isEditMode && form.id) {
-        const before = new Set(initialEditCurrencyIds.map(Number));
-        const after = new Set(selectedCurrencyIds.map(Number));
+        const before = new Set(initialEditCurrencyIds.map(Number).filter((id) => id > 0));
+        const after = new Set(validCurrencyIds);
         const toAdd = [...after].filter((id) => !before.has(id));
         const toRemove = [...before].filter((id) => !after.has(id));
         for (const cid of toAdd) {
@@ -2285,7 +2335,6 @@ export default function AccountListPage() {
           }
         }
         setInitialEditCurrencyIds([...after]);
-        if (settingCurrencyId) void loadCurrencyLinks(settingCurrencyId);
       }
       setAddModalOpen(false); setEditModalOpen(false);
       setHiddenCurrencyIds([]);
@@ -2323,9 +2372,16 @@ export default function AccountListPage() {
       const res = await fetch(buildApiUrl("api/accounts/create_currency_api.php"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), credentials: "include" });
       const json = await res.json();
       if (json.success) {
-        const newId = Number(json.data.id);
+        const newId = Number(json.data?.id);
+        const idValid = Number.isFinite(newId) && newId > 0;
         if (currencySettingOpen) {
           await loadSelectionMeta(null, false, { forcePageLedgerScope: true, selectCode: code });
+        } else if (!idValid) {
+          // API returned id=0 (stale lastInsertId): reload list and select by code.
+          await loadSelectionMeta(isEditMode && form.id ? form.id : null, isEditMode, {
+            selectCode: code,
+            ledgerScope: modalLedgerScopeRef.current ?? modalLedgerScope,
+          });
         } else {
           setCurrencies((prev) => [...prev, { id: newId, code: json.data.code, is_linked: false }]);
           setSelectedCurrencyIds((prev) => (prev.map(Number).includes(newId) ? prev : [...prev, newId]));
@@ -2355,6 +2411,28 @@ export default function AccountListPage() {
       return buildApiUrl(`api/accounts/account_currency_api.php?${params.toString()}`);
     },
     [appendModalCurrencyScopeParams, isEditMode, form.id],
+  );
+
+  const fetchLinkedAccountIdsByCurrency = useCallback(
+    async (currencyId, scopeOverride = undefined) => {
+      const params = new URLSearchParams({
+        action: "get_linked_accounts_by_currency",
+        currency_id: String(currencyId),
+      });
+      if (scopeOverride) {
+        applyTenantLedgerToParams(params, scopeOverride);
+      } else {
+        appendCurrencyScopeParams(params);
+      }
+      const res = await fetch(
+        buildApiUrl(`api/accounts/bulk_account_currency_api.php?${params.toString()}`),
+        { method: "POST", credentials: "include" },
+      );
+      const json = await res.json();
+      if (!json.success) return [];
+      return (json.data?.linked_account_ids || []).map(Number).filter((id) => id > 0);
+    },
+    [appendCurrencyScopeParams],
   );
 
   const fetchAccountsUsingCurrency = async (currencyId, scopeOverride = undefined) => {
@@ -2395,6 +2473,50 @@ export default function AccountListPage() {
     }
   };
 
+  /** When currency pills change, reload linked accounts (union) for checkbox回显. */
+  useEffect(() => {
+    if (!currencySettingOpen) return undefined;
+    const currencyIds = settingCurrencyIdsKey
+      ? settingCurrencyIdsKey.split(",").map(Number).filter((id) => id > 0)
+      : [];
+    if (!currencyIds.length) {
+      setSettingLinked(new Set());
+      setSettingInitialByCurrency(new Map());
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const entries = await Promise.all(
+          currencyIds.map(async (currencyId) => {
+            const ids = await fetchLinkedAccountIdsByCurrency(currencyId, pageLedgerScope);
+            return [currencyId, new Set(ids)];
+          }),
+        );
+        if (cancelled) return;
+        const nextInitial = new Map(entries);
+        const union = new Set();
+        nextInitial.forEach((ids) => {
+          ids.forEach((id) => union.add(id));
+        });
+        setSettingInitialByCurrency(nextInitial);
+        setSettingLinked(union);
+      } catch {
+        if (!cancelled) notify(t("loadLinksFailed"), "danger");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currencySettingOpen,
+    settingCurrencyIdsKey,
+    fetchLinkedAccountIdsByCurrency,
+    pageLedgerScope,
+    notify,
+    t,
+  ]);
+
   const handleCurrencyDeleteBlocked = async (currencyId, json, msg) => {
     const editingAccountId = isEditMode ? Number(form.id) : 0;
     let accountsInUse = Array.isArray(json?.data?.accounts_in_use) ? json.data.accounts_in_use : [];
@@ -2417,13 +2539,17 @@ export default function AccountListPage() {
     setSelectedCurrencyIds((prev) => prev.filter((x) => Number(x) !== id));
     setHiddenCurrencyIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     setCurrencies((prev) => prev.filter((c) => Number(c.id) !== id));
-    setSettingCurrencyId((prev) => {
-      if (Number(prev) === id) {
-        setSettingLinked(new Set());
-        setSettingInitial(new Set());
-        return null;
-      }
-      return prev;
+    setSettingCurrencyIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setSettingInitialByCurrency((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
     });
   }, []);
 
@@ -2483,7 +2609,7 @@ export default function AccountListPage() {
       notify(t("apiCurrencySyncedFromSubsidiary"), "danger");
       return;
     }
-    if (settingCurrencyId != null && Number(settingCurrencyId) === id) {
+    if (settingCurrencyIds.has(id)) {
       notify(t("deselectCurrencyBeforeDelete"), "danger");
       return;
     }
@@ -2610,34 +2736,56 @@ export default function AccountListPage() {
     }
   };
 
-  const loadCurrencyLinks = async (curId) => {
-    try {
-      const params = new URLSearchParams({ action: "get_linked_accounts_by_currency", currency_id: String(curId) });
-      appendCurrencyScopeParams(params);
-      const res = await fetch(buildApiUrl(`api/accounts/bulk_account_currency_api.php?${params.toString()}`), { method: "POST", credentials: "include" });
-      const json = await res.json();
-      const ids = new Set((json.data?.linked_account_ids || []).map(Number));
-      setSettingLinked(ids); setSettingInitial(new Set(ids));
-    } catch { notify(t("loadLinksFailed"), "danger"); }
-  };
-
   const saveCurrencySetting = async () => {
     if (accountMutationsBlocked) {
       notify(t("readOnlyActionBlocked"), "danger");
       return;
     }
-    const linked = [], unlinked = [];
-    accounts.forEach(a => {
-      const id = Number(a.id); const was = settingInitial.has(id), now = settingLinked.has(id);
-      if (now && !was) linked.push(id); if (!now && was) unlinked.push(id);
+    const currencyIds = [...settingCurrencyIds]
+      .map(Number)
+      .filter((id) => id > 0 && currencies.some((c) => Number(c.id) === id));
+    if (!currencyIds.length) {
+      notify(t("pleaseSelectCurrencyFirst"), "danger");
+      return;
+    }
+    const updates = currencyIds.map((currencyId) => {
+      const initial = settingInitialByCurrency.get(currencyId) || new Set();
+      const linked = [];
+      const unlinked = [];
+      accounts.forEach((a) => {
+        const id = Number(a.id);
+        if (!(id > 0)) return;
+        const was = initial.has(id);
+        const now = settingLinked.has(id);
+        if (now && !was) linked.push(id);
+        if (!now && was) unlinked.push(id);
+      });
+      return { currencyId, linked, unlinked };
     });
+    const changed = updates.filter((u) => u.linked.length > 0 || u.unlinked.length > 0);
+    if (!changed.length) {
+      notify(t("pleaseSelectAccountFirst"), "danger");
+      return;
+    }
     try {
       const params = new URLSearchParams({ action: "bulk_update" });
       appendCurrencyScopeParams(params);
-      const res = await fetch(buildApiUrl(`api/accounts/bulk_account_currency_api.php?${params.toString()}`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currency_id: settingCurrencyId, linked_account_ids: linked, unlinked_account_ids: unlinked }), credentials: "include" });
-      const json = await res.json();
-      if (!res.ok || !json.success) return notifyApi(json.message, "saveFailed", "danger");
-      setSettingInitial(new Set(settingLinked));
+      const url = buildApiUrl(`api/accounts/bulk_account_currency_api.php?${params.toString()}`);
+      for (const { currencyId, linked, unlinked } of changed) {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            currency_id: currencyId,
+            linked_account_ids: linked,
+            unlinked_account_ids: unlinked,
+          }),
+          credentials: "include",
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) return notifyApi(json.message, "saveFailed", "danger");
+      }
+      clearCurrencySettingSelection();
       setCurrencySettingOpen(false);
       notify(t("currencySettingsSaved"));
       refreshAccountList();
@@ -2736,10 +2884,19 @@ export default function AccountListPage() {
         return;
       }
       const linkScopeCompanyId = Number(refJson?.data?.company_id) || Number(linkScope.company_id) || 0;
-      if (!Number.isFinite(linkScopeCompanyId) || linkScopeCompanyId <= 0) {
+      const isGroupLinkScope =
+        Boolean(linkScope.group_only) || String(refJson?.data?.scope_mode || "") === "group";
+      if (
+        !isGroupLinkScope &&
+        (!Number.isFinite(linkScopeCompanyId) || linkScopeCompanyId <= 0)
+      ) {
         notify(t("pleaseSelectCompanyFirst"), "danger");
         return;
       }
+      const linkMutationBase = {
+        ...linkScope,
+        ...(linkScopeCompanyId > 0 ? { company_id: linkScopeCompanyId } : {}),
+      };
       const typesMap = refJson?.data?.link_types_map || {};
       const currentTypeIds = new Set(
         (Array.isArray(refJson?.data?.accounts) ? refJson.data.accounts : [])
@@ -2757,8 +2914,7 @@ export default function AccountListPage() {
           body: JSON.stringify({
             account_id_1: Number(linkingAccountId),
             account_id_2: Number(linkedId),
-            company_id: linkScopeCompanyId,
-            ...linkScope,
+            ...linkMutationBase,
           }),
           credentials: "include",
         });
@@ -2770,8 +2926,7 @@ export default function AccountListPage() {
           body: JSON.stringify({
             account_id_1: Number(linkingAccountId),
             account_id_2: Number(linkedId),
-            company_id: linkScopeCompanyId,
-            ...linkScope,
+            ...linkMutationBase,
             link_type: linkType,
             source_account_id: linkType === "unidirectional" ? Number(linkingAccountId) : null,
           }),
@@ -2786,8 +2941,7 @@ export default function AccountListPage() {
             body: JSON.stringify({
               account_id_1: Number(linkingAccountId),
               account_id_2: Number(linkedId),
-              company_id: linkScopeCompanyId,
-              ...linkScope,
+              ...linkMutationBase,
               link_type: linkType,
               source_account_id: linkType === "unidirectional" ? Number(linkingAccountId) : null,
             }),
@@ -2867,36 +3021,51 @@ export default function AccountListPage() {
                   />
                 </div>
                 <div className="userlist-filter-chips" role="group">
-                  <button
-                    type="button"
-                    className={`user-filter-chip${showInactive ? " is-selected" : ""}`}
-                    aria-pressed={showInactive}
-                    onClick={() => setShowInactive((prev) => !prev)}
-                  >
-                    <span className="user-filter-chip__dot" aria-hidden>
-                      {showInactive ? (
-                        <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M6 12l4 4 8-8" />
-                        </svg>
-                      ) : null}
-                    </span>
-                    <span className="user-filter-chip__label">{t("showInactive")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`user-filter-chip${showAll ? " is-selected" : ""}`}
-                    aria-pressed={showAll}
-                    onClick={() => setShowAll((prev) => !prev)}
-                  >
-                    <span className="user-filter-chip__dot" aria-hidden>
-                      {showAll ? (
-                        <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M6 12l4 4 8-8" />
-                        </svg>
-                      ) : null}
-                    </span>
-                    <span className="user-filter-chip__label">{t("showAll")}</span>
-                  </button>
+                    <button
+                      type="button"
+                      className={`user-filter-chip${showAll ? " is-selected" : ""}`}
+                      aria-pressed={showAll}
+                      onClick={() => setShowAll((prev) => !prev)}
+                    >
+                      <span className="user-filter-chip__dot" aria-hidden>
+                        {showAll ? (
+                          <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 12l4 4 8-8" />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span className="user-filter-chip__label">{t("showAll")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`user-filter-chip${showActive ? " is-selected" : ""}`}
+                      aria-pressed={showActive}
+                      onClick={() => setShowActive((prev) => !prev)}
+                    >
+                      <span className="user-filter-chip__dot" aria-hidden>
+                        {showActive ? (
+                          <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 12l4 4 8-8" />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span className="user-filter-chip__label">{t("showActive")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`user-filter-chip${showInactive ? " is-selected" : ""}`}
+                      aria-pressed={showInactive}
+                      onClick={() => setShowInactive((prev) => !prev)}
+                    >
+                      <span className="user-filter-chip__dot" aria-hidden>
+                        {showInactive ? (
+                          <svg className="user-filter-chip__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M6 12l4 4 8-8" />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span className="user-filter-chip__label">{t("showInactive")}</span>
+                    </button>
                 </div>
                 </div>
                 <div className="user-toolbar-actions-right" style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
@@ -2938,7 +3107,10 @@ export default function AccountListPage() {
             />
           </div>
 
-          <div ref={listRegionRef} className="account-table-wrapper account-list-table">
+          <div
+            ref={listRegionRef}
+            className={`account-table-wrapper account-list-table${showBulkDeleteColumn ? " account-table-wrapper--bulk-delete-col" : ""}`}
+          >
             <div className="account-table-header account-list-table-header">
               <div className="account-header-item">{t("no")}</div>
               {renderSortableHeader(t("account"), "account")}
@@ -2949,6 +3121,24 @@ export default function AccountListPage() {
               {renderSortableHeader(t("lastLogin"), "lastLogin")}
               {renderSortableHeader(t("remark"), "remark")}
               <div className="account-header-item account-header-item--action">{t("action")}</div>
+              {showBulkDeleteColumn && (
+                <div className="account-header-item account-header-item--select">
+                  <input
+                    type="checkbox"
+                    aria-label={t("selectAllDeletableAria")}
+                    checked={selectAllAccounts}
+                    disabled={accountMutationsBlocked}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      const eligible = pageRows
+                        .filter((row) => String(row.status || "").toLowerCase() === "inactive")
+                        .map((row) => Number(row.id));
+                      setSelectedDeleteIds(on ? new Set(eligible) : new Set());
+                      setSelectAllAccounts(on);
+                    }}
+                  />
+                </div>
+              )}
             </div>
             <div
               className={`account-cards${showAll ? " account-cards--show-all" : ""}${usePagedFill ? " account-cards--paged-fill" : ""}`}
@@ -2983,7 +3173,7 @@ export default function AccountListPage() {
                         </span>
                       </label>
                     </div>
-                    <div className="account-card-item"><span className={`account-role-badge ${isInactive ? "account-status-inactive" : "account-status-active"}${accountMutationsBlocked ? "" : " status-clickable"}`} onClick={accountMutationsBlocked ? () => notify(t("readOnlyActionBlocked"), "danger") : () => toggleAccountStatus(a.id)} style={accountMutationsBlocked ? { cursor: "not-allowed" } : undefined}>{formatAccountStatusDisplay(t, a.status)}</span></div>
+                    <div className="account-card-item"><span className={`account-role-badge ${isInactive ? "account-status-inactive" : "account-status-active"}${accountMutationsBlocked ? "" : " status-clickable"}`} onClick={accountMutationsBlocked ? () => notify(t("readOnlyActionBlocked"), "danger") : () => toggleAccountStatus(a.id)} title={accountMutationsBlocked ? t("readOnlyActionBlocked") : t("clickToggleStatus")} style={accountMutationsBlocked ? { cursor: "not-allowed" } : undefined}>{formatAccountStatusDisplay(t, a.status)}</span></div>
                     <div
                       className="account-card-item"
                       title={formatAccountLastLoginTimeTitle(a.last_login) || undefined}
@@ -3003,16 +3193,30 @@ export default function AccountListPage() {
                           </svg>
                         </button>
                         </div>
-                        {isInactive && (
-                          <input
-                            type="checkbox"
-                            disabled={accountMutationsBlocked}
-                            checked={selectedDeleteIds.has(Number(a.id))}
-                            onChange={(e) => setSelectedDeleteIds(prev => { const n = new Set(prev); if (e.target.checked) n.add(Number(a.id)); else n.delete(Number(a.id)); return n; })}
-                          />
-                        )}
                       </div>
                     </div>
+                    {showBulkDeleteColumn && (
+                      <div className="account-card-item account-card-item--select">
+                        {isInactive ? (
+                          <input
+                            type="checkbox"
+                            aria-label={t("rowDeleteCheckboxAria")}
+                            disabled={accountMutationsBlocked}
+                            checked={selectedDeleteIds.has(Number(a.id))}
+                            onChange={(e) =>
+                              setSelectedDeleteIds((prev) => {
+                                const n = new Set(prev);
+                                if (e.target.checked) n.add(Number(a.id));
+                                else n.delete(Number(a.id));
+                                return n;
+                              })
+                            }
+                          />
+                        ) : (
+                          <span className="account-row-select-placeholder" aria-hidden="true" />
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -3096,7 +3300,31 @@ export default function AccountListPage() {
         onClose={() => setForceCurrencyDeletePrompt(null)}
         t={t}
       />
-      <CurrencySettingModal open={currencySettingOpen} onClose={() => setCurrencySettingOpen(false)} currencies={currencies} settingCurrencyId={settingCurrencyId} setSettingCurrencyId={setSettingCurrencyId} settingLinked={settingLinked} setSettingLinked={setSettingLinked} settingSearch={settingSearch} setSettingSearch={setSettingSearch} settingRole={settingRole} setSettingRole={setSettingRole} onLoadCurrencyLinks={loadCurrencyLinks} onClearCurrencySelection={clearCurrencySettingSelection} onSave={saveCurrencySetting} accounts={accounts} roles={roles} currencyInput={currencyInput} setCurrencyInput={setCurrencyInput} onCreateCurrency={createCurrency} onRemoveCurrency={removeSettingCurrency} t={t} />
+      <CurrencySettingModal
+        open={currencySettingOpen}
+        onClose={() => {
+          clearCurrencySettingSelection();
+          setCurrencySettingOpen(false);
+        }}
+        currencies={currencies}
+        settingCurrencyIds={settingCurrencyIds}
+        setSettingCurrencyIds={setSettingCurrencyIds}
+        settingLinked={settingLinked}
+        setSettingLinked={setSettingLinked}
+        settingInitialAccountCount={settingInitialAccountCount}
+        settingSearch={settingSearch}
+        setSettingSearch={setSettingSearch}
+        settingRole={settingRole}
+        setSettingRole={setSettingRole}
+        onSave={saveCurrencySetting}
+        accounts={accounts}
+        roles={roles}
+        currencyInput={currencyInput}
+        setCurrencyInput={setCurrencyInput}
+        onCreateCurrency={createCurrency}
+        onRemoveCurrency={removeSettingCurrency}
+        t={t}
+      />
       <LinkAccountModal open={linkModalOpen} accounts={linkAccountsPool} currentAccountId={linkingAccountId} selectedIds={selectedLinkedIds} setSelectedIds={setSelectedLinkedIds} linkType={linkType} setLinkType={setLinkType} searchTerm={linkSearchTerm} setSearchTerm={setLinkSearchTerm} onSave={saveLinks} onClose={() => setLinkModalOpen(false)} t={t} />
     </>
   );

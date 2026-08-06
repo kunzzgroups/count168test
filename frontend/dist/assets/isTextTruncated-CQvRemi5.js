@@ -1,0 +1,1 @@
+function g(t){if(!t)return!1;const{clientWidth:n,clientHeight:r,scrollWidth:o,scrollHeight:s}=t;if(n<=0&&r<=0)return!1;const e=1;if(o-n>e||s-r>e)return!0;try{const i=document.createRange();i.selectNodeContents(t);const c=i.getBoundingClientRect(),u=t.getBoundingClientRect();if(c.width-u.width>e||c.height-u.height>e)return!0}catch{}return!1}export{g as i};

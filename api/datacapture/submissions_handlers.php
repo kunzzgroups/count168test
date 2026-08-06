@@ -12,7 +12,43 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
     array $permissionProcessIds
 ): array {
     $ledgerDc = dcSubmittedLedgerFilter('dc', 'data_captures');
-    $scopeProcessFilter = dcSubmittedProcessScopeFilter('p');
+    // Dual-tenant group rows are isolated by scope_type/scope_id. process_id may be NULL
+    // (pure-group process_code path) or live on a non-anchor company_id — do not INNER JOIN
+    // + p.company_id = anchor, or Submitted Processes stays empty after a successful submit.
+    $hasProcessCodeCol = false;
+    try {
+        $colStmt = $pdo->query("SHOW COLUMNS FROM data_captures LIKE 'process_code'");
+        $hasProcessCodeCol = $colStmt && $colStmt->rowCount() > 0;
+    } catch (Throwable $e) {
+        $hasProcessCodeCol = false;
+    }
+    $processCodeExpr = $hasProcessCodeCol
+        ? "UPPER(TRIM(COALESCE(p.process_id, dc.process_code, '')))"
+        : "UPPER(TRIM(COALESCE(p.process_id, '')))";
+    $payrollCodes = dcSqlQuotedGroupPayrollProcessCodes();
+    // Align with capture_maintenance: pure-group rows may have process_id NULL + process_code only.
+    $isDualGroup = !empty($captureScopeCtx['is_group_scope']) && !empty($captureScopeCtx['dual_tenant']);
+    if ($isDualGroup) {
+        $scopeProcessFilter = $hasProcessCodeCol
+            ? " AND (dc.process_id IS NULL OR {$processCodeExpr} IN ({$payrollCodes})) "
+            : " AND (dc.process_id IS NULL OR {$processCodeExpr} IN ({$payrollCodes})) ";
+    } else {
+        $scopeProcessFilter = " AND {$processCodeExpr} IN ({$payrollCodes}) ";
+    }
+
+    $companyFilterSql = '';
+    $companyFilterParams = [];
+    // Legacy (no dual-tenant columns): keep anchor company guard on process rows.
+    if ($processCompanyId > 0 && empty($captureScopeCtx['dual_tenant'])) {
+        $companyFilterSql = ' AND p.company_id = ? ';
+        $companyFilterParams[] = $processCompanyId;
+    }
+
+    // Group payroll list must not apply subsidiary Games process_permissions
+    // (e.g. partnership JK@C168 only has SALARY — would hide PROFIT/COMMISSION/BONUS).
+    $isGroupLedger = !empty($captureScopeCtx['is_group_scope']);
+    $effectivePermissionCondition = $isGroupLedger ? '' : $permissionCondition;
+    $effectivePermissionParams = $isGroupLedger ? [] : $permissionProcessIds;
 
     $stmt = $pdo->prepare("
         SELECT
@@ -22,27 +58,28 @@ function dcFetchGroupPayrollSubmissionsByCaptureDate(
             dc.capture_date,
             dc.created_at,
             dc.user_type,
-            p.process_id AS process_code,
+            {$processCodeExpr} AS process_code,
             d.name AS description_name,
             COALESCE(u.login_id, o.owner_code) AS submitted_by
         FROM data_captures dc
-        JOIN process p ON dc.process_id = p.id
+        LEFT JOIN process p ON dc.process_id = p.id
         LEFT JOIN description d ON p.description_id = d.id
         LEFT JOIN user u ON dc.created_by = u.id AND dc.user_type = 'user'
         LEFT JOIN owner o ON dc.created_by = o.id AND dc.user_type = 'owner'
         WHERE 1=1
           {$ledgerDc['sql']}
           AND DATE(dc.capture_date) = ?
-          AND p.company_id = ?
+          {$companyFilterSql}
         {$scopeProcessFilter}
-        {$permissionCondition}
+        {$effectivePermissionCondition}
         ORDER BY dc.created_at ASC, dc.id ASC
     ");
 
     $params = array_merge(
         dcCaptureLedgerBindParams($ledgerDc),
-        [$captureDate, $processCompanyId],
-        $permissionProcessIds
+        [$captureDate],
+        $companyFilterParams,
+        $effectivePermissionParams
     );
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -63,14 +100,38 @@ function dcGetSubmissionsByCaptureDate(int $user_id): void
         $ledgerSp = dcSubmittedLedgerFilter('sp', 'submitted_processes');
         $ledgerDc = dcSubmittedLedgerFilter('dc', 'data_captures');
 
-        if (!$currentCompanyId) {
-            echo json_encode(['success' => false, 'error' => 'User company_id not found']);
-            return;
-        }
-
         $capture_date = $_GET['capture_date'] ?? date('Y-m-d');
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $capture_date)) {
             echo json_encode(['success' => false, 'error' => 'Invalid date format']);
+            return;
+        }
+
+        $isPureGroupScope = !empty($capture_scope_ctx['is_group_scope'])
+            && (
+                (int) ($capture_scope_ctx['group_scope_id'] ?? 0) > 0
+                || (int) ($capture_scope_ctx['scope_id'] ?? 0) > 0
+                || !empty($capture_scope_ctx['pure_group_tenant'])
+            );
+
+        if (!$currentCompanyId) {
+            if ($isPureGroupScope) {
+                // Pure / empty group: list from data_captures by scope_type=group (no company anchor).
+                $submissions = dcFetchGroupPayrollSubmissionsByCaptureDate(
+                    $pdo,
+                    is_array($capture_scope_ctx) ? $capture_scope_ctx : [],
+                    (int) $processCompanyId,
+                    $capture_date,
+                    '',
+                    []
+                );
+                echo json_encode([
+                    'success' => true,
+                    'data' => $submissions,
+                    'capture_date' => $capture_date,
+                ]);
+                return;
+            }
+            echo json_encode(['success' => false, 'error' => 'User company_id not found']);
             return;
         }
 
@@ -109,8 +170,26 @@ function dcGetSubmissionsByCaptureDate(int $user_id): void
         $notExistsCorrelate = dcSqlSubmittedProcessCorrelatesWithCapture('spx', 'dc', $pdo);
         $notExistsDateClause = dcSqlSubmittedProcessCaptureDateMatch('spx', 'dc', $hasCaptureDateColumn);
         $scopeProcessFilter = dcSubmittedProcessScopeFilter('p');
+        $permissionCategory = strtoupper(trim((string) ($_GET['permission'] ?? '')));
+        $bankCategoryRequested = $permissionCategory === 'BANK';
 
-        if ($capture_scope_group) {
+        if ($bankCategoryRequested) {
+            $groupIdForAccess = dcNormalizeGroupId(
+                $_GET['group_id'] ?? $_GET['view_group'] ?? ''
+            );
+            $hasBankAccess = checkCompanyCategoryPermission($pdo, (int) $currentCompanyId, 'Bank')
+                || reportGroupHasBankSubsidiary($pdo, $groupIdForAccess);
+            if (!$hasBankAccess) {
+                http_response_code(403);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Unauthorized category permission (Bank required)',
+                ]);
+                return;
+            }
+        }
+
+        if ($capture_scope_group || $bankCategoryRequested) {
             $submissions = dcFetchGroupPayrollSubmissionsByCaptureDate(
                 $pdo,
                 $capture_scope_ctx,
@@ -247,6 +326,7 @@ function dcGetProcessesByDay(int $user_id): void
         SELECT
             p.id,
             p.process_id,
+            p.enable_save_draft,
             d.name as description_name,
             day.day_name
         FROM process p
@@ -289,6 +369,7 @@ function dcGetProcessesByDay(int $user_id): void
             $proc['process_display'] = (!empty($proc['description_name']))
                 ? $proc['process_id'] . ' (' . $proc['description_name'] . ')'
                 : $proc['process_id'];
+            $proc['enable_save_draft'] = ((int) ($proc['enable_save_draft'] ?? 0)) === 1;
         }
         unset($proc);
 
@@ -357,6 +438,21 @@ function dcSaveSubmission(int $user_id): void
                 'already_exists' => true,
             ]);
             return;
+        }
+
+        require_once __DIR__ . '/../includes/realtime.php';
+        if (!empty($capture_scope_group) && is_array($capture_scope_ctx)) {
+            realtime_publish_scope([
+                'mode' => 'group',
+                'company_id' => (int) ($capture_scope_ctx['company_id'] ?? $company_id),
+                'group_scope_id' => (int) (
+                    $capture_scope_ctx['group_scope_id']
+                    ?? $capture_scope_ctx['scope_id']
+                    ?? 0
+                ),
+            ], 'datacapture', 'save_submission');
+        } elseif ((int) $company_id > 0) {
+            realtime_publish_companies([(int) $company_id], 'datacapture', 'save_submission');
         }
 
         echo json_encode([

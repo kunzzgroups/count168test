@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOverlayLock } from "../../hooks/useOverlayLock.js";
 import { formatLastLogin, normRole } from "../../lib/mobileUserAdmin.js";
+import PasswordInput from "../../components/PasswordInput.jsx";
 import "../transaction/add-transaction-sheet.css";
 
 const PERM_LABEL_KEYS = {
@@ -431,13 +432,14 @@ export function UserFormSheet({ open, onClose, admin }) {
             </label>
             <label className="m-account-form-field">
               <span>{i18n.password}</span>
-              <input
-                type="password"
+              <PasswordInput
                 value={form.password}
                 disabled={fieldLocks.password}
                 onChange={set("password")}
                 placeholder={isEditMode ? i18n.passwordEditHint : ""}
                 autoComplete="new-password"
+                showLabel={i18n.showPassword}
+                hideLabel={i18n.hidePassword}
               />
             </label>
             <label className="m-account-form-field">

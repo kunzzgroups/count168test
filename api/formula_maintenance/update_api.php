@@ -41,9 +41,37 @@ function validateTemplateBelongsToCompany(PDO $pdo, int $templateId, array $scop
 }
 
 /**
- * 获取账户 display 值（account_company 表）
+ * 获取账户 display 值（account_company 表；Group ledger 走 scope_type=group）
  */
-function getAccountDisplay(PDO $pdo, int $accountId, int $companyId) {
+function getAccountDisplay(PDO $pdo, int $accountId, int $companyId, array $scopeCtx = []) {
+    if (!empty($scopeCtx['is_group_scope'])) {
+        $groupPk = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+        if ($groupPk > 0) {
+            try {
+                if ($pdo->query("SHOW COLUMNS FROM account_company LIKE 'scope_type'")->rowCount() > 0) {
+                    $stmt = $pdo->prepare("
+                        SELECT a.account_id, a.name
+                        FROM account a
+                        INNER JOIN account_company ac ON a.id = ac.account_id
+                        WHERE a.id = ?
+                          AND ac.scope_type = 'group'
+                          AND ac.scope_id = ?
+                        LIMIT 1
+                    ");
+                    $stmt->execute([$accountId, $groupPk]);
+                    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($row) {
+                        return $row['account_id'];
+                    }
+                }
+            } catch (Throwable $e) {
+                /* fall through to company path when anchor exists */
+            }
+        }
+    }
+    if ($companyId <= 0) {
+        throw new Exception('Account 不存在或不属于当前公司');
+    }
     $stmt = $pdo->prepare("
         SELECT a.account_id, a.name
         FROM account a
@@ -285,15 +313,16 @@ try {
     }
 
     if ($formula_scope_group) {
-        if ($companyId <= 0) {
-            throw new Exception('集团范围无效或未配置集团公司');
+        $groupPk = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+        if ($groupPk <= 0 && $companyId <= 0) {
+            throw new Exception('集团范围无效');
         }
     } elseif ($companyId > 0 && dcCompanyIdIsGroupEntity($pdo, $companyId)) {
         throw new Exception('公司范围不能操作集团实体公式');
     }
 
     validateTemplateBelongsToCompany($pdo, $templateId, $scopeCtx);
-    $accountDisplay = getAccountDisplay($pdo, $accountId, $companyId);
+    $accountDisplay = getAccountDisplay($pdo, $accountId, $companyId, $scopeCtx);
     $templateInfo = getTemplateProcessInfo($pdo, $templateId);
     $sourceProcessId = $templateInfo ? (int)$templateInfo['process_id'] : null;
 
@@ -321,10 +350,23 @@ try {
         } else {
             updateTemplate($pdo, $templateId, $accountId, $accountDisplay, $sourceColumns, $sourceDisplay, $inputMethod, $formulaBase, $formulaDisplay, $lastSourceValue, $description);
         }
-        if ($sourceProcessId && $templateInfo) {
+        if ($sourceProcessId && $templateInfo && $companyId > 0) {
             syncFormulaToTargetTemplates($pdo, $companyId, $templateInfo, $accountId, $accountDisplay, $sourceColumns, $sourceDisplay, $inputMethod, $formulaBase, $formulaDisplay, $lastSourceValue, $description, $sp, $en);
         }
         $pdo->commit();
+        require_once __DIR__ . '/../includes/realtime.php';
+        if ($formula_scope_group) {
+            $listScope = [
+                'mode' => 'group',
+                'company_id' => $companyId,
+                'group_scope_id' => (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0),
+            ];
+            realtime_publish_scope($listScope, 'maintenance', 'formula_update');
+            realtime_publish_scope($listScope, 'datacapture', 'formula_update');
+        } elseif ($companyId > 0) {
+            realtime_publish_companies([$companyId], 'maintenance', 'formula_update');
+            realtime_publish_companies([$companyId], 'datacapture', 'formula_update');
+        }
         $respData = [
             'formula_display_paren' => $formulaDisplay,
             'formula_edit' => buildFormulaEditFromParts($formulaBase, $sp !== null ? $sp : '', $sp !== null ? $en : 0),

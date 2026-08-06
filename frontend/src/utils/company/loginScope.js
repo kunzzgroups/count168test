@@ -610,13 +610,20 @@ export function patchMeFromCompanyContext(me, ctx = {}) {
       has_c168_auto_renew_access: false,
       company_code: hasExplicitCode ? normalizeCompanyCode(ctx.companyCode) : "",
     };
-    // Group-only filter clears company selection — keep login category flags so sidebar
-    // Maintenance / Data Capture entries do not disappear while viewing group scope.
-    if (ctx.hasGambling != null) {
-      next.company_has_gambling = Boolean(ctx.hasGambling);
-    }
-    if (ctx.hasBank != null) {
-      next.company_has_bank = Boolean(ctx.hasBank);
+    // Group-only: contract fixes Games category (never wipe Data Capture for empty groups).
+    if (isGroupLogin(me) || ctx.forceGroupGamesCategory === true) {
+      next.company_has_gambling = true;
+      next.company_has_bank = false;
+      next.company_permissions = Array.isArray(me.company_permissions) && me.company_permissions.includes("Games")
+        ? me.company_permissions
+        : ["Games"];
+    } else {
+      if (ctx.hasGambling != null) {
+        next.company_has_gambling = Boolean(ctx.hasGambling);
+      }
+      if (ctx.hasBank != null) {
+        next.company_has_bank = Boolean(ctx.hasBank);
+      }
     }
     if (ctx.expirationDate !== undefined) {
       Object.assign(next, buildSidebarExpirationFields(ctx.expirationDate));

@@ -56,13 +56,24 @@ function dcSummaryApiInitScope(): void
     }
 
     if (!$company_id) {
-        http_response_code(401);
-        echo json_encode(['success' => false, 'message' => '缺少公司信息', 'data' => null]);
-        exit;
+        $isPureGroup = !empty($capture_scope_ctx['is_group_scope'])
+            && (
+                (int) ($capture_scope_ctx['group_scope_id'] ?? 0) > 0
+                || (int) ($capture_scope_ctx['scope_id'] ?? 0) > 0
+                || !empty($capture_scope_ctx['pure_group_tenant'])
+            );
+        if (!$isPureGroup) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => '缺少公司信息', 'data' => null]);
+            exit;
+        }
+        $company_id = 0;
     }
 
     $groupIdForAccess = dcNormalizeGroupId($scopeParams['group_id'] ?? '');
-    if (!checkReportGamesAccess($pdo, $company_id, $groupIdForAccess !== '' ? $groupIdForAccess : null)) {
+    // Align with Data Capture: Bank and Games companies can both open Summary.
+    // Category is resolved dynamically via maintenance access (not Games-only).
+    if (!checkReportMaintenanceAccess($pdo, $company_id, $groupIdForAccess !== '' ? $groupIdForAccess : null)) {
         http_response_code(403);
         echo json_encode(['success' => false, 'message' => 'Unauthorized permission category', 'data' => null]);
         exit;

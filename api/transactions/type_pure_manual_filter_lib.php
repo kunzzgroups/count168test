@@ -35,7 +35,7 @@ function typeTxSearchSupportsPureManualFilter(string $formType): bool
  */
 function typeTxSearchHistoryUsesFullAccountLedger(string $formType): bool
 {
-    return in_array(strtoupper(trim($formType)), ['PAYMENT', 'CONTRA', 'CLAIM', 'CLEAR', 'RATE', 'ADJUSTMENT', 'PROFIT'], true);
+    return in_array(strtoupper(trim($formType)), ['PAYMENT', 'CONTRA', 'CLAIM', 'CLEAR', 'RATE', 'ADJUSTMENT', 'PROFIT', 'ALL'], true);
 }
 
 /**

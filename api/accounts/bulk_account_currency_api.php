@@ -112,14 +112,21 @@ try {
     }
 
     $company_id = (int) ($currencyCtx['company_id'] ?? 0);
-    if ($company_id <= 0) {
+    $groupPk = (int) ($currencyCtx['group_pk'] ?? 0);
+    $isPureGroup = ($currencyCtx['mode'] ?? '') === 'group' && $groupPk > 0;
+    if ($company_id <= 0 && !$isPureGroup) {
         jsonResponse(false, '用户未登录或缺少公司信息', null, 401);
         exit;
     }
 
     $groupCode = (string) ($currencyCtx['group_code'] ?? '');
-    if ($groupCode !== '' && gc_is_group_login()) {
+    if ($company_id > 0 && $groupCode !== '' && gc_is_group_login()) {
         gc_assert_company_id_allowed_for_login_scope($pdo, $company_id, $groupCode);
+    } elseif ($isPureGroup && $groupCode !== '') {
+        if (!gc_session_can_access_group_ledger($pdo, $groupCode)) {
+            jsonResponse(false, '无权限访问该集团', null, 403);
+            exit;
+        }
     }
 
     $isGroupScope = (($currencyCtx['mode'] ?? '') === 'group');
@@ -304,6 +311,8 @@ try {
             }
 
             $pdo->commit();
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies([$company_id], 'accounts', 'bulk_currency');
             jsonResponse(true, '批量修改成功');
         } catch (Exception $e) {
             $pdo->rollBack();

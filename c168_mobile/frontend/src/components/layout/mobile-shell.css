@@ -211,7 +211,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-inline: 0.125rem;
-  font-size: 0.625rem;
+  font-size: var(--m-text-caption);
   font-weight: 600;
   line-height: 1.1;
   letter-spacing: 0.02em;
@@ -285,7 +285,7 @@
   }
 
   .m-shell-nav-label {
-    font-size: 0.5625rem;
+    font-size: var(--m-text-micro);
   }
 
   .m-shell-fab-slot {

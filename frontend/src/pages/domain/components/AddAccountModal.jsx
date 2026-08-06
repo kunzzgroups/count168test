@@ -125,7 +125,36 @@ export default function AddAccountModal({ companyId, companyCode, preferredRole,
       });
       const json = await res.json();
       if (json.success) {
-        const newId = Number(json.data.id);
+        const newId = Number(json.data?.id);
+        if (!Number.isFinite(newId) || newId <= 0) {
+          // Avoid selecting currency_id=0 when API returns a stale lastInsertId.
+          const metaRes = await fetch(
+            buildApiUrl(
+              `api/accounts/account_currency_api.php?action=get_available_currencies${
+                numericCompanyId ? `&company_id=${numericCompanyId}` : ""
+              }`,
+            ),
+            { credentials: "include" },
+          );
+          const metaJson = await metaRes.json();
+          if (metaJson?.success && Array.isArray(metaJson.data)) {
+            const rows = metaJson.data.map((c) => ({
+              id: c.id,
+              code: c.code,
+              is_linked: !!c.is_linked,
+            }));
+            setCurrencies(rows);
+            const matched = rows.find((c) => toUpper(c.code).trim() === code);
+            const matchedId = matched ? Number(matched.id) : 0;
+            if (matchedId > 0) {
+              setSelectedCurrencyIds((prev) =>
+                prev.map(Number).includes(matchedId) ? prev : [...prev, matchedId],
+              );
+            }
+          }
+          setCurrencyInput("");
+          return;
+        }
         setCurrencies((prev) => [...prev, { id: newId, code: json.data.code, is_linked: false }]);
         setSelectedCurrencyIds((prev) => (prev.map(Number).includes(newId) ? prev : [...prev, newId]));
         setCurrencyInput("");
@@ -179,7 +208,17 @@ export default function AddAccountModal({ companyId, companyCode, preferredRole,
     }
     const amount = normalizeAlertAmount(form.alert_amount);
     const fd = new FormData();
-    Object.entries(form).forEach(([k, v]) => fd.append(k, k === "alert_amount" ? amount : v ?? ""));
+    Object.entries(form).forEach(([k, v]) => {
+      if (k === "alert_amount") {
+        fd.append(k, amount);
+        return;
+      }
+      const raw = v ?? "";
+      // Align with AccountListPage / Summary: CSS text-transform is visual-only.
+      const out =
+        k === "account_id" || k === "name" || k === "remark" ? toUpper(raw) : raw;
+      fd.append(k, out);
+    });
     if (selectedCompanyIds.length) fd.set("company_ids", JSON.stringify(selectedCompanyIds));
     if (numericCompanyId) fd.set("company_id", String(numericCompanyId));
     if (selectedCurrencyIds.length) fd.set("currency_ids", JSON.stringify(selectedCurrencyIds));

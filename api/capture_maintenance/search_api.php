@@ -68,37 +68,75 @@ function fetchCaptureRecords(
     $ledgerDc = dcBuildCaptureLedgerFilter($pdo, $scopeCtx, 'dc', 'data_captures');
     $ledgerDcd = dcBuildCaptureLedgerFilter($pdo, $scopeCtx, 'dcd', 'data_capture_details');
     $processCompanyId = dcCaptureProcessCompanyId($scopeCtx);
+    $isPureGroupScope = !empty($scopeCtx['is_group_scope']) && !empty($scopeCtx['dual_tenant']);
 
-    $where_conditions = ['dc.capture_date BETWEEN ? AND ?', 'p.company_id = ?'];
+    // Group-only captures store process code directly (process_id = NULL, process_code column)
+    $hasProcessCodeCol = false;
+    try {
+        $hasProcessCodeCol = $pdo->query("SHOW COLUMNS FROM data_captures LIKE 'process_code'")->rowCount() > 0;
+    } catch (Throwable $e) {}
+
+    $processLabelSql = $hasProcessCodeCol
+        ? "COALESCE(p.process_id, dc.process_code)"
+        : "p.process_id";
+
+    $where_conditions = ['dc.capture_date BETWEEN ? AND ?'];
     $params = array_merge(
         dcCaptureLedgerBindParams($ledgerDc),
         dcCaptureLedgerBindParams($ledgerDcd),
-        [$date_from_db, $date_to_db, $processCompanyId]
+        [$date_from_db, $date_to_db]
     );
+    if (!$isPureGroupScope) {
+        $where_conditions[] = 'p.company_id = ?';
+        $params[] = $processCompanyId;
+    }
     if ($process_id !== null) {
         $where_conditions[] = 'p.id = ?';
         $params[] = $process_id;
     } elseif ($process_name) {
-        $where_conditions[] = 'p.process_id = ?';
-        $params[] = $process_name;
+        if ($hasProcessCodeCol) {
+            $where_conditions[] = '(p.process_id = ? OR UPPER(TRIM(dc.process_code)) = UPPER(TRIM(?)))';
+            $params[] = $process_name;
+            $params[] = $process_name;
+        } else {
+            $where_conditions[] = 'p.process_id = ?';
+            $params[] = $process_name;
+        }
+    }
+    // For group-only scope, also allow rows without a process join
+    $processJoinType = $isPureGroupScope ? 'LEFT JOIN' : 'INNER JOIN';
+    if ($isPureGroupScope) {
+        $where_conditions[] = '(p.id IS NOT NULL OR dc.process_id IS NULL)';
     }
     $where_sql = 'AND ' . implode(' AND ', $where_conditions);
     $productLabelSql = dcSqlCaptureProductLabel('p', 'd');
 
-    $sql = "SELECT dc.id as capture_id, p.process_id, {$productLabelSql} as product_name,
+    // For group-only scope with LEFT JOIN: make the process filter NULL-safe
+    // (rows with dc.process_id IS NULL have p.process_id=NULL and would fail the IN() filter)
+    $effectiveScopeProcessFilter = $scopeProcessFilter;
+    if ($isPureGroupScope && $scopeProcessFilter !== '') {
+        // Allow rows with dc.process_id IS NULL (pure group-only captures with process_code only)
+        // OR rows that match the group process filter (SALARY/BONUS/etc.)
+        $innerFilter = trim((string) $scopeProcessFilter);
+        // The scopeProcessFilter starts with ' AND ...' — extract inner condition
+        $innerFilter = preg_replace('/^\s*AND\s+/i', '', $innerFilter);
+        $effectiveScopeProcessFilter = " AND (dc.process_id IS NULL OR ({$innerFilter}))";
+    }
+
+    $sql = "SELECT dc.id as capture_id, {$processLabelSql} AS process_id, {$productLabelSql} as product_name,
             MIN(dcd.currency_id) as currency_id, MIN(c.code) as currency_code,
             dc.capture_date, DATE_FORMAT(dc.created_at, '%d/%m/%Y %H:%i:%s') as dts_created,
             {$productLabelSql} as wl_group, MAX(COALESCE(u.login_id, o.owner_code)) as submitted_by
             FROM data_captures dc
-            INNER JOIN process p ON dc.process_id = p.id
+            {$processJoinType} process p ON dc.process_id = p.id
             LEFT JOIN description d ON p.description_id = d.id
             INNER JOIN data_capture_details dcd ON dc.id = dcd.capture_id
             INNER JOIN currency c ON dcd.currency_id = c.id
             LEFT JOIN user u ON dc.created_by = u.id AND dc.user_type = 'user'
             LEFT JOIN owner o ON dc.created_by = o.id AND dc.user_type = 'owner'
-            WHERE 1=1 {$ledgerDc['sql']} {$ledgerDcd['sql']} $where_sql $scopeProcessFilter
-            GROUP BY dc.id, p.process_id, {$productLabelSql}, dc.capture_date, dc.created_at
-            ORDER BY dc.capture_date DESC, p.process_id, {$productLabelSql}";
+            WHERE 1=1 {$ledgerDc['sql']} {$ledgerDcd['sql']} $where_sql $effectiveScopeProcessFilter
+            GROUP BY dc.id, {$processLabelSql}, {$productLabelSql}, dc.capture_date, dc.created_at
+            ORDER BY dc.capture_date DESC, {$processLabelSql}, {$productLabelSql}";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -250,7 +288,15 @@ try {
 
     if ($hasExplicitScope) {
         $scopeResolved = resolveDataCaptureRequestScope($pdo, $scopeParams);
-        $scopeCtx = dcFinalizeCaptureMaintenanceScope($pdo, $scopeResolved, $scopeParams);
+        $finalizeParams = $scopeParams;
+        $scopeHint = strtolower(trim((string) ($scopeParams['report_scope'] ?? $scopeParams['capture_scope'] ?? '')));
+        if ($scopeHint === 'group' || !empty($scopeResolved['is_group_scope'])) {
+            unset($finalizeParams['company_id']);
+            if (!isset($finalizeParams['group_aggregate']) || trim((string) $finalizeParams['group_aggregate']) === '') {
+                $finalizeParams['group_aggregate'] = '1';
+            }
+        }
+        $scopeCtx = dcFinalizeCaptureMaintenanceScope($pdo, $scopeResolved, $finalizeParams);
         $company_id = (int) $scopeCtx['company_id'];
         $capture_scope_group = (bool) $scopeCtx['is_group_scope'];
         $scopeProcessFilter = (string) $scopeCtx['scope_process_sql'];
@@ -279,7 +325,9 @@ try {
     }
 
     if ($capture_scope_group) {
-        if ($company_id <= 0) {
+        $groupPk = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+        // Dual-tenant pure Group: company_id may be 0; ledger filter uses scope_id.
+        if ($company_id <= 0 && (empty($scopeCtx['dual_tenant']) || $groupPk <= 0)) {
             jsonResponse(true, 'OK', []);
             return;
         }

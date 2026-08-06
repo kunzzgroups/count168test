@@ -308,6 +308,18 @@ try {
 
     $pdo->commit();
 
+    require_once __DIR__ . '/../includes/realtime.php';
+    require_once __DIR__ . '/../includes/ledger_realtime.php';
+    $listScope = [
+        'mode' => 'company',
+        'company_id' => (int) $company_id,
+        'group_scope_id' => 0,
+    ];
+    realtime_publish_scope($listScope, 'maintenance', 'bankprocess_delete');
+    tx_ledger_realtime_publish_scope($listScope, 'bankprocess_delete', [
+        'deleted' => (int) $deleted,
+    ]);
+
     foreach ($affectedBankProcessIds as $bpId) {
         bmp_pruneStaleAccountingResendDailyGuardsForProcess($pdo, $company_id, $bpId);
     }

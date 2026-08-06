@@ -1,8 +1,10 @@
 # Transaction 页面 — RATE 手动交易逻辑说明书
 
-> 本文档说明 Transaction Payment（`/transaction`）右侧「手动交易账单」在 **Type = RATE** 时的完整行为：表单字段、即时计算、校验、提交 payload、后端落库、历史展示、余额归类，以及当前未生效的 Platform Fee。
+> 本文档说明 Transaction Payment（`/transaction`）右侧「手动交易账单」在 **Type = RATE** 时的完整行为：表单字段、即时计算、校验、提交 payload、后端落库、历史展示、余额归类。
 >
 > 目标读者：产品 / 开发。写法偏白话，但尽量落到具体字段与代码位置。
+>
+> **Service Fee / Platform Fee 现行规则（2026-07）：** 见 [`transaction-rate-service-platform-fee.md`](./transaction-rate-service-platform-fee.md)。本文 §18 仍写「Platform Fee 仅 UI」，**已过时**。
 
 ---
 

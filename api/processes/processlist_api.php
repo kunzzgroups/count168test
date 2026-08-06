@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../includes/permissions.php';
 require_once __DIR__ . '/../includes/partnership_audit_readonly.php';
 require_once __DIR__ . '/../includes/money_decimal.php';
 require_once __DIR__ . '/../includes/ensure_bank_process_day_end_monthly_cap_column.php';
+require_once __DIR__ . '/../includes/ensure_process_enable_save_draft_column.php';
 require_once __DIR__ . '/../includes/process_modified_by.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -282,6 +283,7 @@ if ($req_company_id) {
 
 if (isset($pdo) && $pdo instanceof PDO) {
     ensureBankProcessDayEndMonthlyCapEnabledColumn($pdo);
+    ensureProcessEnableSaveDraftColumn($pdo);
 }
 
 switch ($action) {
@@ -351,6 +353,7 @@ function getProcesses() {
         $targetCompanyId = $requested_company_id;
         
         $searchTerm = $_GET['search'] ?? '';
+        $showActive = isset($_GET['showActive']) && $_GET['showActive'] == '1';
         $showInactive = isset($_GET['showInactive']) && $_GET['showInactive'] == '1';
         $showOfficial = isset($_GET['showOfficial']) && $_GET['showOfficial'] == '1';
         $showEInvoice = isset($_GET['showEInvoice']) && $_GET['showEInvoice'] == '1';
@@ -376,7 +379,8 @@ function getProcesses() {
                     " . processModifiedByLoginSql() . " as modified_by_login,
                     p.dts_created,
                     COALESCE(u_created.login_id, o_created.owner_code) as created_by_login,
-                    p.status" .
+                    p.status,
+                    p.enable_save_draft" .
                     ($hasTxnProcessId ? ", (SELECT COUNT(*) FROM transactions t WHERE t.process_id = p.id) AS has_transactions" : "") . "
                 FROM process p
                 LEFT JOIN description d ON p.description_id = d.id
@@ -402,15 +406,12 @@ function getProcesses() {
             $params[] = "%$searchTerm%";
         }
         
-        // 根据 showAll / showInactive 过滤状态：
-        // - 默认 / 仅分页：active
-        // - showInactive：inactive（分页）
-        // - showAll：全部 active（不分页由前端控制）
-        // - showAll + showInactive：全部 inactive
-        if ($showAll && $showInactive) {
-            $conditions[] = "p.status = 'inactive'";
-        } elseif ($showAll) {
-            $conditions[] = "p.status = 'active'";
+        // 状态筛选（showAll 只影响前端分页，不参与 SQL）：
+        // - 默认 / showActive：active
+        // - showInactive：inactive
+        // - showActive + showInactive：active OR inactive
+        if ($showActive && $showInactive) {
+            $conditions[] = "p.status IN ('active','inactive')";
         } elseif ($showInactive) {
             $conditions[] = "p.status = 'inactive'";
         } else {
@@ -452,6 +453,7 @@ function getProcesses() {
                 'replace_word' => $process['replace_word_from'] . ' == ' . $process['replace_word_to'],
                 'remarks' => $process['remark'],
                 'has_transactions' => $hasTxnProcessId && ((int)($process['has_transactions'] ?? 0)) > 0,
+                'enable_save_draft' => ((int)($process['enable_save_draft'] ?? 0)) === 1,
             ];
         }
         
@@ -496,6 +498,7 @@ function getProcess() {
                     p.replace_word_to,
                     p.remark,
                     p.status,
+                    p.enable_save_draft,
                     p.dts_modified,
                     p.dts_created,
                     d.name as description_name,
@@ -546,6 +549,7 @@ function getProcess() {
                 'replace_word_to' => $process['replace_word_to'],
                 'replace_word' => $process['replace_word_from'] . ' == ' . $process['replace_word_to'],
                 'remarks' => $process['remark'],
+                'enable_save_draft' => ((int)($process['enable_save_draft'] ?? 0)) === 1,
                 'day_use' => $process['day_ids'],
                 'day_names' => $process['day_names'],
                 'dts_modified' => $process['dts_modified'],
@@ -597,6 +601,7 @@ function updateProcess() {
         $status = $_POST['status'] ?? 'active';
         $dayUse = $_POST['day_use'] ?? '';
         $selectedDescriptions = $_POST['selected_descriptions'] ?? '';
+        $enableSaveDraft = isset($_POST['enable_save_draft']) && trim((string)$_POST['enable_save_draft']) === '1';
         
         if (empty($id)) {
             jsonResponse(false, 'Process ID is required', null);
@@ -633,7 +638,7 @@ function updateProcess() {
             $modifiedByOwnerId = $modifier['modified_by_owner_id'];
 
             // 更新process基本信息
-            $updateSql = "UPDATE process SET 
+            $updateSql = "UPDATE process SET
                             process_id = ?,
                             currency_id = ?,
                             remove_word = ?,
@@ -641,12 +646,13 @@ function updateProcess() {
                             replace_word_to = ?,
                             remark = ?,
                             status = ?,
+                            enable_save_draft = ?,
                             dts_modified = NOW(),
                             modified_by = ?,
                             modified_by_type = ?,
                             modified_by_owner_id = ?
                           WHERE id = ? AND company_id = ?";
-            
+
             $stmt = $pdo->prepare($updateSql);
             $stmt->execute([
                 $processId,
@@ -656,6 +662,7 @@ function updateProcess() {
                 $replaceWordTo,
                 $remark,
                 $status,
+                $enableSaveDraft ? 1 : 0,
                 $currentUserId,
                 $modifiedByType,
                 $modifiedByOwnerId,
@@ -774,6 +781,8 @@ function updateProcess() {
             }
             
             $pdo->commit();
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies([$currentCompanyId], 'processes', 'update_process');
             jsonResponse(true, 'Process updated successfully!', null);
         } catch (Exception $e) {
             // 回滚事务
@@ -1237,6 +1246,8 @@ function updateBankProcess() {
                 $ins->execute([$currentCompanyId, $country, $bank]);
             } catch (Exception $e) { /* ignore */ }
         }
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$currentCompanyId], 'processes', 'update_bank_process');
         jsonResponse(true, 'Process updated successfully!', null);
     } catch (Exception $e) {
         error_log("updateBankProcess: " . $e->getMessage());
@@ -1396,6 +1407,8 @@ function addCountry() {
         $stmt = $pdo->prepare("INSERT IGNORE INTO company_countries (company_id, country) VALUES (?, ?)");
         $stmt->execute([$companyId, $country]);
         $currency = ensureCompanyCurrencyCode($pdo, $companyId, $country);
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$companyId], 'processes', 'add_country');
         jsonResponse(true, 'Saved', $currency);
     } catch (Exception $e) {
         error_log("addCountry: " . $e->getMessage());
@@ -1444,6 +1457,8 @@ function removeCountry() {
         }
 
         $currencyResult = deleteCompanyCurrencyCode($pdo, $companyId, $country);
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$companyId], 'processes', 'remove_country');
         jsonResponse(true, 'Removed', [
             'deleted' => $companyCountriesDeleted,
             'currency_id' => $currencyResult['id'],
@@ -1483,6 +1498,8 @@ function removeBank() {
         }
         $stmt = $pdo->prepare("DELETE FROM country_bank WHERE company_id = ? AND country = ? AND bank = ?");
         $stmt->execute([$companyId, $country, $bank]);
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$companyId], 'processes', 'remove_bank');
         jsonResponse(true, 'Removed', ['deleted' => (int) $stmt->rowCount()]);
     } catch (Exception $e) {
         error_log("removeBank: " . $e->getMessage());
@@ -1548,6 +1565,8 @@ function saveCountryBanks() {
             $stmt = $pdo->prepare("INSERT IGNORE INTO country_bank (company_id, country, bank) VALUES (?, ?, ?)");
             $stmt->execute([$companyId, $country, $bank]);
         }
+        require_once __DIR__ . '/../includes/realtime.php';
+        realtime_publish_companies([$companyId], 'processes', 'save_country_banks');
         jsonResponse(true, 'Saved', null);
     } catch (Exception $e) {
         error_log("saveCountryBanks: " . $e->getMessage());
@@ -1642,6 +1661,8 @@ function saveSelectedCountries() {
             }
             $pdo->commit();
             ensureCompanyCurrencyCodes($pdo, $companyId, $countries);
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies([$companyId], 'processes', 'save_selected_countries');
             jsonResponse(true, 'Saved', null);
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -1758,6 +1779,8 @@ function saveSelectedBanks() {
                 }
             }
             $pdo->commit();
+            require_once __DIR__ . '/../includes/realtime.php';
+            realtime_publish_companies([$companyId], 'processes', 'save_selected_banks');
             jsonResponse(true, 'Saved', null);
         } catch (Exception $e) {
             $pdo->rollBack();

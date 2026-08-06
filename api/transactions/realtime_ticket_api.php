@@ -11,6 +11,7 @@ require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../api_response.php';
 require_once __DIR__ . '/transaction_scope.php';
 require_once __DIR__ . '/../includes/ledger_realtime.php';
+require_once __DIR__ . '/../includes/realtime.php';
 require_once __DIR__ . '/../c168/c168_domain_access.php';
 require_once __DIR__ . '/../datacapture/data_capture_scope_common.php';
 
@@ -27,13 +28,7 @@ try {
 
     $cfg = tx_ledger_realtime_config();
     if (!$cfg['enabled']) {
-        api_success([
-            'enabled' => false,
-            'ticket' => null,
-            'channels' => [],
-            'sse_path' => '/realtime/sse',
-            'expires_at' => null,
-        ], 'Realtime disabled');
+        api_success(realtime_ticket_disabled_payload(), 'Realtime disabled');
         exit;
     }
 
@@ -57,13 +52,7 @@ try {
 
     $channels = tx_ledger_realtime_channels_from_scope($listScope);
     if ($channels === []) {
-        api_success([
-            'enabled' => false,
-            'ticket' => null,
-            'channels' => [],
-            'sse_path' => '/realtime/sse',
-            'expires_at' => null,
-        ], 'No realtime channels for scope');
+        api_success(realtime_ticket_disabled_payload(), 'No realtime channels for scope');
         exit;
     }
 
@@ -84,8 +73,16 @@ try {
         'expires_at' => $expiresAt,
     ]);
 } catch (InvalidArgumentException $e) {
+    if (realtime_ticket_is_scope_access_error($e)) {
+        api_success(realtime_ticket_disabled_payload(), $e->getMessage());
+        exit;
+    }
     api_error($e->getMessage(), 400);
 } catch (Throwable $e) {
     error_log('realtime_ticket_api: ' . $e->getMessage());
+    if (realtime_ticket_is_scope_access_error($e)) {
+        api_success(realtime_ticket_disabled_payload(), $e->getMessage());
+        exit;
+    }
     api_error($e->getMessage() ?: 'Failed to issue realtime ticket', 500);
 }

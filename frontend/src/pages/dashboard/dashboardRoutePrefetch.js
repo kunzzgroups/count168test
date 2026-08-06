@@ -10,6 +10,7 @@ import {
   bindDashboardSessionCache,
   buildDashboardCacheKey,
   getDashboardCache,
+  getLedgerCacheGeneration,
   setDashboardCache,
   setDashboardPayloadCache,
 } from "../../utils/dashboard/dashboardCache.js";
@@ -75,6 +76,7 @@ export function warmDashboardRouteCache({ me = null } = {}) {
 
   const promise = (async () => {
     bindDashboardSessionCache(key);
+    const genAtStart = getLedgerCacheGeneration();
 
     let rows = getCachedOwnerCompanies();
     if (!rows?.length) {
@@ -85,6 +87,7 @@ export function warmDashboardRouteCache({ me = null } = {}) {
       }
     }
     if (!rows?.length) return;
+    if (genAtStart !== getLedgerCacheGeneration()) return;
 
     const persisted = readPersistedDashboardGcFilter();
     if (persisted.groupsAllMode || persisted.groupAllMode) return;
@@ -159,6 +162,7 @@ export function warmDashboardRouteCache({ me = null } = {}) {
 
     const requestKey = q.toString();
     const { res, json } = await fetchBootstrapDeduped(requestKey);
+    if (genAtStart !== getLedgerCacheGeneration()) return;
     if (!res.ok || !json.success || !json.data?.current) return;
 
     const current = json.data.current;

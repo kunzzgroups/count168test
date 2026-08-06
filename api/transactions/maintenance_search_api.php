@@ -437,21 +437,44 @@ function maintenanceBuildCaptureWhere(
     $ledgerDc = dcBuildCaptureLedgerFilter($pdo, $scopeCtx, 'dc', 'data_captures');
     $ledgerDcd = dcBuildCaptureLedgerFilter($pdo, $scopeCtx, 'dcd', 'data_capture_details');
     $processCompanyId = dcCaptureProcessCompanyId($scopeCtx);
+    $isPureGroupScope = !empty($scopeCtx['is_group_scope']) && !empty($scopeCtx['dual_tenant']);
 
-    $conditions = ['dc.capture_date BETWEEN ? AND ?', 'p.company_id = ?'];
+    $conditions = ['dc.capture_date BETWEEN ? AND ?'];
     $params = array_merge(
         dcCaptureLedgerBindParams($ledgerDc),
         dcCaptureLedgerBindParams($ledgerDcd),
-        [$date_from_db, $date_to_db, $processCompanyId]
+        [$date_from_db, $date_to_db]
     );
 
+    if (!$isPureGroupScope) {
+        $conditions[] = 'p.company_id = ?';
+        $params[] = $processCompanyId;
+    }
+
     if ($process) {
-        $conditions[] = 'p.process_id = ?';
-        $params[] = $process;
+        $hasProcessCodeCol = false;
+        try {
+            $hasProcessCodeCol = $pdo->query("SHOW COLUMNS FROM data_captures LIKE 'process_code'")->rowCount() > 0;
+        } catch (Throwable $e) {}
+        if ($hasProcessCodeCol) {
+            $conditions[] = '(p.process_id = ? OR UPPER(TRIM(dc.process_code)) = UPPER(TRIM(?)))';
+            $params[] = $process;
+            $params[] = $process;
+        } else {
+            $conditions[] = 'p.process_id = ?';
+            $params[] = $process;
+        }
+    }
+
+    $effectiveScopeProcessFilter = $scopeProcessFilter;
+    if ($isPureGroupScope && $scopeProcessFilter !== '') {
+        $innerFilter = trim((string) $scopeProcessFilter);
+        $innerFilter = preg_replace('/^\s*AND\s+/i', '', $innerFilter);
+        $effectiveScopeProcessFilter = " AND (dc.process_id IS NULL OR ({$innerFilter}))";
     }
 
     $whereSql = 'WHERE 1=1 ' . $ledgerDc['sql'] . $ledgerDcd['sql']
-        . ' AND ' . implode(' AND ', $conditions) . $scopeProcessFilter;
+        . ' AND ' . implode(' AND ', $conditions) . $effectiveScopeProcessFilter;
 
     return ['where_sql' => $whereSql, 'params' => $params];
 }
@@ -479,6 +502,17 @@ function maintenanceBuildCaptureUnionBranch(
     $captureWhereSql = $built['where_sql'];
     $captureParams = $built['params'];
     $rateExpressionSelect = maintenanceRateExpressionSelectSql($pdo, true);
+    $isPureGroupScope = !empty($scopeCtx['is_group_scope']) && !empty($scopeCtx['dual_tenant']);
+    $processJoinType = $isPureGroupScope ? 'LEFT JOIN' : 'INNER JOIN';
+
+    $hasProcessCodeCol = false;
+    try {
+        $hasProcessCodeCol = $pdo->query("SHOW COLUMNS FROM data_captures LIKE 'process_code'")->rowCount() > 0;
+    } catch (Throwable $e) {}
+
+    $processLabelExpr = $hasProcessCodeCol
+        ? 'COALESCE(p.process_id, dc.process_code)'
+        : 'p.process_id';
 
     $sql = "
         SELECT
@@ -486,7 +520,7 @@ function maintenanceBuildCaptureUnionBranch(
             NULL AS transaction_id,
             dc.id AS capture_id,
             dcd.id AS capture_detail_id,
-            " . maintenanceUnionTextExpr('p.process_id') . " AS process_id,
+            " . maintenanceUnionTextExpr($processLabelExpr) . " AS process_id,
             " . maintenanceDataCaptureAccountIdExpr('a', 'dcd') . " AS account_id,
             " . maintenanceUnionNullTextCol() . " AS from_account,
             " . maintenanceUnionTextExpr("COALESCE(d.name, dcd.description_main, dcd.description_sub, dcd.columns_value, 'Data Capture')") . " AS description,
@@ -513,7 +547,7 @@ function maintenanceBuildCaptureUnionBranch(
             " . maintenanceUnionTextExpr('dcd.columns_value') . " AS columns_value
         FROM data_capture_details dcd
         INNER JOIN data_captures dc ON dcd.capture_id = dc.id
-        INNER JOIN process p ON dc.process_id = p.id
+        {$processJoinType} process p ON dc.process_id = p.id
         " . maintenanceDataCaptureAccountJoinSql('dcd', 'a') . "
         LEFT JOIN currency c ON dcd.currency_id = c.id
         LEFT JOIN description d ON p.description_id = d.id
@@ -1065,7 +1099,15 @@ try {
 
     if ($hasExplicitScope) {
         $scopeResolved = resolveDataCaptureRequestScope($pdo, $scopeParams);
-        $scopeCtx = dcFinalizeCaptureMaintenanceScope($pdo, $scopeResolved, $scopeParams);
+        $finalizeParams = $scopeParams;
+        $scopeHint = strtolower(trim((string) ($scopeParams['report_scope'] ?? $scopeParams['capture_scope'] ?? '')));
+        if ($scopeHint === 'group' || !empty($scopeResolved['is_group_scope'])) {
+            unset($finalizeParams['company_id']);
+            if (!isset($finalizeParams['group_aggregate']) || trim((string) $finalizeParams['group_aggregate']) === '') {
+                $finalizeParams['group_aggregate'] = '1';
+            }
+        }
+        $scopeCtx = dcFinalizeCaptureMaintenanceScope($pdo, $scopeResolved, $finalizeParams);
         $company_id = (int) $scopeCtx['company_id'];
         $maintenance_scope_group = (bool) $scopeCtx['is_group_scope'];
         $scopeProcessFilter = (string) $scopeCtx['scope_process_sql'];
@@ -1152,18 +1194,22 @@ try {
     }
 
     if ($maintenance_scope_group && (int) $company_id <= 0) {
-        echo json_encode([
-            'success' => true,
-            'data' => [],
-            'pagination' => [
-                'page' => isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1,
-                'page_size' => isset($_GET['page_size']) ? (int) $_GET['page_size'] : 0,
-                'total' => 0,
-                'has_more' => false,
-                'next_cursor' => null,
-            ],
-        ], JSON_UNESCAPED_UNICODE);
-        return;
+        $groupPk = (int) ($scopeCtx['group_scope_id'] ?? $scopeCtx['scope_id'] ?? 0);
+        // Dual-tenant pure Group may have company_id=0; only short-circuit when scope_id missing.
+        if (empty($scopeCtx['dual_tenant']) || $groupPk <= 0) {
+            echo json_encode([
+                'success' => true,
+                'data' => [],
+                'pagination' => [
+                    'page' => isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1,
+                    'page_size' => isset($_GET['page_size']) ? (int) $_GET['page_size'] : 0,
+                    'total' => 0,
+                    'has_more' => false,
+                    'next_cursor' => null,
+                ],
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
     }
     if (!$maintenance_scope_group && (int) $company_id > 0 && dcCompanyIdIsGroupEntity($pdo, (int) $company_id)) {
         echo json_encode([

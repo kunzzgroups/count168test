@@ -1,6 +1,11 @@
 /** Sidebar / maintenance access rules for authenticated staff (non-member). */
 
 import { canAccessC168AutoRenew, canAccessC168DomainPages } from "../company/loginScope.js";
+import {
+  companyMatchesBankOnlyPillScope,
+  resolveCompanyCategoryFlags,
+} from "../company/companyCategoryFlags.js";
+import { findOwnerCompanyById, readPersistedDashboardGcFilter } from "../company/sharedCompanyFilter.js";
 import { spaPath } from "../routing/pageRoutes.js";
 
 export function normRole(role) {
@@ -54,14 +59,49 @@ export function canAccessTransactionFormulaMaintenance(me) {
   return canAccessFullMaintenance(me) || canAccessLimitedMaintenance(me);
 }
 
-/** Capture maintenance: full Maintenance, or limited path when session company has Bank. */
+/**
+ * Capture maintenance: only when Maintenance permission is granted (full menu).
+ * Limited path (Supervisor and below without Maintenance) keeps Transaction + Formula only —
+ * never Capture, including Bank companies and Group ↔ company switches.
+ */
 export function canAccessCaptureMaintenance(me) {
-  if (canAccessFullMaintenance(me)) return true;
-  return canAccessLimitedMaintenance(me) && Boolean(me?.company_has_bank);
+  return canAccessFullMaintenance(me);
 }
 
 export function canAccessDashboard(me) {
   return canAccessPermission(me, "home");
+}
+
+/**
+ * Sidebar Report: visible for pure Group, Games companies, and C168.
+ * Hidden only when the active filter company is Bank-only (e.g. C2).
+ * Prefer persisted GC filter over stale session `me` after Group ↔ Bank switches.
+ */
+export function canShowReportInSidebar(me) {
+  if (!me) return false;
+  if (!canAccessPermission(me, "report")) return false;
+
+  const filter = readPersistedDashboardGcFilter();
+  if (filter.groupOnly && filter.selectedGroup) return true;
+
+  const cid =
+    filter.companyId != null && filter.companyId !== "" ? Number(filter.companyId) : Number.NaN;
+  if (Number.isFinite(cid) && cid > 0) {
+    const row = findOwnerCompanyById(cid);
+    if (row && companyMatchesBankOnlyPillScope(row)) return false;
+    const flags = resolveCompanyCategoryFlags(row);
+    if (flags?.hasGambling) return true;
+    const code = String(row?.company_id || me.company_code || "")
+      .trim()
+      .toUpperCase();
+    if (code === "C168") return true;
+    // Known subsidiary with neither Games nor C168 → hide (Bank / empty).
+    if (flags) return false;
+  }
+
+  if (me.company_has_gambling) return true;
+  const code = String(me.company_code || "").trim().toUpperCase();
+  return code === "C168" || Boolean(me.is_current_company_c168);
 }
 
 /**
@@ -89,7 +129,7 @@ export function resolveDefaultLandingPath(me) {
     return spaPath("datacapture");
   }
   if (canAccessPermission(me, "payment")) return spaPath("transaction");
-  if (canAccessPermission(me, "report") && me?.company_has_gambling) {
+  if (canShowReportInSidebar(me)) {
     return spaPath("customer-report");
   }
   if (canAccessFullMaintenance(me)) return spaPath("payment-maintenance");
