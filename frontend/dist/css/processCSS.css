@@ -6065,6 +6065,21 @@ body.process-page > .process-modal {
     flex-shrink: 0;
 }
 
+/* global-13inch.css forces body.ec-auth-shell input[type="checkbox"] to 16x16
+   !important on laptop-width viewports, which un-hides the switch's real
+   checkbox (normally opacity:0/width:0/height:0) and makes it render as a
+   long shape next to the pill. Out-specificity that rule for this switch only —
+   global-13inch.css itself is left alone since other checkboxes rely on it. */
+.process-form-modal .dc-save-draft-row .toggle-switch input[type="checkbox"],
+#addModal .modal-content.process-form-modal .dc-save-draft-row .toggle-switch input[type="checkbox"],
+#editModal .modal-content.process-form-modal .dc-save-draft-row .toggle-switch input[type="checkbox"] {
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    opacity: 0 !important;
+    margin: 0 !important;
+}
+
 /* userlist.css's .toggle-slider ships a 5px downward offset (top:5px; bottom:-5px)
    tuned for its own Read Only row — cancel it here so the switch centers on the
    label's text line instead of sitting visibly lower. */
