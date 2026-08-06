@@ -704,10 +704,15 @@ const SESSION_DASHBOARD_WARM_DELAY_MS = 600;
 /** Cross-group / independent company warm after active scope settles. */
 const CROSS_GROUP_COMPANY_WARM_DELAY_MS = 2000;
 /** Parallel kpi bootstrap requests when filling multi-currency earnings sidebar. */
-/** Parallel secondary-currency earnings captures (FE fans out; avoids PHP serial foreach). */
-const EARNINGS_KPI_PARALLEL_BATCH = 4;
-/** Company All pie: more parallel light earnings packs (each is kpi_only, not full chart). */
-const EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL = 6;
+/** Parallel secondary-currency earnings captures (FE fans out; avoids PHP serial foreach).
+ * Raised from 4 → 12 so a normal scope's whole currency list fires as one wave instead of
+ * ceil(n/4) sequential batches — that stacked wait was the Currency card's 2-4s tail behind
+ * KPI/chart. 12 comfortably covers the live currency roster without going unbounded. */
+const EARNINGS_KPI_PARALLEL_BATCH = 12;
+/** Company All pie: more parallel light earnings packs (each is kpi_only, not full chart).
+ * Raised 6 → 10 — same fix, kept a bit more conservative than the normal-scope batch since
+ * group_all packs are heavier per request. */
+const EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL = 10;
 /** Defer trend-chart daily fetch so MoM previous can use DB first (skip for month-bucket ranges). */
 const CHART_DAILY_DEFER_MS = 250;
 /** Sibling currency warm — start after settle so early currency clicks hit cache. */
