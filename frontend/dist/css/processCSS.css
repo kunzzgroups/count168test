@@ -6059,10 +6059,22 @@ body.process-page > .process-modal {
     cursor: default;
 }
 
-.process-form-modal .toggle-switch,
-#addModal .modal-content.process-form-modal .toggle-switch,
-#editModal .modal-content.process-form-modal .toggle-switch {
-    flex-shrink: 0;
+/* Pin switch size: leftover page CSS (e.g. datacapture.css .process-form
+   .form-group label { width: clamp(80px…120px) }) and #editModal …
+   form-group label { display:block !important } otherwise stretch this
+   <label class="toggle-switch"> after SPA navigation. */
+.process-form-modal .dc-save-draft-row .toggle-switch,
+#addModal .modal-content.process-form-modal .dc-save-draft-row .toggle-switch,
+#editModal .modal-content.process-form-modal .dc-save-draft-row .toggle-switch {
+    position: relative !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+    width: clamp(28px, 2.08vw, 38px) !important;
+    max-width: clamp(28px, 2.08vw, 38px) !important;
+    height: clamp(15px, 1.15vw, 21px) !important;
+    margin: 0 !important;
+    cursor: pointer;
 }
 
 /* global-13inch.css forces body.ec-auth-shell input[type="checkbox"] to 16x16
