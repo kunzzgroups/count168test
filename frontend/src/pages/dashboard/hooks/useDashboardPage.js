@@ -717,10 +717,18 @@ const EARNINGS_OTHERS_STAGGER_MS = 150;
  * ceil(n/4) sequential batches — that stacked wait was the Currency card's 2-4s tail behind
  * KPI/chart. 12 comfortably covers the live currency roster without going unbounded. */
 const EARNINGS_KPI_PARALLEL_BATCH = 12;
-/** Company All pie: more parallel light earnings packs (each is kpi_only, not full chart).
- * Raised 6 → 10 — same fix, kept a bit more conservative than the normal-scope batch since
- * group_all packs are heavier per request. */
-const EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL = 10;
+/**
+ * Company All / Group All pie: each "one currency" request here is NOT light — under
+ * group_all, `loadMergedDashboard` routes through `fetchMergedCompanyDashboards`, which
+ * tries `tryGroupAllBootstrap` first: one HTTP call, but the server walks every company
+ * in the group *serially* (see that function's comment — this is the documented "main
+ * Company All first-paint stall"). Firing many currencies at once here means that many
+ * concurrent "serial-per-company" requests competing for the server at the same time.
+ * 10 → 3: was tuned up alongside the normal-scope batch (4→12) before this per-request
+ * cost difference was traced — group_all needs the opposite adjustment from that fix,
+ * not the same one, so this deliberately stays low rather than matching it.
+ */
+const EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL = 3;
 /** Defer trend-chart daily fetch so MoM previous can use DB first (skip for month-bucket ranges). */
 const CHART_DAILY_DEFER_MS = 250;
 /** Sibling currency warm — start after settle so early currency clicks hit cache. */
