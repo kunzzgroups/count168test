@@ -4331,7 +4331,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           const { res, json } = await fetchBootstrapHttpDeduped(
             bootstrapInflightRef.current,
             requestKey,
-            { credentials: "include" }
+            // Background sibling warm — never contend with the active scope's own
+            // fetches for the browser's limited concurrent-connection slots.
+            { credentials: "include", priority: "low" }
           );
           if (!res.ok || !json.success || !json.data) {
             if (!res.ok) dashboardPrefetchFailedRef.current.add(requestKey);
@@ -4573,7 +4575,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         const { res, json } = await fetchBootstrapHttpDeduped(
           bootstrapInflightRef.current,
           requestKey,
-          { credentials: "include" }
+          // Background sibling-currency warm — never contend with the active
+          // scope's own fetches for the browser's limited connection slots.
+          { credentials: "include", priority: "low" }
         );
         if (!res.ok || !json.success || !json.data?.current) {
           if (!res.ok) dashboardPrefetchFailedRef.current.add(requestKey);
@@ -4687,7 +4691,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         const { res, json } = await fetchBootstrapHttpDeduped(
           bootstrapInflightRef.current,
           requestKey,
-          { credentials: "include" }
+          // Background sibling-group warm — never contend with the active
+          // scope's own fetches for the browser's limited connection slots.
+          { credentials: "include", priority: "low" }
         );
         if (!res.ok || !json.success || !json.data?.current) {
           if (!res.ok) dashboardPrefetchFailedRef.current.add(requestKey);
@@ -7885,7 +7891,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       if (
         !dashboardDataRef.current ||
         dashboardBootstrapInFlightRef.current ||
-        dashboardFetchInFlightScopeRef.current
+        dashboardFetchInFlightScopeRef.current ||
+        // This is the broadest warm pass (every sibling group + company) — also wait
+        // out the active scope's own per-currency earnings fan-out, not just its main
+        // bootstrap call, so it never races the currency breakdown card for connections.
+        earningsByCurrencyLoading ||
+        earningsParallelInFlightRef.current
       ) {
         waitRounds += 1;
         if (waitRounds >= PREFETCH_WAIT_MAX_ROUNDS) return;
@@ -7927,7 +7938,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
       const drain = () => {
         if (cancelled || interactionGen !== scopeInteractionGenRef.current) return;
-        const batch = tasks.splice(0, 2);
+        // One at a time — this pass already covers every sibling group/company, so
+        // keep its footprint on shared PHP-FPM/DB capacity as small as possible.
+        const batch = tasks.splice(0, 1);
         if (!batch.length) return;
         void Promise.allSettled(batch.map((fn) => fn())).then(() => {
           if (tasks.length && !cancelled) {
@@ -7954,6 +7967,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     groupAllMode,
     groupIds,
     ledgerGroupIds,
+    earningsByCurrencyLoading,
     prefetchDashboardCompany,
     prefetchDashboardGroupLedger,
     shouldPrefetchCompanyScope,
