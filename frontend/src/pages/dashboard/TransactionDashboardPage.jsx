@@ -39,6 +39,11 @@ export default function TransactionDashboardPage() {
       }
     : page.kpi;
 
+  // Same readiness the KPI cards reveal on — pins the Currency card to always
+  // appear after KPI/chart instead of racing them on however fast its own
+  // (independent) earnings-by-currency fetch happens to resolve.
+  const kpiChartReady = !(page.loading || page.scopeDataPending);
+
   return (
     <>
       <div className="dashboard-container">
@@ -128,6 +133,7 @@ export default function TransactionDashboardPage() {
                   showNetProfitForTab={page.showNetProfitForTab}
                   earningsPanelView={page.earningsPanelView}
                   onEarningsPanelViewChange={page.setEarningsPanelView}
+                  kpiChartReady={kpiChartReady}
                 />
               </div>
             </div>

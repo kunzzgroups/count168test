@@ -703,6 +703,14 @@ const MERGE_DASHBOARD_PARALLEL_BATCH = 4;
 const SESSION_DASHBOARD_WARM_DELAY_MS = 600;
 /** Cross-group / independent company warm after active scope settles. */
 const CROSS_GROUP_COMPANY_WARM_DELAY_MS = 2000;
+/**
+ * Atomic-paint scope load: give the primary KPI/chart request a short head start on the
+ * connection/server before the Currency card's own per-currency fan-out follows — starting
+ * fully simultaneously competes with KPI/chart right when that matters most; starting only
+ * after KPI/chart fully resolves (the old behavior) makes the Currency card pay KPI/chart's
+ * time PLUS its own on top. This splits the difference.
+ */
+const EARNINGS_OTHERS_STAGGER_MS = 150;
 /** Parallel kpi bootstrap requests when filling multi-currency earnings sidebar. */
 /** Parallel secondary-currency earnings captures (FE fans out; avoids PHP serial foreach).
  * Raised from 4 → 12 so a normal scope's whole currency list fires as one wave instead of
@@ -5743,96 +5751,116 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
    * Parallel secondary-currency earnings for atomic first paint.
    * Uses dashboardFetchGen (not earningsFetchGen) so scope-effect bumps cannot abort it.
    */
+  /**
+   * The actual N-request fan-out for every non-primary currency — split out of
+   * `loadEarningsParallelForAtomicPaint` so the atomic-paint scope load can kick this
+   * off a short beat after the primary KPI/chart request instead of only after it
+   * resolves. Doesn't need the primary payload at all (only the final row-merge does),
+   * so there's nothing here that actually requires waiting on `boot`.
+   */
+  const fetchEarningsOthersSettled = useCallback(
+    (dashboardGen, codes, primaryCode, scopeKeyForGuard = "") => {
+      const list = sortCurrencyCodesForBootstrap(Array.isArray(codes) ? codes : []);
+      const primary = String(primaryCode || "").trim().toUpperCase();
+      const others = list.filter((code) => String(code || "").trim().toUpperCase() !== primary);
+      if (others.length === 0) return Promise.resolve([]);
+
+      const guardKey = scopeKeyForGuard || dashboardFetchInFlightScopeRef.current || "parallel";
+      earningsParallelInFlightRef.current = guardKey;
+
+      return runTasksInBatches(
+        others,
+        groupAllMode ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL : EARNINGS_KPI_PARALLEL_BATCH,
+        async (code) => {
+          if (dashboardGen !== dashboardFetchGenRef.current) return null;
+          // One quick same-request retry per currency — a lone transient failure
+          // (network blip, momentary backend hiccup) shouldn't mark this currency
+          // permanently missing and drag the whole batch's completeness check down.
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+              const payload = await loadMergedDashboard(
+                dateFromRef.current,
+                dateToRef.current,
+                code,
+                { earningsOnly: true, useActiveScopeAbort: false }
+              );
+              if (dashboardGen !== dashboardFetchGenRef.current) return null;
+              return buildCurrencyRowFromPayload(code, payload);
+            } catch {
+              if (dashboardGen !== dashboardFetchGenRef.current) return null;
+              /* try once more before giving up */
+            }
+          }
+          return { code, netProfit: null, earnings: null };
+        }
+      ).finally(() => {
+        if (earningsParallelInFlightRef.current === guardKey) {
+          earningsParallelInFlightRef.current = "";
+        }
+      });
+    },
+    [groupAllMode, buildCurrencyRowFromPayload, loadMergedDashboard]
+  );
+
   const loadEarningsParallelForAtomicPaint = useCallback(
-    async (dashboardGen, codes, primaryCode, primaryPayload, scopeKeyForGuard = "") => {
+    async (
+      dashboardGen,
+      codes,
+      primaryCode,
+      primaryPayload,
+      scopeKeyForGuard = "",
+      othersSettledPromise = null
+    ) => {
       const list = sortCurrencyCodesForBootstrap(
         Array.isArray(codes) ? codes : []
       );
       if (list.length <= 1) return [];
-
-      const guardKey = scopeKeyForGuard || dashboardFetchInFlightScopeRef.current || "parallel";
-      earningsParallelInFlightRef.current = guardKey;
 
       const primary = String(primaryCode || "").trim().toUpperCase();
       const primaryMetrics =
         primaryPayload != null ? computeCurrencyMetricsFromPayload(primaryPayload) : null;
       const primaryNetProfit = primaryMetrics?.netProfit ?? null;
       const primaryEarnings = primaryMetrics?.earnings ?? null;
-      const others = list.filter(
-        (code) => String(code || "").trim().toUpperCase() !== primary
+
+      const settled = await (
+        othersSettledPromise ||
+        fetchEarningsOthersSettled(dashboardGen, codes, primaryCode, scopeKeyForGuard)
       );
 
-      try {
-        const settled = await runTasksInBatches(
-          others,
-          groupAllMode
-            ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL
-            : EARNINGS_KPI_PARALLEL_BATCH,
-          async (code) => {
-            if (dashboardGen !== dashboardFetchGenRef.current) return null;
-            // One quick same-request retry per currency — a lone transient failure
-            // (network blip, momentary backend hiccup) shouldn't mark this currency
-            // permanently missing and drag the whole batch's completeness check down.
-            for (let attempt = 0; attempt < 2; attempt += 1) {
-              try {
-                const payload = await loadMergedDashboard(
-                  dateFromRef.current,
-                  dateToRef.current,
-                  code,
-                  { earningsOnly: true, useActiveScopeAbort: false }
-                );
-                if (dashboardGen !== dashboardFetchGenRef.current) return null;
-                return buildCurrencyRowFromPayload(code, payload);
-              } catch {
-                if (dashboardGen !== dashboardFetchGenRef.current) return null;
-                /* try once more before giving up */
-              }
-            }
-            return { code, netProfit: null, earnings: null };
-          }
-        );
+      if (dashboardGen !== dashboardFetchGenRef.current) return [];
 
-        if (dashboardGen !== dashboardFetchGenRef.current) return [];
-
-        const rows = buildSeededEarningsRows(
-          list,
-          primary,
-          primaryNetProfit,
-          primaryEarnings
-        ).map((row) => {
-          if (
-            String(row.code || "").trim().toUpperCase() === primary &&
-            primaryNetProfit != null
-          ) {
-            return row;
-          }
-          const hit = settled.find(
-            (entry) =>
-              entry &&
-              String(entry.code || "").toUpperCase() === String(row.code || "").toUpperCase()
-          );
-          return hit
-            ? {
-                code: row.code,
-                netProfit: hit.netProfit ?? row.netProfit,
-                earnings: hit.earnings ?? row.earnings,
-              }
-            : row;
-        });
-
-        return sanitizeDuplicateNonPrimaryEarnings(rows, primary, primaryEarnings);
-      } finally {
-        if (earningsParallelInFlightRef.current === guardKey) {
-          earningsParallelInFlightRef.current = "";
+      const rows = buildSeededEarningsRows(
+        list,
+        primary,
+        primaryNetProfit,
+        primaryEarnings
+      ).map((row) => {
+        if (
+          String(row.code || "").trim().toUpperCase() === primary &&
+          primaryNetProfit != null
+        ) {
+          return row;
         }
-      }
+        const hit = (settled || []).find(
+          (entry) =>
+            entry &&
+            String(entry.code || "").toUpperCase() === String(row.code || "").toUpperCase()
+        );
+        return hit
+          ? {
+              code: row.code,
+              netProfit: hit.netProfit ?? row.netProfit,
+              earnings: hit.earnings ?? row.earnings,
+            }
+          : row;
+      });
+
+      return sanitizeDuplicateNonPrimaryEarnings(rows, primary, primaryEarnings);
     },
     [
-      groupAllMode,
       computeCurrencyMetricsFromPayload,
-      buildCurrencyRowFromPayload,
       buildSeededEarningsRows,
-      loadMergedDashboard,
+      fetchEarningsOthersSettled,
     ]
   );
 
@@ -7065,12 +7093,34 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
                   () => null
                 )
               : null;
-          const boot = await loadDashboardViaBootstrap({
+          const bootPromise = loadDashboardViaBootstrap({
             scope: primaryBootstrapScope,
             currencyOverride: provisionalCurrency || undefined,
             // Empty array skips currencies= fan-out on the primary KPI/chart request.
             currencyCodesOverride: [],
           });
+
+          // Currency card: start its own per-currency fan-out a short beat after the
+          // primary request (not gated on it resolving) — lets the Currency card land
+          // close behind KPI/chart instead of always paying KPI/chart's time plus its
+          // own on top. The stagger gives the primary request first claim on the
+          // connection/server for that opening beat.
+          const othersSettledPromise = needsMultiCurrencyEarnings
+            ? new Promise((resolve) => {
+                window.setTimeout(() => {
+                  resolve(
+                    fetchEarningsOthersSettled(
+                      gen,
+                      codesForEarnings || currenciesRef.current,
+                      currencyCodeRef.current || provisionalCurrency,
+                      cacheKey
+                    )
+                  );
+                }, EARNINGS_OTHERS_STAGGER_MS);
+              })
+            : null;
+
+          const boot = await bootPromise;
           if (gen !== dashboardFetchGenRef.current) return;
 
           let currentPayload = boot.current;
@@ -7205,7 +7255,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
                     codesForEarnings || currenciesRef.current,
                     currencyCodeRef.current || provisionalCurrency,
                     currentPayload,
-                    cacheKey
+                    cacheKey,
+                    othersSettledPromise
                   );
                   if (gen !== dashboardFetchGenRef.current) return;
                   if (Array.isArray(rows) && rows.length > 1) {
@@ -7609,6 +7660,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     upgradeActiveScopeEarnings,
     deferActiveScopeEarningsUpgrade,
     loadEarningsParallelForAtomicPaint,
+    fetchEarningsOthersSettled,
     buildSeededEarningsRows,
     computeCurrencyMetricsFromPayload,
     enrichGroupAllMergedDashboard,
