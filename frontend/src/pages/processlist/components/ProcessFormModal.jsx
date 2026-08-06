@@ -522,7 +522,7 @@ export default function ProcessFormModal({
                 <div className="form-group">
                   <div className="dc-save-draft-row">
                     <label className="dc-save-draft-row__label">{t("enableSaveDraft")}</label>
-                    <label className="toggle-switch" title={t("enableSaveDraftHelp")}>
+                    <label className="toggle-switch" title={t("enableSaveDraft")}>
                       <input
                         type="checkbox"
                         checked={Boolean(form.enable_save_draft)}
@@ -534,7 +534,6 @@ export default function ProcessFormModal({
                       <span className="toggle-slider" />
                     </label>
                   </div>
-                  <small className="field-help">{t("enableSaveDraftHelp")}</small>
                 </div>
               </div>
 
