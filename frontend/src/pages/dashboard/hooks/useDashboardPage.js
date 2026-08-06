@@ -6603,8 +6603,23 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
     const gen = ++earningsFetchGenRef.current;
 
+    // Gap-fill retry (e.g. one currency came back null on the first pass): if the card
+    // is already showing a usable partial paint, don't hide it again while this retry
+    // runs in the background — that snap-hide + later bloom-back-in is exactly the
+    // "flickers again after it's already fully shown" bug. Only show loading when there
+    // is nothing displayable yet. Mirrors the same guard already used in the group_all
+    // branch above (`hasPartialPaint`).
+    const existingEarningsRows = Array.isArray(earningsByCurrencyRef.current)
+      ? earningsByCurrencyRef.current
+      : [];
+    const hasPartialEarningsPaint = existingEarningsRows.some(
+      (row) => row?.earnings != null || row?.netProfit != null
+    );
+
     try {
-      setEarningsByCurrencyLoading(true);
+      if (!hasPartialEarningsPaint) {
+        setEarningsByCurrencyLoading(true);
+      }
       // FE-parallel kpi/earnings — never bootstrap_scope=earnings&currencies=… (PHP serial).
       const parallelRows = await loadEarningsParallelForAtomicPaint(
         dashboardFetchGenRef.current,
