@@ -181,6 +181,15 @@ export default function DataCaptureTableSection({
               <button type="button" className="btn btn-cancel" onClick={() => onReset?.()}>
                 {t("reset")}
               </button>
+              <button
+                type="button"
+                className="btn btn-cancel dc-table-header-delete-btn"
+                disabled={!engineReady}
+                title={t("selectRowToDeleteData")}
+                onClick={() => callDataCaptureRuntime("deleteSelectedRowData")}
+              >
+                {t("deleteRowData")}
+              </button>
             </div>
           ) : null}
           {hideCaptureTypeSelector ? (
