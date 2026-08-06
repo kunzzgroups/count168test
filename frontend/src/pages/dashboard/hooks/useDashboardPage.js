@@ -722,13 +722,19 @@ const EARNINGS_KPI_PARALLEL_BATCH = 12;
  * group_all, `loadMergedDashboard` routes through `fetchMergedCompanyDashboards`, which
  * tries `tryGroupAllBootstrap` first: one HTTP call, but the server walks every company
  * in the group *serially* (see that function's comment — this is the documented "main
- * Company All first-paint stall"). Firing many currencies at once here means that many
- * concurrent "serial-per-company" requests competing for the server at the same time.
- * 10 → 3: was tuned up alongside the normal-scope batch (4→12) before this per-request
- * cost difference was traced — group_all needs the opposite adjustment from that fix,
- * not the same one, so this deliberately stays low rather than matching it.
+ * Company All first-paint stall").
+ *
+ * Tried lowering this to 3 assuming concurrent requests were contending for server
+ * capacity and slowing each other down — measured slower, not faster. `runTasksInBatches`
+ * batches are sequential (each batch fully awaited before the next starts), so a lower
+ * batch size trades "one wave, wait for the slowest" for "N/3 waves, wait for the sum of
+ * each wave's slowest" — and since each request's cost here is dominated by its own fixed
+ * per-company server-side loop (not by how many sibling requests are in flight), there was
+ * no per-request speedup to offset that added sequential cost. Back to firing (essentially)
+ * the whole currency list as one wave, same as the normal-scope batch — the real fix for
+ * this path is the backend serial-per-company loop itself, not frontend concurrency.
  */
-const EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL = 3;
+const EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL = 12;
 /** Defer trend-chart daily fetch so MoM previous can use DB first (skip for month-bucket ranges). */
 const CHART_DAILY_DEFER_MS = 250;
 /** Sibling currency warm — start after settle so early currency clicks hit cache. */
