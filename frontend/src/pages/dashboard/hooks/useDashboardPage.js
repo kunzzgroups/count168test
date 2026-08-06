@@ -7119,6 +7119,17 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           // close behind KPI/chart instead of always paying KPI/chart's time plus its
           // own on top. The stagger gives the primary request first claim on the
           // connection/server for that opening beat.
+          //
+          // Claim the in-flight guard NOW, not only once the timer fires — otherwise
+          // `paintBootstrap()`'s seed branch below (`void upgradeActiveScopeEarnings()`,
+          // which runs synchronously, no delay) checks the guard before this timer has
+          // set it, doesn't see anything in flight, and starts its own duplicate fetch.
+          // Both eventually resolve and paint — the second one lands after the card is
+          // already showing, snap-hides it back to loading, then blooms in again a beat
+          // later, which is the currency-card "flicker after it's already up" bug.
+          if (needsMultiCurrencyEarnings) {
+            earningsParallelInFlightRef.current = cacheKey;
+          }
           const othersSettledPromise = needsMultiCurrencyEarnings
             ? new Promise((resolve) => {
                 window.setTimeout(() => {
