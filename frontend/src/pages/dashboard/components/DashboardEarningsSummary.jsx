@@ -20,8 +20,10 @@ import { EarningsPieSectorTooltip } from "./EarningsPieSectorTooltip.jsx";
  * without this, a scope with few currencies can resolve its own data so fast (now that
  * the fetch starts almost alongside KPI/chart instead of after) that it would reveal in
  * the same tick as KPI/chart, which reads as "popped in together" rather than in order.
+ * Doubles as slack for the earnings-by-currency fetch itself: a longer gap means more
+ * scopes land already-fully-loaded by the time this timer opens the gate.
  */
-const CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS = 400;
+const CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS = 900;
 
 export function DashboardEarningsSummary({
   i18n,
