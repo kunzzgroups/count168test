@@ -280,14 +280,14 @@ export function useDataCapturePureReactGridInteraction(engineReady) {
       clearAllSelections();
       recomputeSubmitState();
 
-      if (getDataCaptureState().isGroupOnlyGrid === true) {
-        void (async () => {
-          const flushed = await callDataCaptureRuntime("flushGroupOnlyTableDraftNow", nextGrid);
-          if (flushed === false) {
-            pushDataCaptureNotification(getDataCaptureText(lang, "draftFlushNeedsProcessCurrency"), "danger");
-          }
-        })();
-      }
+      // Group-only and Games save-draft: persist the clear (empty grid deletes the
+      // process draft on server). Reset only clears the UI and keeps the draft.
+      void (async () => {
+        const flushed = await callDataCaptureRuntime("flushGroupOnlyTableDraftNow", nextGrid);
+        if (flushed === false) {
+          pushDataCaptureNotification(getDataCaptureText(lang, "draftFlushNeedsProcessCurrency"), "danger");
+        }
+      })();
     };
 
     const appendGridRow = () => {

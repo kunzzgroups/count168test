@@ -45,6 +45,12 @@ export function useGroupOnlyTableDraftFlush({
   };
 
   useLayoutEffect(() => {
+    /**
+     * @returns {Promise<true|false|null>}
+     *   true  — draft saved or cleared
+     *   false — draft session needs process + currency
+     *   null  — not a draft session (e.g. Games process without enable_save_draft)
+     */
     const flushGroupOnlyTableDraftNow = async (gridOverride = null) => {
       const {
         enabled: on,
@@ -56,9 +62,12 @@ export function useGroupOnlyTableDraftFlush({
         currencyId: cid,
         captureType: type,
       } = stateRef.current;
-      if (!on || !bucket) return false;
+      if (!on || !bucket) return null;
       const processKey = resolvePayrollDraftProcessKey(process, groupUi);
-      if (!processKey) return false;
+      if (!processKey) {
+        // Group payroll always expects a matched process; Games non-draft processes are no-ops.
+        return groupUi ? false : null;
+      }
       const currencyKey = normalizeGroupOnlyDraftCurrencyId(cid);
       if (!currencyKey) return false;
 
@@ -70,7 +79,11 @@ export function useGroupOnlyTableDraftFlush({
       if (tableSnapshotHasData(tableData)) {
         await saveGroupOnlyTableDraft(bucket, processKey, currencyKey, payload, draftOptions);
       } else {
-        await clearGroupOnlyTableDraft(bucket, processKey, currencyKey, { captureScope: scope });
+        // Empty grid → permanently remove local + server draft for this process/currency.
+        await clearGroupOnlyTableDraft(bucket, processKey, currencyKey, {
+          captureScope: scope,
+          serverSync,
+        });
       }
       return true;
     };
