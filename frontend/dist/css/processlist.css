@@ -2543,11 +2543,25 @@ body.ec-auth-shell .process-page #addBankModal .bank-remark-actions .bank-note-o
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: none;
+    animation: none;
+    outline: none;
+    box-shadow: none;
 }
 
 #addBankModal .bank-form-datepicker-clear:hover,
-#confirmBankResendModal .bank-form-datepicker-clear:hover {
+#confirmBankResendModal .bank-form-datepicker-clear:hover,
+#addBankModal .bank-form-datepicker-clear:active,
+#confirmBankResendModal .bank-form-datepicker-clear:active,
+#addBankModal .bank-form-datepicker-clear:focus,
+#confirmBankResendModal .bank-form-datepicker-clear:focus,
+#addBankModal .bank-form-datepicker-clear:focus-visible,
+#confirmBankResendModal .bank-form-datepicker-clear:focus-visible {
     color: #475569;
+    transform: translateY(-50%);
+    outline: none;
+    box-shadow: none;
+    animation: none;
 }
 
 body.process-page .calendar-popup-clear-wrap {
