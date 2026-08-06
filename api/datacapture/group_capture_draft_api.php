@@ -99,13 +99,21 @@ function dcNormalizeGroupCaptureDraftGroupId(?string $groupId): string
     return strtoupper(trim((string) $groupId));
 }
 
+/**
+ * Bank/AP-IG group mode uses the fixed salary/bonus/commission codes; Games
+ * mode uses a real process's own numeric id (gated upstream on its
+ * enable_save_draft flag) — accept either shape here.
+ */
 function dcNormalizeGroupCaptureDraftProcessKey(?string $processKey): string
 {
     $key = strtolower(trim((string) $processKey));
-    if (!dcIsGroupPayrollDraftProcessCode($key)) {
+    if ($key === '') {
         return '';
     }
-    return $key;
+    if (dcIsGroupPayrollDraftProcessCode($key)) {
+        return $key;
+    }
+    return ctype_digit($key) ? $key : '';
 }
 
 function dcNormalizeGroupCaptureDraftCurrencyId($currencyId): int

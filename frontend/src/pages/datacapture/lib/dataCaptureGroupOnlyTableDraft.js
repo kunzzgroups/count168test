@@ -39,9 +39,16 @@ function normalizeDraftBucket(bucketId) {
   return raw.toUpperCase();
 }
 
+/**
+ * Bank/AP-IG group mode uses the fixed salary/bonus/commission codes; Games
+ * mode uses a real process's own numeric id (gated upstream on its
+ * enable_save_draft flag) — accept either shape here.
+ */
 function normalizeProcessKey(processKey) {
   const p = processKey != null ? String(processKey).trim().toLowerCase() : "";
-  return isGroupPayrollDraftProcessId(p) ? p : null;
+  if (!p) return null;
+  if (isGroupPayrollDraftProcessId(p)) return p;
+  return /^\d+$/.test(p) ? p : null;
 }
 
 export function normalizeGroupOnlyDraftCurrencyId(currencyId) {

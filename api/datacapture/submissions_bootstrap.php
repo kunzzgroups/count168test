@@ -12,8 +12,10 @@ function dcSubmissionsApiInit(): array
     require_once __DIR__ . '/../includes/partnership_audit_readonly.php';
     require_once __DIR__ . '/data_capture_scope_common.php';
     require_once __DIR__ . '/submitted_process_lib.php';
+    require_once __DIR__ . '/../includes/ensure_process_enable_save_draft_column.php';
 
     dcEnsureSubmittedProcessesScopeColumns($pdo);
+    ensureProcessEnableSaveDraftColumn($pdo);
 
     if (session_status() === PHP_SESSION_NONE) {
         session_start();

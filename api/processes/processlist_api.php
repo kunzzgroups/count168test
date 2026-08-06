@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../includes/permissions.php';
 require_once __DIR__ . '/../includes/partnership_audit_readonly.php';
 require_once __DIR__ . '/../includes/money_decimal.php';
 require_once __DIR__ . '/../includes/ensure_bank_process_day_end_monthly_cap_column.php';
+require_once __DIR__ . '/../includes/ensure_process_enable_save_draft_column.php';
 require_once __DIR__ . '/../includes/process_modified_by.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -282,6 +283,7 @@ if ($req_company_id) {
 
 if (isset($pdo) && $pdo instanceof PDO) {
     ensureBankProcessDayEndMonthlyCapEnabledColumn($pdo);
+    ensureProcessEnableSaveDraftColumn($pdo);
 }
 
 switch ($action) {
@@ -377,7 +379,8 @@ function getProcesses() {
                     " . processModifiedByLoginSql() . " as modified_by_login,
                     p.dts_created,
                     COALESCE(u_created.login_id, o_created.owner_code) as created_by_login,
-                    p.status" .
+                    p.status,
+                    p.enable_save_draft" .
                     ($hasTxnProcessId ? ", (SELECT COUNT(*) FROM transactions t WHERE t.process_id = p.id) AS has_transactions" : "") . "
                 FROM process p
                 LEFT JOIN description d ON p.description_id = d.id
@@ -450,6 +453,7 @@ function getProcesses() {
                 'replace_word' => $process['replace_word_from'] . ' == ' . $process['replace_word_to'],
                 'remarks' => $process['remark'],
                 'has_transactions' => $hasTxnProcessId && ((int)($process['has_transactions'] ?? 0)) > 0,
+                'enable_save_draft' => ((int)($process['enable_save_draft'] ?? 0)) === 1,
             ];
         }
         
@@ -494,6 +498,7 @@ function getProcess() {
                     p.replace_word_to,
                     p.remark,
                     p.status,
+                    p.enable_save_draft,
                     p.dts_modified,
                     p.dts_created,
                     d.name as description_name,
@@ -544,6 +549,7 @@ function getProcess() {
                 'replace_word_to' => $process['replace_word_to'],
                 'replace_word' => $process['replace_word_from'] . ' == ' . $process['replace_word_to'],
                 'remarks' => $process['remark'],
+                'enable_save_draft' => ((int)($process['enable_save_draft'] ?? 0)) === 1,
                 'day_use' => $process['day_ids'],
                 'day_names' => $process['day_names'],
                 'dts_modified' => $process['dts_modified'],
@@ -595,6 +601,7 @@ function updateProcess() {
         $status = $_POST['status'] ?? 'active';
         $dayUse = $_POST['day_use'] ?? '';
         $selectedDescriptions = $_POST['selected_descriptions'] ?? '';
+        $enableSaveDraft = isset($_POST['enable_save_draft']) && trim((string)$_POST['enable_save_draft']) === '1';
         
         if (empty($id)) {
             jsonResponse(false, 'Process ID is required', null);
@@ -631,7 +638,7 @@ function updateProcess() {
             $modifiedByOwnerId = $modifier['modified_by_owner_id'];
 
             // 更新process基本信息
-            $updateSql = "UPDATE process SET 
+            $updateSql = "UPDATE process SET
                             process_id = ?,
                             currency_id = ?,
                             remove_word = ?,
@@ -639,12 +646,13 @@ function updateProcess() {
                             replace_word_to = ?,
                             remark = ?,
                             status = ?,
+                            enable_save_draft = ?,
                             dts_modified = NOW(),
                             modified_by = ?,
                             modified_by_type = ?,
                             modified_by_owner_id = ?
                           WHERE id = ? AND company_id = ?";
-            
+
             $stmt = $pdo->prepare($updateSql);
             $stmt->execute([
                 $processId,
@@ -654,6 +662,7 @@ function updateProcess() {
                 $replaceWordTo,
                 $remark,
                 $status,
+                $enableSaveDraft ? 1 : 0,
                 $currentUserId,
                 $modifiedByType,
                 $modifiedByOwnerId,

@@ -10,6 +10,7 @@ require_once __DIR__ . '/../../includes/group_company_access.php';
 require_once __DIR__ . '/../../includes/permissions.php';
 require_once __DIR__ . '/../includes/partnership_audit_readonly.php';
 require_once __DIR__ . '/../includes/money_decimal.php';
+require_once __DIR__ . '/../includes/ensure_process_enable_save_draft_column.php';
 require_once __DIR__ . '/addprocess_lib.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -43,6 +44,8 @@ try {
     jsonResponse(false, $e->getMessage(), null);
     exit;
 }
+
+ensureProcessEnableSaveDraftColumn($pdo);
 
 // ---------- 路由 ----------
 try {
@@ -226,6 +229,7 @@ try {
         $remark = $_POST['remark'] ?? '';
         $dayUse = $_POST['day_use'] ?? '';
         $copyFromProcessId = $_POST['copy_from'] ?? '';
+        $enableSaveDraft = isset($_POST['enable_save_draft']) && trim((string)$_POST['enable_save_draft']) === '1';
 
         if (empty($processIds)) {
             jsonResponse(false, 'At least one process ID must be selected', null);
@@ -284,7 +288,8 @@ try {
                         'created_by_owner_id' => $createdByOwnerId,
                         'dts_created' => date('Y-m-d H:i:s'),
                         'company_id' => $companyId,
-                        'sync_source_process_id' => $copyFromProcessDbId
+                        'sync_source_process_id' => $copyFromProcessDbId,
+                        'enable_save_draft' => $enableSaveDraft
                     ];
                     $newProcessId = insertProcess($pdo, $row);
                     insertProcessDays($pdo, (int)$newProcessId, $dayIds);

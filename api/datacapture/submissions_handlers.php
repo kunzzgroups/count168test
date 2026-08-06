@@ -326,6 +326,7 @@ function dcGetProcessesByDay(int $user_id): void
         SELECT
             p.id,
             p.process_id,
+            p.enable_save_draft,
             d.name as description_name,
             day.day_name
         FROM process p
@@ -368,6 +369,7 @@ function dcGetProcessesByDay(int $user_id): void
             $proc['process_display'] = (!empty($proc['description_name']))
                 ? $proc['process_id'] . ' (' . $proc['description_name'] . ')'
                 : $proc['process_id'];
+            $proc['enable_save_draft'] = ((int) ($proc['enable_save_draft'] ?? 0)) === 1;
         }
         unset($proc);
 

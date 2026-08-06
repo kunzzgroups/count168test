@@ -89,6 +89,7 @@ function readRestoredSelectedProcess(restoredProcessData, selectedGroup = null, 
     displayText: pname || pcode || pid,
     process_id: pcode,
     description_name: null,
+    enable_save_draft: Boolean(restoredProcessData.enableSaveDraft),
   };
 }
 
@@ -439,6 +440,7 @@ export function useDataCaptureFormEngine(
       displayText,
       process_id: row.process_id,
       description_name: row.description_name || null,
+      enable_save_draft: Boolean(row.enable_save_draft),
     });
     setProcessOpen(false);
     setProcessFilter("");
@@ -569,6 +571,7 @@ export function useDataCaptureFormEngine(
           displayText: displayTextFromProcessRow(row),
           process_id: row.process_id,
           description_name: row.description_name || null,
+          enable_save_draft: Boolean(row.enable_save_draft),
         });
       } else if (pid || pcode || pname) {
         setSelectedProcess({
@@ -576,6 +579,7 @@ export function useDataCaptureFormEngine(
           displayText: pname || pcode || pid,
           process_id: pcode,
           description_name: null,
+          enable_save_draft: Boolean(processData.enableSaveDraft),
         });
       }
     }

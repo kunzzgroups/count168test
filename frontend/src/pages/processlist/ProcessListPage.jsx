@@ -1473,6 +1473,7 @@ export default function ProcessListPage() {
         replace_word_to: p.replace_word_to || "",
         remark: parseRemarkForForm(p.remarks),
         status: p.status || "active",
+        enable_save_draft: Boolean(p.enable_save_draft),
         dts_modified: dtsModified,
         modified_by: p.modified_by || "",
         dts_created: dtsCreated,
@@ -1531,6 +1532,7 @@ export default function ProcessListPage() {
       fd.append("replace_word_to", toProcessFormUpperInput(form.replace_word_to || ""));
       fd.append("remark", toProcessFormUpperInput(form.remark || ""));
       fd.append("currency_id", form.currency_id);
+      fd.append("enable_save_draft", form.enable_save_draft ? "1" : "0");
       try {
         const res = await fetch(buildApiUrl("api/processes/processlist_api.php?action=update_process"), {
           method: "POST",
@@ -1564,6 +1566,7 @@ export default function ProcessListPage() {
     fd.append("replace_word_from", toProcessFormUpperInput(form.replace_word_from || ""));
     fd.append("replace_word_to", toProcessFormUpperInput(form.replace_word_to || ""));
     fd.append("remark", toProcessFormUpperInput(form.remark || ""));
+    fd.append("enable_save_draft", form.enable_save_draft ? "1" : "0");
     if (form.copy_from) fd.append("copy_from", form.copy_from);
     fd.append("permission", "Games");
     const submitCompanyId = activeCompanyId ?? companyId;

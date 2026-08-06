@@ -68,6 +68,7 @@ function buildProcessCapturePayload(form, captureType, currencies, selectedDescr
     process: form.selectedProcess?.id,
     processName: form.selectedProcess?.displayText || "",
     processCode: form.selectedProcess?.process_id || "",
+    enableSaveDraft: Boolean(form.selectedProcess?.enable_save_draft),
     dataCaptureType: captureType,
     descriptions: getActiveDescriptions(form.descriptionDisplay, selectedDescriptions),
     currency: form.currencyId,
