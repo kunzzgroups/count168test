@@ -6531,7 +6531,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
   const upgradeActiveScopeEarnings = useCallback(async () => {
     const cacheKey = dashboardScopeKey;
-    if (!cacheKey || currencies.length <= 1 || !dashboardDataRef.current) return;
+    if (!cacheKey || currencies.length <= 1) return;
+    // Group All: dashboardDataRef may not be ready yet but fetchGroupAllEarningsRowsForRange
+    // uses per-company cache + fetchSingleCurrencyEarnings as fallback, not dashboardDataRef.
+    if (!dashboardDataRef.current && !groupAllMode) return;
 
     const codes = currenciesRef.current;
     const primary = currencyCodeRef.current;
@@ -6582,7 +6585,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       (companyId != null || groupAggregateMode);
 
     if (!canUseBootstrap) {
-      if (!groupAllMode || !dashboardDataRef.current) return;
+      // Non-groupAllMode without bootstrap: bail — earnings need dashboardDataRef.
+      if (!groupAllMode) return;
+      // Group/Company All: proceed even without dashboardDataRef — per-company cache
+      // + fetchSingleCurrencyEarnings fallback don't need it.
       // Company All: prefer company-cache synthesize; cold miss → FE-parallel earnings packs.
       const synthesized = tryBuildGroupAllDashboardFromCompanyCaches({ codes });
       if (
