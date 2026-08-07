@@ -1508,6 +1508,13 @@ export function useTransactionSearch({
         }
       });
 
+      // Cancel any queued debounced search so it can't win the shared run-token race
+      // and overwrite this submit's (authoritative) result with stale data.
+      if (autoSearchTimerRef.current) {
+        clearTimeout(autoSearchTimerRef.current);
+        autoSearchTimerRef.current = null;
+      }
+
       setSearchLoading(true);
       try {
         await runSearch({
