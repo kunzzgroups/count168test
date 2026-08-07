@@ -6077,7 +6077,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
   const loadEarningsByCurrency = useCallback(async () => {
     const canLoadEarnings =
-      (companyId != null || groupAggregateMode) && currencies.length > 1;
+      (companyId != null || groupAggregateMode || groupAllMode) && currencies.length > 1;
     if (!canLoadEarnings) {
       setEarningsByCurrency([]);
       setEarningsByCurrencyPrev([]);
