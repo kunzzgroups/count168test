@@ -362,8 +362,8 @@ function formatMarkupDescription(string $description, ?string $fromCurrencyCode 
         }
         $middlemanRate = trim($matches[1]);
     } else {
-        // 展示口径：MARKUP 差额只显示 2 位小数（半上取整），不影响 DB 存的精确小数。
-        $middlemanRate = money_round_half_up($middlemanRate, 2);
+        // 展示口径：MARKUP 差额完整展示（最多 6 位小数，去掉多余的 0；整数则只显示整数）。
+        $middlemanRate = money_out($middlemanRate, 6);
     }
 
     $formatted = 'MARKUP ' . $middlemanRate;
@@ -2688,7 +2688,7 @@ try {
         $transactionTimestamp = historyTransactionOrderTimestamp($rateYmd, $row['created_at'] ?? null);
 
         $amount = $row['amount'] ?? '0';
-        // RATE 第二行/第四行：TO 负数、FROM 正数（与 CONTRA / PAYMENT 默认展示一致）
+        // RATE 第二行/第四行：TO 负数、FROM 正数（与 CONTRA / PAYMENT 默认展示一致）0
         // Middle-Man（RATE_MIDDLEMAN）保留正数，并显示在 Win/Loss
         $entryType = $row['entry_type'] ?? '';
         if (in_array($entryType, ['RATE_FIRST_FROM', 'RATE_TRANSFER_FROM', 'RATE_FIRST_TO', 'RATE_TRANSFER_TO'], true)) {
