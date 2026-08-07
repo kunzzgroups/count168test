@@ -2650,7 +2650,8 @@ try {
                     u.login_id AS created_by_login_id,
                     u.name AS created_by_name,
                     o.owner_code AS created_by_owner_code,
-                    o.name AS created_by_owner_name
+                    o.name AS created_by_owner_name,
+                    em.description AS rate_middleman_entry_description
                 FROM transaction_entry e
                 JOIN transactions h ON e.header_id = h.id
                 LEFT JOIN currency c ON e.currency_id = c.id
@@ -2660,6 +2661,7 @@ try {
                 LEFT JOIN currency ct ON tr.rate_to_currency_id = ct.id
                 LEFT JOIN user u ON h.created_by = u.id
                 LEFT JOIN owner o ON h.created_by_owner = o.id
+                LEFT JOIN transaction_entry em ON em.header_id = h.id AND em.entry_type = 'RATE_MIDDLEMAN'
                 WHERE " . historyApiTxnWhereSqlForAlias('h') . "
                   " . ($history_is_group ? '' : 'AND e.company_id = ?') . "
                   AND h.transaction_type = 'RATE'
@@ -2696,18 +2698,26 @@ try {
         $description = $row['entry_description'] ?: 'RATE';
         $platformFeeRemark = null;
 
-        // RATE 后缀：仅 FROM 侧（付款方，RATE_FIRST_FROM / RATE_TRANSFER_FROM）显示净汇率
-        // （exchange_rate - middleman_rate），TO 侧（收款方）保持原始汇率。
+        // RATE 后缀：第一段（RATE_FIRST_FROM / RATE_FIRST_TO）与第二段 TO 侧
+        // （收款方，RATE_TRANSFER_TO）恒显示原始汇率，不做任何换算。
+        // 仅第二段 FROM 侧（付款方，RATE_TRANSFER_FROM）换算显示：
+        // - divide 模式（Rate-Mul 输入 `/newDivisor`）：exchange_rate - middleman_rate（净汇率，逻辑不变）
+        // - multiply 模式：直接显示用户输入的 Rate-Mul 原始值（不再做减法）
         $displayRateForSuffix = null;
-        if (in_array($entryType, ['RATE_FIRST_FROM', 'RATE_TRANSFER_FROM'], true)) {
+        if ($entryType === 'RATE_TRANSFER_FROM') {
             $exchangeRate = $row['exchange_rate'] ?? null;
             $middlemanRate = $row['rate_middleman_rate'] ?? null;
-            if ($exchangeRate !== null && $middlemanRate !== null) {
-                $netRate = money_sub($exchangeRate, $middlemanRate, 8);
-                if (money_cmp($netRate, '0') > 0) {
-                    // 保留最多 6 位小数，并去掉多余的 0
-                    $displayRateForSuffix = money_out($netRate, 6);
+            $isDivideMode = (bool) preg_match('/\(\s*\/[^)]*\)/', (string) ($row['rate_middleman_entry_description'] ?? ''));
+            if ($isDivideMode) {
+                if ($exchangeRate !== null && $middlemanRate !== null) {
+                    $netRate = money_sub($exchangeRate, $middlemanRate, 8);
+                    if (money_cmp($netRate, '0') > 0) {
+                        // 保留最多 6 位小数，并去掉多余的 0
+                        $displayRateForSuffix = money_out($netRate, 6);
+                    }
                 }
+            } elseif ($middlemanRate !== null && $middlemanRate !== '') {
+                $displayRateForSuffix = money_out($middlemanRate, 6);
             }
         }
 
@@ -2815,6 +2825,7 @@ try {
             'rate_from_amount' => $row['rate_from_amount'] ?? null,
             'exchange_rate' => $row['exchange_rate'] ?? null,
             'rate_middleman_rate' => $row['rate_middleman_rate'] ?? null,
+            'rate_middleman_entry_description' => $row['rate_middleman_entry_description'] ?? null,
             'entry_type' => $entryType
         ];
     }
@@ -2938,8 +2949,10 @@ try {
                 } else {
                     // 汇率兑换本身：Currency Exchange (FROM amount > TO)；Rate 按分录类型区分（Member）
                     // - RATE_FIRST_FROM / RATE_FIRST_TO：不展示 Rate
-                    // - RATE_TRANSFER_TO（第二币种 Select From，收款方）：原始 exchange_rate
-                    // - RATE_TRANSFER_FROM（第二币种 Select To，付款方）：exchange_rate - middleman_rate（净汇率，无效则回退原始）
+                    // - RATE_TRANSFER_TO（第二币种 Select From，收款方）：恒原始 exchange_rate
+                    // - RATE_TRANSFER_FROM（第二币种 Select To，付款方）：
+                    //   divide 模式 exchange_rate - middleman_rate（净汇率，逻辑不变，无效则回退原始）；
+                    //   multiply 模式直接显示用户输入的 Rate-Mul 原始值，不做减法
                     $fromCode = $event['from_currency_code'] ?? null;
                     $toCode = $event['to_currency_code'] ?? null;
                     $fromAmount = $event['rate_from_amount'] ?? null;
@@ -2949,17 +2962,24 @@ try {
                     $rateForSuffix = null;
                     if (!in_array($entryType, ['RATE_FIRST_FROM', 'RATE_FIRST_TO'], true)) {
                         if ($entryType === 'RATE_TRANSFER_FROM') {
-                            $displayNet = null;
-                            if ($exchangeRate !== null && $exchangeRate !== ''
-                                && $middlemanRate !== null && (string) $middlemanRate !== '') {
-                                $netRate = money_sub($exchangeRate, $middlemanRate, 8);
-                                if (money_cmp($netRate, '0') > 0) {
-                                    $displayNet = money_out($netRate, 6);
+                            $isDivideMode = (bool) preg_match('/\(\s*\/[^)]*\)/', (string) ($event['rate_middleman_entry_description'] ?? ''));
+                            if ($isDivideMode) {
+                                $displayNet = null;
+                                if ($exchangeRate !== null && $exchangeRate !== ''
+                                    && $middlemanRate !== null && (string) $middlemanRate !== '') {
+                                    $netRate = money_sub($exchangeRate, $middlemanRate, 8);
+                                    if (money_cmp($netRate, '0') > 0) {
+                                        $displayNet = money_out($netRate, 6);
+                                    }
                                 }
+                                $rateForSuffix = ($displayNet !== null && $displayNet !== '')
+                                    ? $displayNet
+                                    : (($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null);
+                            } else {
+                                $rateForSuffix = ($middlemanRate !== null && $middlemanRate !== '')
+                                    ? money_out($middlemanRate, 6)
+                                    : (($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null);
                             }
-                            $rateForSuffix = ($displayNet !== null && $displayNet !== '')
-                                ? $displayNet
-                                : (($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null);
                         } else {
                             // RATE_TRANSFER_TO、RATE_FEE 等：与原先一致，使用原始汇率
                             $rateForSuffix = ($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null;
