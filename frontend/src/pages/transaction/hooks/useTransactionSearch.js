@@ -1456,15 +1456,27 @@ export function useTransactionSearch({
 
         if (!clearLeftToSubmitFocus) {
           // Submit-focus shows Cr/Dr rows; clear Win/Loss / Payment Only so the fetch and UI match.
+          // When the currency focus was just widened (e.g. RATE's 2nd currency), also force
+          // showZeroBalance so the newly-focused accounts aren't filtered out client-side —
+          // otherwise the fetch comes back with the new currency's rows but the section never renders.
+          const widenedCurrency = Boolean(currencyStateToApply && currencyStateToApply.length > 0);
           setSearchState((prev) => {
-            if (!prev.showPaymentOnly && !prev.showCaptureOnly) return prev;
-            return { ...prev, showPaymentOnly: false, showCaptureOnly: false };
+            if (!prev.showPaymentOnly && !prev.showCaptureOnly && (!widenedCurrency || prev.showZeroBalance)) {
+              return prev;
+            }
+            return {
+              ...prev,
+              showPaymentOnly: false,
+              showCaptureOnly: false,
+              showZeroBalance: widenedCurrency ? true : prev.showZeroBalance,
+            };
           });
           if (prevServerSideFiltersRef.current) {
             prevServerSideFiltersRef.current = {
               ...prevServerSideFiltersRef.current,
               showPaymentOnly: false,
               showCaptureOnly: false,
+              showZeroBalance: widenedCurrency ? true : prevServerSideFiltersRef.current.showZeroBalance,
             };
           }
         }
