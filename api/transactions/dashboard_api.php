@@ -3507,6 +3507,61 @@ function dashboardExpensesBuildCrDrBundle(
     ];
 }
 
+/**
+ * APCu cache for direct earnings-only dashboard_api.php calls (company x currency).
+ *
+ * The existing dash_cap_v1: cache only covers subsidiary captures inside the
+ * group-aggregate loop (dashboard_api_capture() calls from the parent). Frontend
+ * Group/Company "All" fans out DIRECT company_id + earnings_only requests — those
+ * were never cached, so every currency re-ran the whole role x company x SQL
+ * pipeline (the measured 1-3s per request, ~60 requests per scope switch).
+ *
+ * Cache key includes user + company + view_group + currency + dates + mode flags.
+ * Only caches earnings_only (no chart daily GROUP BY) — KPI/chart/full keep the
+ * live path. Invalidated with the existing dash_cap_v1: prefix (realtime writes).
+ * No-ops silently when apcu is absent.
+ */
+const DASHBOARD_EARNINGS_CACHE_PREFIX = 'dash_earn_v1:';
+const DASHBOARD_EARNINGS_CACHE_TTL_SECONDS = 300;
+
+function dashboard_earnings_cache_key(
+    int $userId,
+    array $params
+): string {
+    $signature = [
+        'u' => $userId,
+        'c' => $params['company_id'] ?? '',
+        'vg' => $params['view_group'] ?? '',
+        'cur' => $params['currency'] ?? '',
+        'df' => $params['date_from'] ?? '',
+        'dt' => $params['date_to'] ?? '',
+        'sub' => $params['subsidiary_accounts_only'] ?? '',
+        'eo' => $params['earnings_only'] ?? '',
+    ];
+    ksort($signature);
+
+    return DASHBOARD_EARNINGS_CACHE_PREFIX . md5((string) json_encode($signature));
+}
+
+function dashboard_earnings_cache_get(string $key): ?array
+{
+    if (!function_exists('apcu_fetch')) {
+        return null;
+    }
+    $success = false;
+    $value = apcu_fetch($key, $success);
+
+    return ($success && is_array($value)) ? $value : null;
+}
+
+function dashboard_earnings_cache_set(string $key, array $value): void
+{
+    if (!function_exists('apcu_store')) {
+        return;
+    }
+    apcu_store($key, $value, DASHBOARD_EARNINGS_CACHE_TTL_SECONDS);
+}
+
 function dashboard_api_main(): void
 {
     global $pdo;
@@ -3621,6 +3676,36 @@ try {
     $kpiOnly = dashboard_api_kpi_only();
     $earningsOnly = dashboard_api_earnings_only();
     $chartMonthly = !$kpiOnly && dashboard_api_chart_monthly();
+
+    // Direct earnings-only company requests are cached (dash_earn_v1:) — see the
+    // cache helpers above. Only pure earnings captures (no chart daily GROUP BY)
+    // qualify; KPI/full/chart stay live. Checked before any heavy SQL so repeat
+    // currency fetches (Group/Company All fan-out) answer from APCu.
+    $earningsCacheKey = null;
+    $earningsCacheHit = null;
+    if (
+        $earningsOnly
+        && !$kpiOnly
+        && !$chartMonthly
+        && $company_id !== null
+        && $company_id > 0
+        && isset($_SESSION['user_id'])
+    ) {
+        $earningsCacheKey = dashboard_earnings_cache_key((int) $_SESSION['user_id'], [
+            'company_id' => (string) $company_id,
+            'view_group' => $_GET['view_group'] ?? '',
+            'currency' => $_GET['currency'] ?? '',
+            'date_from' => (string) ($_GET['date_from'] ?? ''),
+            'date_to' => (string) ($_GET['date_to'] ?? ''),
+            'subsidiary_accounts_only' => $_GET['subsidiary_accounts_only'] ?? '',
+            'earnings_only' => '1',
+        ]);
+        $earningsCacheHit = dashboard_earnings_cache_get($earningsCacheKey);
+        if ($earningsCacheHit !== null) {
+            echo json_encode($earningsCacheHit, JSON_UNESCAPED_UNICODE);
+            return;
+        }
+    }
     $GLOBALS['DASHBOARD_KPI_ONLY'] = $kpiOnly;
     $GLOBALS['DASHBOARD_EARNINGS_ONLY'] = $earningsOnly;
     $GLOBALS['DASHBOARD_CHART_MONTHLY'] = $chartMonthly;
@@ -4472,7 +4557,7 @@ try {
     $has_group_ownership = $ownershipFields['has_group_ownership'];
 
     // Profit（仪表板 NET PROFIT 卡片）= 所有 Role 为 PROFIT 的账户余额总和
-    echo json_encode([
+    $responsePayload = [
         'success' => true,
         'data' => [
             'capital' => $result['capital']['total_balance'],
@@ -4504,7 +4589,11 @@ try {
                 'to' => $date_to
             ]
         ]
-    ], JSON_UNESCAPED_UNICODE);
+    ];
+    if ($earningsCacheKey !== null) {
+        dashboard_earnings_cache_set($earningsCacheKey, $responsePayload);
+    }
+    echo json_encode($responsePayload, JSON_UNESCAPED_UNICODE);
 
 } catch (Throwable $e) {
     error_log('dashboard_api: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());

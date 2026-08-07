@@ -8,6 +8,20 @@ BRANCH="${BRANCH:-main}"
 echo "==> deploy start: user=$(whoami) host=$(hostname) root=${APP_ROOT}"
 df -h "$APP_ROOT" / 2>/dev/null | tail -n +2 || true
 
+# Ensure PHP APCu is present — dashboard_api.php's per-subsidiary capture cache
+# (dash_cap_v1:*) silently no-ops without it, so every company x currency request
+# would recompute the full pipeline (the Group/Company All first-paint stall).
+# Idempotent: dnf skips already-installed packages; no-op when sudo is unavailable.
+if command -v sudo >/dev/null 2>&1 && command -v dnf >/dev/null 2>&1; then
+  if ! php -m 2>/dev/null | grep -qi '^apcu$'; then
+    echo "==> installing php-pecl-apcu (dashboard capture cache)"
+    sudo dnf install -y php-pecl-apcu || echo "WARN: apcu install failed — cache stays disabled (slow but correct)"
+    sudo systemctl restart php-fpm || true
+  else
+    echo "==> php apcu already loaded"
+  fi
+fi
+
 cd "$APP_ROOT"
 
 if [[ ! -d "$APP_ROOT/.git" ]]; then
