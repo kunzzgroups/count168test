@@ -50,12 +50,16 @@ function sanitizeTransactionAmountInput(value) {
 
 /** Badge + list refresh must not block the Submit button after the POST succeeds. */
 function kickOffPostSubmitRefresh({ refreshContraInboxBadge, scopeApi, onAfterSuccessfulSubmit, focusOpts }) {
-  // Invalidate Dashboard / TX / Report client caches immediately (do not wait for SSE).
-  notifyTransactionListInvalidated("tx_submit");
   const tasks = [Promise.resolve(refreshContraInboxBadge?.(scopeApi))];
   if (focusOpts) {
+    // Start the submit-focus refresh first: its synchronous flushSync prefix commits
+    // the widened currency selection before the invalidate broadcast below fires —
+    // otherwise useTransactionSync's tx-data-changed listener re-searches with the
+    // stale (pre-submit) currency selection and can clobber this result.
     tasks.push(Promise.resolve(onAfterSuccessfulSubmit?.(focusOpts)));
   }
+  // Invalidate Dashboard / TX / Report client caches (do not wait for SSE).
+  notifyTransactionListInvalidated("tx_submit");
   void Promise.all(tasks).catch((err) => {
     console.error(err);
   });
