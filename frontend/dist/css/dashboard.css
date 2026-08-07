@@ -1072,8 +1072,30 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     }
 }
 
+/* FX-wait shimmer for currency amounts — holds the amount cell instead of painting
+   native figures that jump to converted when rates land (dashboard-currency-lag look). */
+.dashboard-amount-shimmer {
+    display: inline-block;
+    width: 84px;
+    height: 16px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #e2e8f0 0%, #f8fafc 45%, #e2e8f0 90%);
+    background-size: 200% 100%;
+    animation: dashboard-skel-shimmer 1.15s ease-in-out infinite;
+}
+
+.dashboard-summary-hero-value .dashboard-amount-shimmer {
+    width: 120px;
+    height: 28px;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .dashboard-skel-bar {
+        animation: none;
+        background: #e2e8f0;
+    }
+
+    .dashboard-amount-shimmer {
         animation: none;
         background: #e2e8f0;
     }
