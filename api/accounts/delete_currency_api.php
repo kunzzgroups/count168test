@@ -185,6 +185,14 @@ function countTransactionsCurrencyUsage(PDO $pdo, int $currencyId, int $companyI
     return (int) $stmt->fetchColumn();
 }
 
+function countTransactionEntryUsage(PDO $pdo, int $currencyId, int $companyId): int
+{
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM transaction_entry WHERE currency_id = ? AND company_id = ?');
+    $stmt->execute([$currencyId, $companyId]);
+
+    return (int) $stmt->fetchColumn();
+}
+
 function countTransactionsRateUsage(PDO $pdo, int $currencyId, int $companyId): int
 {
     $stmt = $pdo->prepare("
@@ -306,6 +314,17 @@ function collectCurrencyUsage(PDO $pdo, int $currencyId, array $ctx, string $cur
             $n = countTransactionsCurrencyUsage($pdo, $currencyId, $companyId);
             if ($n > 0) {
                 $usageMessages[] = $n . ' transaction(s)';
+            }
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    try {
+        if ($companyId > 0 && tableExists($pdo, 'transaction_entry') && columnExists($pdo, 'transaction_entry', 'currency_id')) {
+            $n = countTransactionEntryUsage($pdo, $currencyId, $companyId);
+            if ($n > 0) {
+                $usageMessages[] = $n . ' transaction entr' . ($n === 1 ? 'y' : 'ies');
             }
         }
     } catch (PDOException $e) {
@@ -491,6 +510,23 @@ function detachCurrencyHistoricalReferences(PDO $pdo, int $currencyId, array $ct
         return 'Failed to detach rate transaction details: ' . $e->getMessage();
     }
 
+    try {
+        if (tableExists($pdo, 'transaction_entry') && columnExists($pdo, 'transaction_entry', 'currency_id')) {
+            if ($fallbackId === null) {
+                $chk = $pdo->prepare('SELECT COUNT(*) FROM transaction_entry WHERE currency_id = ? AND company_id = ?');
+                $chk->execute([$currencyId, $companyId]);
+                if ((int) $chk->fetchColumn() > 0) {
+                    return 'Cannot force delete: transaction entries require another currency in this company';
+                }
+            } else {
+                $stmt = $pdo->prepare('UPDATE transaction_entry SET currency_id = ? WHERE currency_id = ? AND company_id = ?');
+                $stmt->execute([$fallbackId, $currencyId, $companyId]);
+            }
+        }
+    } catch (PDOException $e) {
+        return 'Failed to detach transaction entries: ' . $e->getMessage();
+    }
+
     return null;
 }
 
@@ -648,8 +684,13 @@ try {
     jsonResponse(true, 'Currency deleted successfully', null);
 } catch (PDOException $e) {
     error_log('DeleteCurrencyAPI - PDO: ' . $e->getMessage());
-    http_response_code(500);
-    jsonResponse(false, 'Database error: ' . $e->getMessage(), null);
+    if ($e->getCode() === '23000') {
+        http_response_code(409);
+        jsonResponse(false, 'Cannot delete currency: it is still referenced by existing records. Please remove or reassign those records first.', null);
+    } else {
+        http_response_code(500);
+        jsonResponse(false, 'Database error: ' . $e->getMessage(), null);
+    }
 } catch (Exception $e) {
     error_log('DeleteCurrencyAPI - Exception: ' . $e->getMessage());
     http_response_code(400);
