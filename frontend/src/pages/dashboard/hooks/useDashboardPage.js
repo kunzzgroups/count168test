@@ -3684,15 +3684,23 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       currencyOverride,
       viewGroupOverride,
       useActiveScopeAbort = true,
-      { earningsOnly = false } = {}
+      { earningsOnly = false, currencies = null } = {}
     ) => {
       const q = new URLSearchParams({
         date_from: rangeFrom,
         date_to: rangeTo,
         company_id: String(cid),
       });
-      const cur = currencyOverride ?? currencyCodeRef.current;
-      if (cur) q.append("currency", cur);
+      const multi = Array.isArray(currencies) && currencies.length > 1;
+      if (multi) {
+        // One request returns every requested currency's earnings for this company
+        // (server aggregates in-process ≈200ms) — replaces N single-currency
+        // round-trips (each ~0.25-2s over HTTPS) for the Group/Company All pie.
+        q.append("currencies", [...new Set(currencies)].join(","));
+      } else {
+        const cur = currencyOverride ?? currencyCodeRef.current;
+        if (cur) q.append("currency", cur);
+      }
       if (earningsOnly) {
         q.append("kpi_only", "1");
         q.append("earnings_only", "1");
@@ -5065,7 +5073,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       currencyOverride,
       viewGroupFallback = null,
       useActiveScopeAbort = true,
-      { earningsOnly = false } = {}
+      { earningsOnly = false, currencies = null } = {}
     ) => {
       const accessible = filterCompaniesForDashboardApiAccess(
         meRef.current,
@@ -5208,7 +5216,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
               currencyOverride,
               viewGroup,
               useActiveScopeAbort,
-              { earningsOnly }
+              { earningsOnly, currencies }
             );
             return { status: "fulfilled", value: { company: c, data, viewGroup } };
           } catch (reason) {
@@ -5241,6 +5249,29 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       if (byCompany.length) {
         merged.subsidiary_earnings_by_company = byCompany;
       }
+
+      // Multi-currency mode: each company's payload carries { currencies: { CODE: {…} } }
+      // (server aggregates all requested currencies in one request). mergeGroupData
+      // only understands single-currency payloads, so aggregate the per-company
+      // currency maps here and stash them on the merged payload for the caller.
+      if (Array.isArray(currencies) && currencies.length > 1) {
+        const acc = {};
+        for (const pair of pairs) {
+          const perCur = pair.data?.currencies;
+          if (!perCur || typeof perCur !== "object") continue;
+          for (const [code, entry] of Object.entries(perCur)) {
+            if (!entry || typeof entry !== "object") continue;
+            acc[code] = acc[code] || { expenses: "0", profit: "0" };
+            acc[code].expenses = String(
+              parseFloat(acc[code].expenses || "0") + parseFloat(entry.expenses || "0")
+            );
+            acc[code].profit = String(
+              parseFloat(acc[code].profit || "0") + parseFloat(entry.profit || "0")
+            );
+          }
+        }
+        merged.currencies = acc;
+      }
       return merged;
     },
     [
@@ -5264,6 +5295,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         useActiveScopeAbort = true,
         earningsOnly = false,
         earningsGroupsOnly = false,
+        currencies = null,
       } = {}
     ) => {
       let companyList;
@@ -5288,7 +5320,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         currencyOverride,
         groupKey ?? selectedGroup,
         useActiveScopeAbort,
-        { earningsOnly }
+        { earningsOnly, currencies }
       );
     },
     [companies, groupIds, ledgerGroupIds, selectedGroup, fetchMergedCompanyDashboards]
@@ -5318,10 +5350,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
   enrichGroupAllMergedDashboardRef.current = enrichGroupAllMergedDashboard;
 
   const loadMergedDashboard = useCallback(
-    async (rangeFrom, rangeTo, currencyOverride, { useActiveScopeAbort, earningsOnly = false } = {}) => {
+    async (rangeFrom, rangeTo, currencyOverride, { useActiveScopeAbort, earningsOnly = false, currencies = null } = {}) => {
       const mergeAbort =
         useActiveScopeAbort !== undefined ? useActiveScopeAbort : !groupAllMode;
-      const earningsOpts = earningsOnly ? { earningsOnly: true } : {};
+      const earningsOpts = earningsOnly
+        ? { earningsOnly: true, ...(currencies ? { currencies } : {}) }
+        : {};
       if (companyId != null) {
         const row = companies.find((c) => parseInt(c.id, 10) === parseInt(companyId, 10));
         const viewGroup =
@@ -5354,6 +5388,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             useActiveScopeAbort: mergeAbort,
             earningsOnly,
             earningsGroupsOnly: false,
+            currencies,
           });
         }
         if (selectedGroup) {
@@ -5365,6 +5400,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             groupKey: selectedGroup,
             useActiveScopeAbort: mergeAbort,
             earningsOnly,
+            currencies,
           });
         }
       }
@@ -5547,6 +5583,52 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     [groupAllMode, loadMergedDashboard, buildCurrencyRowFromPayload]
   );
 
+  /**
+   * Multi-currency earnings for one company in a single HTTP request
+   * (server aggregates all requested currencies in-process).
+   * Returns rows in the same shape as fetchSingleCurrencyEarnings's result.
+   */
+  const fetchMultiCurrencyEarningsRows = useCallback(
+    async (codes, gen) => {
+      const list = Array.isArray(codes) ? codes : [];
+      if (list.length <= 1) return null;
+      if (gen !== earningsFetchGenRef.current) return null;
+      try {
+        const payload = await loadMergedDashboard(
+          dateFromRef.current,
+          dateToRef.current,
+          null,
+          { earningsOnly: true, useActiveScopeAbort: false, currencies: list }
+        );
+        if (gen !== earningsFetchGenRef.current) return null;
+        // loadMergedDashboard returns a merged payload; multi-currency mode stashes
+        // the aggregated per-currency map on the payload root (`merged.currencies`).
+        const map = payload?.currencies ?? payload?.data?.currencies;
+        if (!map || typeof map !== "object") return null;
+        const rows = [];
+        for (const code of list) {
+          const entry = map[code] ?? map[String(code).toUpperCase()];
+          if (!entry) {
+            rows.push({ code, netProfit: null, earnings: null });
+            continue;
+          }
+          const profit = parseFloat(entry.profit ?? entry.netProfit ?? "0");
+          const expenses = parseFloat(entry.expenses ?? "0");
+          const net = Number.isFinite(profit - expenses) ? profit - expenses : null;
+          rows.push({
+            code,
+            netProfit: net,
+            earnings: Number.isFinite(profit) ? profit : null,
+          });
+        }
+        return rows;
+      } catch {
+        return null;
+      }
+    },
+    [loadMergedDashboard]
+  );
+
   const fetchGroupAllEarningsRowsForRange = useCallback(
     async (rangeFrom, rangeTo, gen, codes) => {
       const list = Array.isArray(codes) ? codes : currenciesRef.current;
@@ -5641,7 +5723,22 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           setEarningsByCurrency(progressive);
         };
 
-        if (otherCodes.length) {
+        // One multi-currency request covers all remaining currencies at once
+        // (server aggregates in-process ≈200ms) — the old path issued one HTTPS
+        // round-trip per currency (each ~0.25-2s), the Group/Company All cold-start
+        // pie stall. Falls back to per-currency fetches if the server lacks the
+        // multi-currency endpoint.
+        let multiRows = null;
+        if (otherCodes.length > 0) {
+          multiRows = await fetchMultiCurrencyEarningsRows([primaryCode, ...otherCodes], gen);
+          if (multiRows && Array.isArray(multiRows)) {
+            rows.length = 0;
+            rows.push(...multiRows);
+            paintProgressive();
+          }
+        }
+
+        if (!multiRows && otherCodes.length) {
           const batchSize = groupAllMode
             ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL
             : EARNINGS_KPI_PARALLEL_BATCH;
@@ -5683,6 +5780,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       tryBuildGroupAllDashboardFromCompanyCaches,
       buildCurrencyRowFromPayload,
       fetchSingleCurrencyEarnings,
+      fetchMultiCurrencyEarningsRows,
     ]
   );
 
