@@ -2716,11 +2716,31 @@ try {
                 $platformFeeRemark = trim((string) ($pfeeMatch[1] ?? ''));
                 $rawMiddleDesc = preg_replace('/\n\[\[PFEE_REMARK\]\].+$/s', '', $rawMiddleDesc);
             }
+
+            // MARKUP 显示的是 Rate-Mul 相对原汇率的差额，不是 Rate-Mul 原始输入值。
+            // - multiply 模式：exchange_rate 和 rate_middleman_rate 都是原样存的乘数，直接相减。
+            // - divide 模式：exchange_rate 存的是原汇率的倒数（`/2` 存成 `0.5`），
+            //   rate_middleman_rate 存的是 Rate-Mul 除数本身（`/1.9` 存成 `1.9`），
+            //   两者单位不同，需要先把 exchange_rate 还原成原除数（1/exchange_rate）再相减。
+            $markupRate = $row['rate_middleman_rate'] ?? null;
+            $exchangeRateForMarkup = $row['exchange_rate'] ?? null;
+            if ($markupRate !== null && $markupRate !== '' && $exchangeRateForMarkup !== null && $exchangeRateForMarkup !== '') {
+                $isDivideMode = (bool) preg_match('/\(\s*\/[^)]*\)/', $rawMiddleDesc);
+                if ($isDivideMode) {
+                    if (money_cmp($exchangeRateForMarkup, '0') > 0) {
+                        $originalDivisor = money_div('1', $exchangeRateForMarkup, 8);
+                        $markupRate = money_sub($markupRate, $originalDivisor, 8);
+                    }
+                } else {
+                    $markupRate = money_sub($markupRate, $exchangeRateForMarkup, 8);
+                }
+            }
+
             $description = formatMarkupDescription(
                 $rawMiddleDesc,
                 $row['from_currency_code'] ?? null,
                 $row['to_currency_code'] ?? null,
-                $row['rate_middleman_rate'] ?? null,
+                $markupRate,
                 $row['rate_from_amount'] ?? null,
                 $row['rate_transfer_from_account_code'] ?? null
             );
