@@ -2696,10 +2696,10 @@ try {
         $description = $row['entry_description'] ?: 'RATE';
         $platformFeeRemark = null;
 
-        // RATE 后缀：仅 TO 侧显示净汇率（exchange_rate - middleman_rate），FROM 侧保持原始汇率。
-        // 适用于第一行与第二行（RATE_FIRST_TO / RATE_TRANSFER_TO）。
+        // RATE 后缀：仅 FROM 侧（付款方，RATE_FIRST_FROM / RATE_TRANSFER_FROM）显示净汇率
+        // （exchange_rate - middleman_rate），TO 侧（收款方）保持原始汇率。
         $displayRateForSuffix = null;
-        if (in_array($entryType, ['RATE_FIRST_TO', 'RATE_TRANSFER_TO'], true)) {
+        if (in_array($entryType, ['RATE_FIRST_FROM', 'RATE_TRANSFER_FROM'], true)) {
             $exchangeRate = $row['exchange_rate'] ?? null;
             $middlemanRate = $row['rate_middleman_rate'] ?? null;
             if ($exchangeRate !== null && $middlemanRate !== null) {
@@ -2938,8 +2938,8 @@ try {
                 } else {
                     // 汇率兑换本身：Currency Exchange (FROM amount > TO)；Rate 按分录类型区分（Member）
                     // - RATE_FIRST_FROM / RATE_FIRST_TO：不展示 Rate
-                    // - RATE_TRANSFER_FROM（第二币种 Select To）：原始 exchange_rate
-                    // - RATE_TRANSFER_TO（第二币种 Select From）：exchange_rate - middleman_rate（净汇率，无效则回退原始）
+                    // - RATE_TRANSFER_TO（第二币种 Select From，收款方）：原始 exchange_rate
+                    // - RATE_TRANSFER_FROM（第二币种 Select To，付款方）：exchange_rate - middleman_rate（净汇率，无效则回退原始）
                     $fromCode = $event['from_currency_code'] ?? null;
                     $toCode = $event['to_currency_code'] ?? null;
                     $fromAmount = $event['rate_from_amount'] ?? null;
@@ -2948,7 +2948,7 @@ try {
 
                     $rateForSuffix = null;
                     if (!in_array($entryType, ['RATE_FIRST_FROM', 'RATE_FIRST_TO'], true)) {
-                        if ($entryType === 'RATE_TRANSFER_TO') {
+                        if ($entryType === 'RATE_TRANSFER_FROM') {
                             $displayNet = null;
                             if ($exchangeRate !== null && $exchangeRate !== ''
                                 && $middlemanRate !== null && (string) $middlemanRate !== '') {
@@ -2961,7 +2961,7 @@ try {
                                 ? $displayNet
                                 : (($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null);
                         } else {
-                            // RATE_TRANSFER_FROM、RATE_FEE 等：与原先一致，使用原始汇率
+                            // RATE_TRANSFER_TO、RATE_FEE 等：与原先一致，使用原始汇率
                             $rateForSuffix = ($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null;
                         }
                     }
