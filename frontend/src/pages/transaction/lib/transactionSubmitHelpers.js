@@ -16,7 +16,7 @@ function cleanAmt(raw) {
     .trim();
 }
 
-function parsePositiveAmt(raw) {
+export function parsePositiveAmt(raw) {
   try {
     const inputStr = cleanAmt(raw);
     if (!inputStr) return MoneyDecimal.toDecimal("0", 0);
@@ -82,14 +82,15 @@ export function parseMiddlemanRateInput(raw) {
 
 /**
  * Rate-Mul commission in second-currency units (full precision; caller stores at 6dp).
+ * 顾客金额固定按 FX Rate（base）计算，不再受 Rate-Mul 影响；
+ * commission = 用 Rate-Mul 重新算出来的值 − 顾客固定金额（顺序固定，不能反过来）。
  * - "divide" mode（Rate-Mul 输入 `/newDivisor`，只在 FX Rate 本身也是 `/divisor` 时生效）：
- *   rateMulCommission = from/divisor − from/newDivisor（newDivisor 直接取自输入，不再相加；
- *   若 newDivisor < divisor 会算出负数，允许）
+ *   rateMulCommission = from/newDivisor − from/divisor（newDivisor 直接取自输入，不再相加）
  * - "multiply" mode（Rate-Mul 输入纯正数）：
- *   - FX Rate 本身也是 `/divisor`：点数直接用，rateMulCommission = mul × 1000
- *   - FX Rate 本身是乘法写法：Rate-Mul 当作「新汇率」，带符号跟原汇率做差（不取绝对值）
- *     rateMulCommission = (原汇率 − mul) × fromAmount
- *     mul > 原汇率时结果为负（允许，倒贴）；FX Rate 无法解析时：忽略（0）
+ *   - FX Rate 本身也是 `/divisor`：点数直接用，rateMulCommission = mul × 1000（独立玩法，不套用上面公式）
+ *   - FX Rate 本身是乘法写法：Rate-Mul 当作「新汇率」，
+ *     rateMulCommission = (mul − 原汇率) × fromAmount
+ *     结果为负属于「倒贴」情形，仍允许；FX Rate 无法解析时：忽略（0）
  */
 export function computeRateMulCommission({ fromAmount, middlemanRate, exchangeRateRaw }) {
   const fromDec = parsePositiveAmt(fromAmount);
@@ -104,7 +105,7 @@ export function computeRateMulCommission({ fromAmount, middlemanRate, exchangeRa
     if (!baseDivisor) return MoneyDecimal.toDecimal("0", 0);
     const base = fromDec.div(baseDivisor);
     const adjusted = fromDec.div(parsed.divisor);
-    return base.minus(adjusted);
+    return adjusted.minus(base);
   }
 
   // parsed.mode === "multiply"
@@ -114,7 +115,7 @@ export function computeRateMulCommission({ fromAmount, middlemanRate, exchangeRa
   const baseRate = parseRateExpression(exchangeRateRaw);
   if (!baseRate.valid) return MoneyDecimal.toDecimal("0", 0);
   const baseRateDec = MoneyDecimal.toDecimal(baseRate.value, 0);
-  const rateDiff = baseRateDec.minus(parsed.value);
+  const rateDiff = parsed.value.minus(baseRateDec);
   return fromDec.times(rateDiff);
 }
 

@@ -21,6 +21,7 @@ import {
   collectSubmitFocusAccountIds,
   computeRateMiddlemanProfit,
   parseMiddlemanRateInput,
+  parsePositiveAmt,
 } from "../lib/transactionSubmitHelpers.js";
 import { submitTransaction, transactionQueryKeys } from "../lib/transactionApi.js";
 import { MoneyDecimal } from "../../../utils/money/moneyDecimal.js";
@@ -285,15 +286,10 @@ export function useTransactionForm({
     }
     setRateMiddlemanAmount(middleStr);
 
-    // From preview: gross − (Rate-Mul + Service Fee). PT-Fee 不动 From/表单金额，只落 PLATFORM_FEE 行。
+    // From preview: gross − Service Fee only. Rate-Mul 不再影响顾客金额（顾客固定拿 gross，
+    // Rate-Mul 产生的 commission 只体现在 Middle-Man Amount）。PT-Fee 同样不动 From/表单金额，只落 PLATFORM_FEE 行。
     // Calc uses full precision; formatRateAmount is display-only half-up 2.
-    const toAmountDeductionDec = computeRateMiddlemanProfit({
-      fromAmount: rateCurrencyFromAmount,
-      middlemanRate: rateMiddlemanRate,
-      feeAmount: rateMiddlemanInputAmount,
-      platformFeeAmount: "0",
-      exchangeRateRaw: rateExchangeRateRaw,
-    });
+    const toAmountDeductionDec = parsePositiveAmt(rateMiddlemanInputAmount);
 
     try {
       const fromDec = MoneyDecimal.toDecimal(clean(rateCurrencyFromAmount) || "0", 0);
