@@ -5344,7 +5344,6 @@ body.process-page > .process-modal {
 .process-page .process-form.add-grid .add-col > .process-form-section:not(:last-child),
 #addModal .process-form.add-grid .add-col > .process-form-section:not(:last-child),
 #editModal .process-form.add-grid .add-col > .process-form-section:not(:last-child) {
-    margin-bottom: 0.5rem;
     padding-bottom: 0;
     border-bottom: none;
 }
@@ -5543,7 +5542,6 @@ body.process-page > .process-modal {
     font-weight: 600 !important;
     font-family: var(--font-heading-page) !important;
     letter-spacing: 0.015em !important;
-    margin-bottom: 0.5rem !important;
 }
 
 .process-page #editModal .process-form .form-row {
@@ -8606,7 +8604,6 @@ body.process-page > #editModal.modal.show > .modal-content.process-form-modal,
 .process-form-modal .process-form.add-grid .add-col > .process-form-section:not(:last-child),
 #addModal .modal-content.process-form-modal .process-form.add-grid .add-col > .process-form-section:not(:last-child),
 #editModal .modal-content.process-form-modal .process-form.add-grid .add-col > .process-form-section:not(:last-child) {
-    margin-bottom: calc(var(--space-gap, 0.75rem) * 0.85);
     padding-bottom: 0;
     border-bottom: none;
 }
