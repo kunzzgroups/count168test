@@ -6683,11 +6683,18 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           rows.length > 1 &&
           dashboardEarningsRowsComplete(rows, codes, primary, primaryEarnings)
         ) {
+          // rows from the multi-currency aggregation already carry the primary
+          // currency's real figures — do NOT let alignPrimaryCurrencyRows overwrite
+          // them with the (company-level, possibly zero) main-KPI payload values.
+          const primaryRow = rows.find(
+            (r) => String(r?.code || "").trim().toUpperCase() === primary
+          );
+          const useRowPrimary = primaryRow && Number.isFinite(Number(primaryRow?.netProfit));
           const normalized = normalizeEarningsRowsForDisplay(
             rows,
             primary,
-            primaryNetProfit,
-            primaryEarnings
+            useRowPrimary ? null : primaryNetProfit,
+            useRowPrimary ? null : primaryEarnings
           );
           setEarningsByCurrency(normalized);
           setEarningsByCurrencyPrev([]);
@@ -6700,11 +6707,15 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             primaryEarnings
           );
         } else if (Array.isArray(rows) && rows.length > 1) {
+          const primaryRow = rows.find(
+            (r) => String(r?.code || "").trim().toUpperCase() === primary
+          );
+          const useRowPrimary = primaryRow && Number.isFinite(Number(primaryRow?.netProfit));
           const normalized = normalizeEarningsRowsForDisplay(
             rows,
             primary,
-            primaryNetProfit,
-            primaryEarnings
+            useRowPrimary ? null : primaryNetProfit,
+            useRowPrimary ? null : primaryEarnings
           );
           setEarningsByCurrency(normalized);
           setEarningsByCurrencyPrev([]);
