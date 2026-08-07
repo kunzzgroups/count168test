@@ -16,7 +16,11 @@ export function DashboardKpiCard({
   const showCompare = compare && !loading;
   const badgeUp = compare?.pct >= 0;
   const deltaUp = compare?.isUp;
-  const revealed = !loading;
+  // KPI cards must paint immediately — never sit invisible while the rest of the
+  // dashboard's heavier fetch (per-company × currency fan-out) resolves. The value
+  // shows 0.00 during scope loading and snaps to real figures as data lands; only
+  // the compare row waits for data so it doesn't flash wrong deltas.
+  const revealed = true;
 
   return (
     <div
