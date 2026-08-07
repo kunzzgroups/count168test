@@ -258,6 +258,7 @@ export function useDataCaptureFormEngine(
           setDescriptionDisplay("");
         }
         setRemark("");
+        callDataCaptureRuntime("clearGridCells");
       }
       scheduleRecomputeSubmitState();
       return;
@@ -282,6 +283,7 @@ export function useDataCaptureFormEngine(
         setDescriptionDisplay("");
       }
       setRemark("");
+      callDataCaptureRuntime("clearGridCells");
     }
     scheduleRecomputeSubmitState();
   }, [clearSelectedDescriptions]);
@@ -708,6 +710,27 @@ export function useDataCaptureFormEngine(
     captureScope,
     payrollDraftServerSync,
   ]);
+
+  /**
+   * When the current process/currency has no payroll draft to restore (normal
+   * process, or a payroll process whose enable_save_draft isn't checked), keep
+   * the capture table empty on process/currency switch instead of leaking the
+   * previous selection's unsaved grid content.
+   */
+  useEffect(() => {
+    if (!selectedProcess?.id) return;
+    if (!scriptsReady) return;
+    if (getDataCaptureState().isRestoring) return;
+    try {
+      if (new URLSearchParams(window.location.search).get("restore") === "1") return;
+    } catch {
+      /* ignore */
+    }
+    const draftBucket = payrollPrefsKeyRef.current;
+    const processKey = resolvePayrollDraftProcessKey(selectedProcess, !applyCompanyOnlyFields);
+    if (draftBucket && processKey) return; // handled by the restore effect above instead
+    callDataCaptureRuntime("clearGridCells");
+  }, [applyCompanyOnlyFields, payrollPrefsKey, selectedProcess, currencyId, scriptsReady]);
 
   applyGroupOnlyPrefsForGroupRef.current = applyGroupOnlyPrefsForGroup;
 
