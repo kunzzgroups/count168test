@@ -8710,8 +8710,21 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     const earningsRows = Array.isArray(summaryEarningsByCurrency)
       ? summaryEarningsByCurrency
       : [];
-    const primaryNetProfit = kpi?.netProfit ?? null;
-    const primaryEarnings = kpi?.showEarnings ? kpi.earnings : primaryNetProfit;
+    const primaryCode = String(summaryCurrencyCode || "").toUpperCase();
+    // Under Group/Company All the multi-currency aggregation carries the primary
+    // currency's REAL figure (summed across companies); the main-KPI payload's
+    // primary value is company-level (often 0) and must not overwrite it.
+    const rowPrimary = earningsRows.find(
+      (r) => String(r?.code || "").trim().toUpperCase() === primaryCode
+    );
+    const primaryNetProfit =
+      rowPrimary && Number.isFinite(Number(rowPrimary?.netProfit))
+        ? rowPrimary.netProfit
+        : (kpi?.netProfit ?? null);
+    const primaryEarnings =
+      rowPrimary && Number.isFinite(Number(rowPrimary?.earnings))
+        ? rowPrimary.earnings
+        : (kpi?.showEarnings ? kpi.earnings : primaryNetProfit);
     const seededRows =
       earningsRows.length > 0
         ? earningsRows
