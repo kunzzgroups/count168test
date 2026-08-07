@@ -398,7 +398,7 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
-              {earningsPieSlices.length > 0 && !hoveredPieTooltip && (
+              {earningsPanelStable && earningsPieSlices.length > 0 && !hoveredPieTooltip && (
                 <div className="dashboard-summary-pie-center" aria-hidden="true">
                   <span className="dashboard-summary-pie-center-pct">
                     {pieCenterPct != null && Number.isFinite(pieCenterPct)

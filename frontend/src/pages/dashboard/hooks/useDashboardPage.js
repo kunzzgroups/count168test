@@ -5589,11 +5589,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
    * Returns rows in the same shape as fetchSingleCurrencyEarnings's result.
    */
   const fetchMultiCurrencyEarningsRows = useCallback(
-    async (codes, gen, genRef = null) => {
+    async (codes, gen) => {
       const list = Array.isArray(codes) ? codes : [];
       if (list.length <= 1) return null;
-      const activeGen = genRef?.current ?? earningsFetchGenRef.current;
-      if (gen !== activeGen) return null;
+      if (gen !== earningsFetchGenRef.current) return null;
       try {
         const payload = await loadMergedDashboard(
           dateFromRef.current,
@@ -5601,7 +5600,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           null,
           { earningsOnly: true, useActiveScopeAbort: false, currencies: list }
         );
-        if (gen !== (genRef?.current ?? earningsFetchGenRef.current)) return null;
+        if (gen !== earningsFetchGenRef.current) return null;
         // loadMergedDashboard returns a merged payload; multi-currency mode stashes
         // the aggregated per-currency map on the payload root (`merged.currencies`).
         const map = payload?.currencies ?? payload?.data?.currencies;
@@ -5903,21 +5902,6 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       const guardKey = scopeKeyForGuard || dashboardFetchInFlightScopeRef.current || "parallel";
       earningsParallelInFlightRef.current = guardKey;
 
-      // Group/Company All: ONE multi-currency request covers every currency for
-      // the whole company fan-out (server aggregates in-process) — replaces the
-      // per-currency round-trip storm that made cold-start pie slow.
-      if (groupAllMode && list.length > 1) {
-        const multi = fetchMultiCurrencyEarningsRows(list, dashboardGen, dashboardFetchGenRef).finally(() => {
-          if (earningsParallelInFlightRef.current === guardKey) {
-            earningsParallelInFlightRef.current = "";
-          }
-        });
-        return multi.then((rows) => {
-          if (!Array.isArray(rows) || !rows.length) return others.map((c) => ({ code: c, netProfit: null, earnings: null }));
-          return rows;
-        });
-      }
-
       return runTasksInBatches(
         others,
         groupAllMode ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL : EARNINGS_KPI_PARALLEL_BATCH,
@@ -5949,7 +5933,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         }
       });
     },
-    [groupAllMode, buildCurrencyRowFromPayload, loadMergedDashboard, fetchMultiCurrencyEarningsRows]
+    [groupAllMode, buildCurrencyRowFromPayload, loadMergedDashboard]
   );
 
   const loadEarningsParallelForAtomicPaint = useCallback(
@@ -6683,18 +6667,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           rows.length > 1 &&
           dashboardEarningsRowsComplete(rows, codes, primary, primaryEarnings)
         ) {
-          // rows from the multi-currency aggregation already carry the primary
-          // currency's real figures — do NOT let alignPrimaryCurrencyRows overwrite
-          // them with the (company-level, possibly zero) main-KPI payload values.
-          const primaryRow = rows.find(
-            (r) => String(r?.code || "").trim().toUpperCase() === primary
-          );
-          const useRowPrimary = primaryRow && Number.isFinite(Number(primaryRow?.netProfit));
           const normalized = normalizeEarningsRowsForDisplay(
             rows,
             primary,
-            useRowPrimary ? null : primaryNetProfit,
-            useRowPrimary ? null : primaryEarnings
+            primaryNetProfit,
+            primaryEarnings
           );
           setEarningsByCurrency(normalized);
           setEarningsByCurrencyPrev([]);
@@ -6707,15 +6684,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             primaryEarnings
           );
         } else if (Array.isArray(rows) && rows.length > 1) {
-          const primaryRow = rows.find(
-            (r) => String(r?.code || "").trim().toUpperCase() === primary
-          );
-          const useRowPrimary = primaryRow && Number.isFinite(Number(primaryRow?.netProfit));
           const normalized = normalizeEarningsRowsForDisplay(
             rows,
             primary,
-            useRowPrimary ? null : primaryNetProfit,
-            useRowPrimary ? null : primaryEarnings
+            primaryNetProfit,
+            primaryEarnings
           );
           setEarningsByCurrency(normalized);
           setEarningsByCurrencyPrev([]);
@@ -8710,21 +8683,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     const earningsRows = Array.isArray(summaryEarningsByCurrency)
       ? summaryEarningsByCurrency
       : [];
-    const primaryCode = String(summaryCurrencyCode || "").toUpperCase();
-    // Under Group/Company All the multi-currency aggregation carries the primary
-    // currency's REAL figure (summed across companies); the main-KPI payload's
-    // primary value is company-level (often 0) and must not overwrite it.
-    const rowPrimary = earningsRows.find(
-      (r) => String(r?.code || "").trim().toUpperCase() === primaryCode
-    );
-    const primaryNetProfit =
-      rowPrimary && Number.isFinite(Number(rowPrimary?.netProfit))
-        ? rowPrimary.netProfit
-        : (kpi?.netProfit ?? null);
-    const primaryEarnings =
-      rowPrimary && Number.isFinite(Number(rowPrimary?.earnings))
-        ? rowPrimary.earnings
-        : (kpi?.showEarnings ? kpi.earnings : primaryNetProfit);
+    const primaryNetProfit = kpi?.netProfit ?? null;
+    const primaryEarnings = kpi?.showEarnings ? kpi.earnings : primaryNetProfit;
     const seededRows =
       earningsRows.length > 0
         ? earningsRows

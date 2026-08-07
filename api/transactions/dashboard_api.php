@@ -3721,6 +3721,7 @@ try {
         : [];
     if (
         $earningsOnly
+        && !$kpiOnly
         && count($multiCurrencyCodes) > 1
         && $company_id !== null
         && $company_id > 0
@@ -3741,7 +3742,6 @@ try {
                 'date_to' => (string) $_GET['date_to'] ?? '',
                 'currency' => $code,
                 'earnings_only' => '1',
-                'kpi_only' => '1',
                 // Force the per-currency capture to NOT re-enter the multi-currency
                 // branch (capture() unsets $_GET keys whose value is empty).
                 'currencies' => '',
