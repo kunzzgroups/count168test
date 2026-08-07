@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   Area,
   CartesianGrid,
@@ -11,7 +11,7 @@ import {
 import { computeTrendYDomain } from "../../lib/dashboardChart.js";
 import { formatCompactAxis, formatCurrency } from "../../lib/dashboardFormat.js";
 
-export default function DashboardTrendChart({
+const DashboardTrendChart = memo(function DashboardTrendChart({
   rows,
   series,
   visible,
@@ -22,9 +22,9 @@ export default function DashboardTrendChart({
   emptyText,
   tapHint,
 }) {
-  const activeSeries = series.filter((s) => visible[s.idx]);
-  const activeKeys = activeSeries.map((s) => s.dataKey);
-  const yDomain = computeTrendYDomain(rows, activeKeys);
+  const activeSeries = useMemo(() => series.filter((s) => visible[s.idx]), [series, visible]);
+  const activeKeys = useMemo(() => activeSeries.map((s) => s.dataKey), [activeSeries]);
+  const yDomain = useMemo(() => computeTrendYDomain(rows, activeKeys), [rows, activeKeys]);
   const hasSeriesOn = activeKeys.length > 0;
   const [activeIndex, setActiveIndex] = useState(null);
 
@@ -167,4 +167,6 @@ export default function DashboardTrendChart({
       ) : null}
     </section>
   );
-}
+});
+
+export default DashboardTrendChart;

@@ -6,6 +6,11 @@ import {
   readDashboardSelectedCurrency,
   readPersistedDashboardGcFilter,
 } from "../../utils/company/sharedCompanyFilter.js";
+import { readUserCurrencyDisplayOrder } from "../../utils/company/currencyDisplayOrder.js";
+import {
+  resolveFrankfurterDate,
+  warmFrankfurterRatesForCurrencies,
+} from "../../utils/dashboard/frankfurterRates.js";
 import {
   bindDashboardSessionCache,
   buildDashboardCacheKey,
@@ -131,6 +136,28 @@ export function warmDashboardRouteCache({ me = null } = {}) {
           groupAllMode: false,
         })
       ) || "";
+
+    // Warm FX for the persisted scope off the critical path — the dashboard will need
+    // base→quote rates for every pill the moment it opens; seeding them here (sidebar
+    // idle) removes the "amounts jump after rates land" lag on first paint. Best-effort:
+    // falls back to the user's persisted currency order when the scope has no record yet.
+    {
+      const orderCodes = readUserCurrencyDisplayOrder();
+      const warmCodes = [
+        ...new Set(
+          [currency, ...(orderCodes || [])]
+            .map((c) => String(c || "").trim().toUpperCase())
+            .filter(Boolean)
+        ),
+      ];
+      if (warmCodes.length > 1) {
+        warmFrankfurterRatesForCurrencies(
+          warmCodes,
+          resolveFrankfurterDate(dateTo),
+          currency || warmCodes[0]
+        );
+      }
+    }
 
     const cacheKey = buildDashboardCacheKey({
       companyId: scopeCompanyKey,

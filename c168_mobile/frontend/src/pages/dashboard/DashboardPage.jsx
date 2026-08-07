@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import { useMobileDashboard } from "../../hooks/useMobileDashboard.js";
 import CurrencyDistributionCard from "./CurrencyDistributionCard.jsx";
@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [ratesHintDismissed, setRatesHintDismissed] = useState(false);
   const [heroMetric, setHeroMetric] = useState("net");
+  const handleHeroSelect = useCallback((variant) => setHeroMetric(variant), []);
   const ratesHint = dash.ratesWarning && !ratesHintDismissed ? dash.ratesWarning : "";
 
   useEffect(() => {
@@ -223,7 +224,7 @@ export default function DashboardPage() {
                   compareLabel={compareLabel}
                   loading={loading}
                   selected={heroMetric === card.variant}
-                  onSelect={() => setHeroMetric(card.variant)}
+                  onSelect={handleHeroSelect}
                 />
               ))}
             </div>

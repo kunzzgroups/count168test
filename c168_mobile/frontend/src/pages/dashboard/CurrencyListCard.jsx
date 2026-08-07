@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   formatFrankfurterUnitRate,
   getCurrencyColor,
@@ -6,7 +7,7 @@ import {
 import { formatCurrency } from "../../lib/dashboardFormat.js";
 import { getCurrencyMeta } from "../../lib/currencyMeta.js";
 
-export default function CurrencyListCard({
+const CurrencyListCard = memo(function CurrencyListCard({
   i18n,
   lang,
   currencyCode,
@@ -88,4 +89,6 @@ export default function CurrencyListCard({
       </ul>
     </section>
   );
-}
+});
+
+export default CurrencyListCard;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { formatFrankfurterUnitRate } from "../../../utils/dashboard/frankfurterRates.js";
 import {
@@ -25,7 +25,47 @@ import { EarningsPieSectorTooltip } from "./EarningsPieSectorTooltip.jsx";
  */
 const CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS = 900;
 
-export function DashboardEarningsSummary({
+/** Debounce layout sync so resize/ResizeObserver bursts re-render the pie shell at most
+ *  once per frame — previously every resize event setState'd and re-rendered the card.
+ *  `measureTick` re-runs one measurement when a reveal/scope change lands (mirrors the
+ *  old `[summaryPieReady, currencyCode]` dependency of the layout effect). */
+function useDebouncedResizeSync(pieAreaRef, pieShellRef, onLayout, measureTick) {
+  const rafRef = useRef(0);
+  useEffect(() => {
+    const wrap = pieAreaRef.current;
+    const shell = pieShellRef.current;
+    if (!wrap || !shell) return undefined;
+
+    const syncLayout = () => {
+      if (rafRef.current) return;
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = 0;
+        onLayout();
+      });
+    };
+
+    syncLayout();
+    const observer =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncLayout) : null;
+    observer?.observe(wrap);
+    observer?.observe(shell);
+    window.addEventListener("resize", syncLayout);
+    return () => {
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+      observer?.disconnect();
+      window.removeEventListener("resize", syncLayout);
+    };
+  }, [pieAreaRef, pieShellRef, onLayout]);
+
+  useEffect(() => {
+    if (!measureTick) return undefined;
+    const raf = window.requestAnimationFrame(onLayout);
+    return () => window.cancelAnimationFrame(raf);
+  }, [measureTick, onLayout]);
+}
+
+export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   i18n,
   currencyCode,
   currencies,
@@ -127,6 +167,13 @@ export function DashboardEarningsSummary({
 
   const showMultiCurrencyBreakdown = currencies.length > 1;
 
+  // FX still resolving for a multi-currency scope: hold amounts on a shimmer instead of
+  // painting native figures that jump to converted the moment rates land (the
+  // dashboard-currency-lag look). Once rates are usable (useConvertedEarnings flips) or
+  // the request settles, amounts render as before.
+  const fxAmountPending =
+    showMultiCurrencyBreakdown && exchangeRatesLoading && !useConvertedEarnings;
+
   // Card-level readiness gate — hide only while the first multi-currency paint is
   // still pending. Do NOT require every currency row to be non-null: after a date
   // filter on Group+Company All, secondary currencies can stay null (or retries
@@ -145,30 +192,19 @@ export function DashboardEarningsSummary({
         panelCurrencyRows.some((row) => row.earnings != null)
       : !summaryEarningsLoading);
 
-  useLayoutEffect(() => {
+  const syncPieLayout = useCallback(() => {
     const wrap = pieAreaRef.current;
     const shell = pieShellRef.current;
-    if (!wrap || !shell) return undefined;
+    if (!wrap || !shell) return;
+    setPieShellLayout({
+      left: shell.offsetLeft,
+      top: shell.offsetTop,
+      width: shell.clientWidth,
+      height: shell.clientHeight,
+    });
+  }, []);
 
-    const syncLayout = () => {
-      setPieShellLayout({
-        left: shell.offsetLeft,
-        top: shell.offsetTop,
-        width: shell.clientWidth,
-        height: shell.clientHeight,
-      });
-    };
-
-    syncLayout();
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncLayout) : null;
-    observer?.observe(wrap);
-    observer?.observe(shell);
-    window.addEventListener("resize", syncLayout);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", syncLayout);
-    };
-  }, [summaryPieReady, currencyCode]);
+  useDebouncedResizeSync(pieAreaRef, pieShellRef, syncPieLayout, `${summaryPieReady ? "ready" : "wait"}:${currencyCode}`);
 
   const handlePieSectorEnter = useCallback(
     (sectorData, index) => {
@@ -242,9 +278,13 @@ export function DashboardEarningsSummary({
         {currencyCode ? ` · ${currencyCode}` : ""}
       </span>
       <div className="dashboard-summary-hero-value">
-        <span className="dashboard-animated-value dashboard-summary-hero-value-anim">
-          {formatCurrency(parseFloat(summaryEarningsValue) || 0)}
-        </span>
+        {fxAmountPending ? (
+          <span className="dashboard-amount-shimmer" aria-hidden="true" />
+        ) : (
+          <span className="dashboard-animated-value dashboard-summary-hero-value-anim">
+            {formatCurrency(parseFloat(summaryEarningsValue) || 0)}
+          </span>
+        )}
       </div>
       {summaryConversionNote && (
         <span className="dashboard-summary-hero-conversion-note">{summaryConversionNote}</span>
@@ -467,9 +507,13 @@ export function DashboardEarningsSummary({
                     <span className="dashboard-summary-currency-code">{row.code}</span>
                   </div>
                   <div className="dashboard-summary-currency-amount-col">
-                    <span className="dashboard-summary-currency-amount">
-                      {primary != null ? formatCurrency(primary) : "—"}
-                    </span>
+                    {fxAmountPending ? (
+                      <span className="dashboard-amount-shimmer" aria-hidden="true" />
+                    ) : (
+                      <span className="dashboard-summary-currency-amount">
+                        {primary != null ? formatCurrency(primary) : "—"}
+                      </span>
+                    )}
                   </div>
                   {(earningsBreakdownShowsRate || isCompanyBreakdownView) && (
                     <div className="dashboard-summary-currency-original-col">
@@ -501,4 +545,4 @@ export function DashboardEarningsSummary({
       </div>
     </div>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import {
   Area,
   AreaChart,
@@ -19,7 +19,7 @@ import { formatChartTooltipLabel } from "../lib/dashboardDateUtils.js";
 import { formatCurrency } from "../lib/dashboardFormat.js";
 
 /** Trend chart — instant paint, no draw / Recharts enter animation. */
-export function DashboardTrendChart({
+export const DashboardTrendChart = memo(function DashboardTrendChart({
   i18n,
   chartRows,
   chartSeries,
@@ -135,4 +135,4 @@ export function DashboardTrendChart({
       </div>
     </div>
   );
-}
+});

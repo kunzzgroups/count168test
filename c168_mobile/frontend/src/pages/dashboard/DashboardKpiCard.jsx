@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { formatCurrency, formatPercentMagnitude, formatSignedChange } from "../../lib/dashboardFormat.js";
 
 const VARIANT_META = {
@@ -7,7 +8,7 @@ const VARIANT_META = {
   earnings: { icon: "fa-hand-holding-dollar", accent: "earnings", iconTone: "earnings" },
 };
 
-export default function DashboardKpiCard({
+const DashboardKpiCard = memo(function DashboardKpiCard({
   variant,
   label,
   value,
@@ -27,7 +28,7 @@ export default function DashboardKpiCard({
       type="button"
       className="m-dash-kpi tap-scale"
       aria-pressed={selected}
-      onClick={onSelect}
+      onClick={() => onSelect?.(variant)}
     >
       <div className={`m-dash-kpi-accent m-dash-kpi-accent--${meta.accent}`} aria-hidden="true" />
 
@@ -57,4 +58,6 @@ export default function DashboardKpiCard({
       )}
     </button>
   );
-}
+});
+
+export default DashboardKpiCard;

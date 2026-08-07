@@ -1,4 +1,6 @@
-export function DashboardFilterPanel({
+import { memo } from "react";
+
+export const DashboardFilterPanel = memo(function DashboardFilterPanel({
   i18n,
   effectiveDateRangeText,
   groupIds,
@@ -166,4 +168,4 @@ export function DashboardFilterPanel({
       )}
     </div>
   );
-}
+});

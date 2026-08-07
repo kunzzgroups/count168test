@@ -1,4 +1,5 @@
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
+import { memo } from "react";
 import {
   buildEarningsPieSlices,
   buildEarningsShareByCode,
@@ -6,7 +7,7 @@ import {
   getCurrencyColor,
 } from "../../lib/dashboardEarnings.js";
 
-export default function CurrencyDistributionCard({ i18n, currencyCode, rows, useConverted, loading, note = "" }) {
+const CurrencyDistributionCard = memo(function CurrencyDistributionCard({ i18n, currencyCode, rows, useConverted, loading, note = "" }) {
   const slices = buildEarningsPieSlices(rows, { useConverted });
   const shareByCode = buildEarningsShareByCode(rows, currencyCode, { useConverted });
   const center = computePieCenterMetrics(rows, currencyCode, { useConverted });
@@ -101,4 +102,6 @@ export default function CurrencyDistributionCard({ i18n, currencyCode, rows, use
       {note && !empty ? <p className="m-dash-pie-note">{note}</p> : null}
     </section>
   );
-}
+});
+
+export default CurrencyDistributionCard;

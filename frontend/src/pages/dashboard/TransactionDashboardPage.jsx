@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useDashboardDateRange, useDashboardDateRangeState } from "./hooks/useDashboardDateRange.js";
 import { useDashboardLang } from "./hooks/useDashboardLang.js";
 import { useDashboardPage } from "./hooks/useDashboardPage.js";
@@ -28,16 +29,20 @@ export default function TransactionDashboardPage() {
 
   // While a new scope is loading, show 0.00 instead of the outgoing scope's real
   // numbers — keep `showEarnings` as-is so the card count doesn't flicker 3↔4.
-  const kpiForDisplay = page.scopeDataPending
-    ? {
-        profit: 0,
-        expenses: 0,
-        earnings: 0,
-        netProfit: 0,
-        showEarnings: page.kpi.showEarnings,
-        comparisons: null,
-      }
-    : page.kpi;
+  const kpiForDisplay = useMemo(
+    () =>
+      page.scopeDataPending
+        ? {
+            profit: 0,
+            expenses: 0,
+            earnings: 0,
+            netProfit: 0,
+            showEarnings: page.kpi.showEarnings,
+            comparisons: null,
+          }
+        : page.kpi,
+    [page.scopeDataPending, page.kpi]
+  );
 
   // Same readiness the KPI cards reveal on — pins the Currency card to always
   // appear after KPI/chart instead of racing them on however fast its own

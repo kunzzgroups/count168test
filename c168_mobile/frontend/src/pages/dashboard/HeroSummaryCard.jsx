@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { formatCurrencyHero, formatPercentMagnitude, formatSignedChange } from "../../lib/dashboardFormat.js";
 
-export default function HeroSummaryCard({
+const HeroSummaryCard = memo(function HeroSummaryCard({
   i18n,
   label,
   currency,
@@ -87,4 +88,6 @@ export default function HeroSummaryCard({
       ) : null}
     </section>
   );
-}
+});
+
+export default HeroSummaryCard;
