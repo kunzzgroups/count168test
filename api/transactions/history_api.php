@@ -362,7 +362,8 @@ function formatMarkupDescription(string $description, ?string $fromCurrencyCode 
         }
         $middlemanRate = trim($matches[1]);
     } else {
-        $middlemanRate = historyDisplayDecimal($middlemanRate, 6);
+        // 展示口径：MARKUP 差额只显示 2 位小数（半上取整），不影响 DB 存的精确小数。
+        $middlemanRate = money_round_half_up($middlemanRate, 2);
     }
 
     $formatted = 'MARKUP ' . $middlemanRate;
