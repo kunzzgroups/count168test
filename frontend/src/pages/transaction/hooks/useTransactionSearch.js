@@ -1390,12 +1390,29 @@ export function useTransactionSearch({
           };
         }
       } else {
-        // 2nd+ Submit inside Type Search session: keep first-submit date/currency focus.
+        // 2nd+ Submit inside Type Search session: keep first-submit date/currency focus,
+        // but widen the currency focus if this submit touches a currency not in it yet
+        // (e.g. a RATE transaction whose 2nd currency wasn't part of the session's first-submit focus).
         rangeKey = `${effectiveDateFrom}|${effectiveDateTo}`;
+        if (!showAllCurrencies && currencyCodes.length > 0) {
+          const currentSet = new Set(
+            (selectedCurrencies || []).map((c) => String(c || "").toUpperCase().trim()).filter(Boolean),
+          );
+          const missing = currencyCodes.filter((c) => !currentSet.has(c));
+          if (missing.length > 0) {
+            currencyOverrides = {
+              showAllCurrenciesOverride: false,
+              selectedCurrenciesOverride: [...currentSet, ...missing],
+            };
+          }
+        }
       }
 
       const clearLeftToSubmitFocus =
         applyTypeSearchFirstSubmitFocus || (!inTypeSearchSession && !!txDate);
+      const currencyStateToApply = clearLeftToSubmitFocus
+        ? currencyCodes
+        : currencyOverrides.selectedCurrenciesOverride ?? null;
 
       // Paint focused rows (+ optimistic balances when staying on the same capture range) before refresh.
       flushSync(() => {
@@ -1413,23 +1430,24 @@ export function useTransactionSearch({
             showCaptureOnly: false,
             showZeroBalance: false,
           };
-          if (currencyCodes.length > 0) {
-            bootCurrencyDefaultRef.current = false;
-            suppressCrossPageCurrencyRef.current = currencyCodes.length !== 1;
-            setShowAllCurrencies(false);
-            setSelectedCurrencies(currencyCodes);
-            persistCurrencyFilter(
-              scopeCacheCompanyKey,
-              false,
-              currencyCodes,
-              transactionScope?.selectedGroup,
-            );
-            notifySingleCurrencyIfNeeded(currencyCodes);
-          }
         } else if (didJumpCaptureDate) {
           setDateFrom(txDate);
           setDateTo(txDate);
           syncCaptureDateDom(txDate);
+        }
+
+        if (currencyStateToApply && currencyStateToApply.length > 0) {
+          bootCurrencyDefaultRef.current = false;
+          suppressCrossPageCurrencyRef.current = currencyStateToApply.length !== 1;
+          setShowAllCurrencies(false);
+          setSelectedCurrencies(currencyStateToApply);
+          persistCurrencyFilter(
+            scopeCacheCompanyKey,
+            false,
+            currencyStateToApply,
+            transactionScope?.selectedGroup,
+          );
+          notifySingleCurrencyIfNeeded(currencyStateToApply);
         }
 
         setTypeSearchActive(false);
