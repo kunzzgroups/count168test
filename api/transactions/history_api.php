@@ -2719,10 +2719,11 @@ try {
             }
 
             // MARKUP 显示的是 Rate-Mul 相对原汇率的差额，不是 Rate-Mul 原始输入值。
-            // - multiply 模式：exchange_rate 和 rate_middleman_rate 都是原样存的乘数，直接相减。
+            // - multiply 模式：exchange_rate 和 rate_middleman_rate 都是原样存的乘数，
+            //   用「原汇率 − Rate-Mul」，与 rateMulCommission 公式方向一致（输入越小，markup 越大）。
             // - divide 模式：exchange_rate 存的是原汇率的倒数（`/2` 存成 `0.5`），
             //   rate_middleman_rate 存的是 Rate-Mul 除数本身（`/1.9` 存成 `1.9`），
-            //   两者单位不同，需要先把 exchange_rate 还原成原除数（1/exchange_rate）再相减。
+            //   两者单位不同，需要先把 exchange_rate 还原成原除数（1/exchange_rate）再相减（此方向未变）。
             $markupRate = $row['rate_middleman_rate'] ?? null;
             $exchangeRateForMarkup = $row['exchange_rate'] ?? null;
             if ($markupRate !== null && $markupRate !== '' && $exchangeRateForMarkup !== null && $exchangeRateForMarkup !== '') {
@@ -2733,7 +2734,7 @@ try {
                         $markupRate = money_sub($markupRate, $originalDivisor, 8);
                     }
                 } else {
-                    $markupRate = money_sub($markupRate, $exchangeRateForMarkup, 8);
+                    $markupRate = money_sub($exchangeRateForMarkup, $markupRate, 8);
                 }
             }
 
