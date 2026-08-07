@@ -1295,12 +1295,20 @@ export function useTransactionSearch({
       if (!effectiveDateFrom || !effectiveDateTo) return;
 
       const txDate = String(transactionDate || "").trim();
-      const currencyCode = String(submitCurrency || "").toUpperCase().trim();
+      // RATE submits pass [fromCurrency, toCurrency]; other types pass a single string.
+      const currencyCodes = [
+        ...new Set(
+          (Array.isArray(submitCurrency) ? submitCurrency : [submitCurrency])
+            .map((c) => String(c || "").toUpperCase().trim())
+            .filter(Boolean),
+        ),
+      ];
+      const currencyCode = currencyCodes[0] || "";
 
       const inTypeSearchSession =
         typeSearchSessionActiveRef.current || typeSearchActiveRef.current;
       const applyTypeSearchFirstSubmitFocus =
-        inTypeSearchSession && !typeSearchFirstSubmitFocusDoneRef.current && !!txDate && !!currencyCode;
+        inTypeSearchSession && !typeSearchFirstSubmitFocusDoneRef.current && !!txDate && currencyCodes.length > 0;
 
       let searchDateFrom = effectiveDateFrom;
       let searchDateTo = effectiveDateTo;
@@ -1335,7 +1343,7 @@ export function useTransactionSearch({
         };
         currencyOverrides = {
           showAllCurrenciesOverride: false,
-          selectedCurrenciesOverride: [currencyCode],
+          selectedCurrenciesOverride: currencyCodes,
         };
       } else if (!inTypeSearchSession) {
         // Submit from normal list → enter Type Search session: snapshot left filters,
@@ -1375,10 +1383,10 @@ export function useTransactionSearch({
           ...INITIAL_TRANSACTION_SEARCH_STATE,
           showZeroBalance: true,
         };
-        if (currencyCode) {
+        if (currencyCodes.length > 0) {
           currencyOverrides = {
             showAllCurrenciesOverride: false,
-            selectedCurrenciesOverride: [currencyCode],
+            selectedCurrenciesOverride: currencyCodes,
           };
         }
       } else {
@@ -1405,18 +1413,18 @@ export function useTransactionSearch({
             showCaptureOnly: false,
             showZeroBalance: false,
           };
-          if (currencyCode) {
+          if (currencyCodes.length > 0) {
             bootCurrencyDefaultRef.current = false;
-            suppressCrossPageCurrencyRef.current = false;
+            suppressCrossPageCurrencyRef.current = currencyCodes.length !== 1;
             setShowAllCurrencies(false);
-            setSelectedCurrencies([currencyCode]);
+            setSelectedCurrencies(currencyCodes);
             persistCurrencyFilter(
               scopeCacheCompanyKey,
               false,
-              [currencyCode],
+              currencyCodes,
               transactionScope?.selectedGroup,
             );
-            notifySingleCurrencyIfNeeded([currencyCode]);
+            notifySingleCurrencyIfNeeded(currencyCodes);
           }
         } else if (didJumpCaptureDate) {
           setDateFrom(txDate);
@@ -1443,12 +1451,13 @@ export function useTransactionSearch({
           }
         }
 
-        if (currencyCode) {
+        if (currencyCodes.length > 0) {
           setSubmitFocusByCurrency((prev) => {
             const base = !didJumpCaptureDate && submitFocusRangeKey === rangeKey ? { ...prev } : {};
-            const existing =
-              !didJumpCaptureDate && Array.isArray(base[currencyCode]) ? base[currencyCode] : [];
-            base[currencyCode] = [...new Set([...existing, ...ids])];
+            for (const code of currencyCodes) {
+              const existing = !didJumpCaptureDate && Array.isArray(base[code]) ? base[code] : [];
+              base[code] = [...new Set([...existing, ...ids])];
+            }
             return base;
           });
         }

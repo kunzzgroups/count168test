@@ -493,7 +493,7 @@ export function useTransactionForm({
                       rateTransferFromAccountId: rateTransferFromAccount?.id,
                       rateMiddlemanAccountId: rateMiddlemanAccount?.id,
                     }),
-                    submitCurrency: rateCurrencyFrom,
+                    submitCurrency: [rateCurrencyFrom, rateCurrencyTo],
                     transactionDate: rateDate,
                   },
           });
