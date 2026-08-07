@@ -2698,25 +2698,27 @@ try {
         $description = $row['entry_description'] ?: 'RATE';
         $platformFeeRemark = null;
 
-        // RATE 后缀：第一段（RATE_FIRST_FROM / RATE_FIRST_TO）与第二段 TO 侧
-        // （收款方，RATE_TRANSFER_TO）恒显示原始汇率，不做任何换算。
-        // 仅第二段 FROM 侧（付款方，RATE_TRANSFER_FROM）换算显示：
-        // - divide 模式（Rate-Mul 输入 `/newDivisor`）：exchange_rate - middleman_rate（净汇率，逻辑不变）
-        // - multiply 模式：直接显示用户输入的 Rate-Mul 原始值（不再做减法）
+        // RATE 后缀：第一段（RATE_FIRST_FROM / RATE_FIRST_TO）恒显示原始汇率，不做任何换算。
+        // 第二段 FROM 侧（RATE_TRANSFER_FROM）：divide 模式换算显示净汇率（exchange_rate -
+        // middleman_rate，逻辑不变），multiply 模式恒显示原始汇率。
+        // 第二段 TO 侧（RATE_TRANSFER_TO）：divide 模式恒显示原始汇率（不变），multiply 模式
+        // 直接显示用户输入的 Rate-Mul 原始值（不做减法）。
         $displayRateForSuffix = null;
         if ($entryType === 'RATE_TRANSFER_FROM') {
             $exchangeRate = $row['exchange_rate'] ?? null;
             $middlemanRate = $row['rate_middleman_rate'] ?? null;
             $isDivideMode = (bool) preg_match('/\(\s*\/[^)]*\)/', (string) ($row['rate_middleman_entry_description'] ?? ''));
-            if ($isDivideMode) {
-                if ($exchangeRate !== null && $middlemanRate !== null) {
-                    $netRate = money_sub($exchangeRate, $middlemanRate, 8);
-                    if (money_cmp($netRate, '0') > 0) {
-                        // 保留最多 6 位小数，并去掉多余的 0
-                        $displayRateForSuffix = money_out($netRate, 6);
-                    }
+            if ($isDivideMode && $exchangeRate !== null && $middlemanRate !== null) {
+                $netRate = money_sub($exchangeRate, $middlemanRate, 8);
+                if (money_cmp($netRate, '0') > 0) {
+                    // 保留最多 6 位小数，并去掉多余的 0
+                    $displayRateForSuffix = money_out($netRate, 6);
                 }
-            } elseif ($middlemanRate !== null && $middlemanRate !== '') {
+            }
+        } elseif ($entryType === 'RATE_TRANSFER_TO') {
+            $middlemanRate = $row['rate_middleman_rate'] ?? null;
+            $isDivideMode = (bool) preg_match('/\(\s*\/[^)]*\)/', (string) ($row['rate_middleman_entry_description'] ?? ''));
+            if (!$isDivideMode && $middlemanRate !== null && $middlemanRate !== '') {
                 $displayRateForSuffix = money_out($middlemanRate, 6);
             }
         }
@@ -2949,39 +2951,35 @@ try {
                 } else {
                     // 汇率兑换本身：Currency Exchange (FROM amount > TO)；Rate 按分录类型区分（Member）
                     // - RATE_FIRST_FROM / RATE_FIRST_TO：不展示 Rate
-                    // - RATE_TRANSFER_TO（第二币种 Select From，收款方）：恒原始 exchange_rate
-                    // - RATE_TRANSFER_FROM（第二币种 Select To，付款方）：
-                    //   divide 模式 exchange_rate - middleman_rate（净汇率，逻辑不变，无效则回退原始）；
-                    //   multiply 模式直接显示用户输入的 Rate-Mul 原始值，不做减法
+                    // - RATE_TRANSFER_FROM：divide 模式换算净汇率（逻辑不变，无效则回退原始），multiply 模式恒原始
+                    // - RATE_TRANSFER_TO：divide 模式恒原始（不变），multiply 模式直接显示 Rate-Mul 原始值
                     $fromCode = $event['from_currency_code'] ?? null;
                     $toCode = $event['to_currency_code'] ?? null;
                     $fromAmount = $event['rate_from_amount'] ?? null;
                     $exchangeRate = $event['exchange_rate'] ?? null;
                     $middlemanRate = $event['rate_middleman_rate'] ?? null;
+                    $isDivideMode = (bool) preg_match('/\(\s*\/[^)]*\)/', (string) ($event['rate_middleman_entry_description'] ?? ''));
 
                     $rateForSuffix = null;
                     if (!in_array($entryType, ['RATE_FIRST_FROM', 'RATE_FIRST_TO'], true)) {
-                        if ($entryType === 'RATE_TRANSFER_FROM') {
-                            $isDivideMode = (bool) preg_match('/\(\s*\/[^)]*\)/', (string) ($event['rate_middleman_entry_description'] ?? ''));
-                            if ($isDivideMode) {
-                                $displayNet = null;
-                                if ($exchangeRate !== null && $exchangeRate !== ''
-                                    && $middlemanRate !== null && (string) $middlemanRate !== '') {
-                                    $netRate = money_sub($exchangeRate, $middlemanRate, 8);
-                                    if (money_cmp($netRate, '0') > 0) {
-                                        $displayNet = money_out($netRate, 6);
-                                    }
+                        if ($entryType === 'RATE_TRANSFER_FROM' && $isDivideMode) {
+                            $displayNet = null;
+                            if ($exchangeRate !== null && $exchangeRate !== ''
+                                && $middlemanRate !== null && (string) $middlemanRate !== '') {
+                                $netRate = money_sub($exchangeRate, $middlemanRate, 8);
+                                if (money_cmp($netRate, '0') > 0) {
+                                    $displayNet = money_out($netRate, 6);
                                 }
-                                $rateForSuffix = ($displayNet !== null && $displayNet !== '')
-                                    ? $displayNet
-                                    : (($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null);
-                            } else {
-                                $rateForSuffix = ($middlemanRate !== null && $middlemanRate !== '')
-                                    ? money_out($middlemanRate, 6)
-                                    : (($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null);
                             }
+                            $rateForSuffix = ($displayNet !== null && $displayNet !== '')
+                                ? $displayNet
+                                : (($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null);
+                        } elseif ($entryType === 'RATE_TRANSFER_TO' && !$isDivideMode) {
+                            $rateForSuffix = ($middlemanRate !== null && $middlemanRate !== '')
+                                ? money_out($middlemanRate, 6)
+                                : (($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null);
                         } else {
-                            // RATE_TRANSFER_TO、RATE_FEE 等：与原先一致，使用原始汇率
+                            // 其余情况（RATE_TRANSFER_FROM 乘法模式、RATE_TRANSFER_TO 除法模式、RATE_FEE 等）：使用原始汇率
                             $rateForSuffix = ($exchangeRate !== null && $exchangeRate !== '') ? $exchangeRate : null;
                         }
                     }
