@@ -698,7 +698,7 @@ const COMPANY_SESSION_DEFER_MS = 2000;
 /** Defer group-all currency refresh while dashboard merge is in flight. */
 const CURRENCY_REFRESH_DEFER_MS = 600;
 /** Parallel company dashboard fetches when merging Group/Company "All". */
-const MERGE_DASHBOARD_PARALLEL_BATCH = 4;
+const MERGE_DASHBOARD_PARALLEL_BATCH = 8;
 /** Idle delay before one-time session warm of picker companies (current currency only). */
 const SESSION_DASHBOARD_WARM_DELAY_MS = 600;
 /** Cross-group / independent company warm after active scope settles. */
@@ -5626,16 +5626,38 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         const primaryRow = await resolveCodeEarnings(primaryCode);
         if (primaryRow) rows.push(primaryRow);
 
-        if (otherCodes.length) {
-          const settled = await runTasksInBatches(
-            otherCodes,
-            groupAllMode
-              ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL
-              : EARNINGS_KPI_PARALLEL_BATCH,
-            (code) => resolveCodeEarnings(code)
+        // Paint helper: keep the row set at the full currency list length at all
+        // times — settled currencies carry their real figures, not-yet-settled ones
+        // hold `{code, null, null}` placeholders. Replacing with only the settled
+        // subset made the pie/list row count jump as batches landed.
+        const paintProgressive = () => {
+          const settledByCode = new Map(
+            rows.map((row) => [String(row?.code || "").trim().toUpperCase(), row])
           );
-          for (const row of settled) {
-            if (row) rows.push(row);
+          const progressive = list.map((code) => {
+            const hit = settledByCode.get(String(code).trim().toUpperCase());
+            return hit || { code, netProfit: null, earnings: null };
+          });
+          setEarningsByCurrency(progressive);
+        };
+
+        if (otherCodes.length) {
+          const batchSize = groupAllMode
+            ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL
+            : EARNINGS_KPI_PARALLEL_BATCH;
+          // Progressive pie: paint each settled batch as it lands instead of waiting
+          // for every currency's company pack — under Group/Company All each currency
+          // costs a full company fan-out, so holding the whole pie hostage to the
+          // slowest one made the Currency card the last thing to appear.
+          for (let i = 0; i < otherCodes.length; i += batchSize) {
+            if (gen !== earningsFetchGenRef.current) return [];
+            const batch = otherCodes.slice(i, i + batchSize);
+            const settled = await Promise.all(batch.map((code) => resolveCodeEarnings(code)));
+            if (gen !== earningsFetchGenRef.current) return [];
+            for (const row of settled) {
+              if (row) rows.push(row);
+            }
+            paintProgressive();
           }
         }
 
@@ -6511,7 +6533,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         setEarningsByCurrency(
           buildSeededEarningsRows(codes, primary, primaryNetProfit, primaryEarnings)
         );
-        setEarningsByCurrencyLoading(true);
+        // Reveal the Currency card immediately with the primary currency's real figures
+        // (secondary rows paint "—"), then update as the company×currency packs land —
+        // the old behaviour held the card at loading until EVERY currency resolved,
+        // which made the pie feel like the slowest part of Group/Company All.
+        setEarningsByCurrencyLoading(false);
       } else {
         // Keep partial Currency card visible while gap-fill runs (date-filter path).
         setEarningsByCurrencyLoading(false);

@@ -23,7 +23,7 @@ import { EarningsPieSectorTooltip } from "./EarningsPieSectorTooltip.jsx";
  * Doubles as slack for the earnings-by-currency fetch itself: a longer gap means more
  * scopes land already-fully-loaded by the time this timer opens the gate.
  */
-const CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS = 900;
+const CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS = 450;
 
 /** Debounce layout sync so resize/ResizeObserver bursts re-render the pie shell at most
  *  once per frame — previously every resize event setState'd and re-rendered the card.
