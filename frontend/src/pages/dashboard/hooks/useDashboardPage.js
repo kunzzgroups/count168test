@@ -5589,10 +5589,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
    * Returns rows in the same shape as fetchSingleCurrencyEarnings's result.
    */
   const fetchMultiCurrencyEarningsRows = useCallback(
-    async (codes, gen) => {
+    async (codes, gen, genRef = null) => {
       const list = Array.isArray(codes) ? codes : [];
       if (list.length <= 1) return null;
-      if (gen !== earningsFetchGenRef.current) return null;
+      const activeGen = genRef?.current ?? earningsFetchGenRef.current;
+      if (gen !== activeGen) return null;
       try {
         const payload = await loadMergedDashboard(
           dateFromRef.current,
@@ -5600,7 +5601,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           null,
           { earningsOnly: true, useActiveScopeAbort: false, currencies: list }
         );
-        if (gen !== earningsFetchGenRef.current) return null;
+        if (gen !== (genRef?.current ?? earningsFetchGenRef.current)) return null;
         // loadMergedDashboard returns a merged payload; multi-currency mode stashes
         // the aggregated per-currency map on the payload root (`merged.currencies`).
         const map = payload?.currencies ?? payload?.data?.currencies;
@@ -5902,6 +5903,21 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       const guardKey = scopeKeyForGuard || dashboardFetchInFlightScopeRef.current || "parallel";
       earningsParallelInFlightRef.current = guardKey;
 
+      // Group/Company All: ONE multi-currency request covers every currency for
+      // the whole company fan-out (server aggregates in-process) — replaces the
+      // per-currency round-trip storm that made cold-start pie slow.
+      if (groupAllMode && list.length > 1) {
+        const multi = fetchMultiCurrencyEarningsRows(list, dashboardGen, dashboardFetchGenRef).finally(() => {
+          if (earningsParallelInFlightRef.current === guardKey) {
+            earningsParallelInFlightRef.current = "";
+          }
+        });
+        return multi.then((rows) => {
+          if (!Array.isArray(rows) || !rows.length) return others.map((c) => ({ code: c, netProfit: null, earnings: null }));
+          return rows;
+        });
+      }
+
       return runTasksInBatches(
         others,
         groupAllMode ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL : EARNINGS_KPI_PARALLEL_BATCH,
@@ -5933,7 +5949,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         }
       });
     },
-    [groupAllMode, buildCurrencyRowFromPayload, loadMergedDashboard]
+    [groupAllMode, buildCurrencyRowFromPayload, loadMergedDashboard, fetchMultiCurrencyEarningsRows]
   );
 
   const loadEarningsParallelForAtomicPaint = useCallback(
