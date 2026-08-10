@@ -519,6 +519,46 @@ function writeDashboardGroupCurrencyCaches(groupRef, { groupKey, groupsAllMode, 
 
 const DASHBOARD_GROUPS_ALL_CURRENCIES_KEY = "dashboard_groups_all_currency_codes";
 const DASHBOARD_GROUP_ALL_CURRENCIES_PREFIX = "dashboard_group_all_currency_codes:";
+const DASHBOARD_COMPANY_CURRENCIES_PREFIX = "dashboard_company_currency_codes:";
+
+function companyCurrencyStorageKey(companyId, groupKey) {
+  const cid = parseInt(companyId, 10);
+  if (!Number.isFinite(cid) || cid <= 0) return null;
+  const g = groupKey ? String(groupKey).trim().toUpperCase() : "";
+  return g
+    ? `${DASHBOARD_COMPANY_CURRENCIES_PREFIX}${g}:${cid}`
+    : `${DASHBOARD_COMPANY_CURRENCIES_PREFIX}${cid}`;
+}
+
+function readPersistedCompanyCurrencyCodes(companyId, groupKey) {
+  if (typeof sessionStorage === "undefined") return null;
+  const key = companyCurrencyStorageKey(companyId, groupKey);
+  if (!key) return null;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    const list = parsed.map((c) => String(c).toUpperCase()).filter(Boolean);
+    return list.length ? list : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistCompanyCurrencyCodes(companyId, groupKey, codes) {
+  if (typeof sessionStorage === "undefined" || !Array.isArray(codes) || !codes.length) return;
+  const key = companyCurrencyStorageKey(companyId, groupKey);
+  if (!key) return;
+  try {
+    sessionStorage.setItem(
+      key,
+      JSON.stringify([...new Set(codes.map((c) => String(c).toUpperCase()).filter(Boolean))])
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
 
 function readPersistedGroupsAllCurrencyCodes() {
   if (typeof sessionStorage === "undefined") return null;
@@ -2349,7 +2389,12 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
       let cached = null;
       if (Number.isFinite(singleCid) && singleCid > 0) {
-        cached = currenciesByCompanyRef.current.get(singleCid) ?? null;
+        cached =
+          currenciesByCompanyRef.current.get(singleCid) ??
+          readPersistedCompanyCurrencyCodes(singleCid, groupKey);
+        if (cached?.length && !currenciesByCompanyRef.current.get(singleCid)?.length) {
+          currenciesByCompanyRef.current.set(singleCid, cached);
+        }
       }
       const gaMode = scope.groupAllMode ?? groupAllMode;
       const pickRow =
@@ -2591,6 +2636,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         currenciesByCompanyRef.current.set(singleCid, list);
         if (list.length) {
           persistDashboardCurrencyDisplayOrder(currencyDisplayOrderByCompanyRef, singleCid, list);
+          persistCompanyCurrencyCodes(singleCid, groupKey, list);
         }
       } else {
         writeDashboardGroupCurrencyCaches(currenciesByGroupRef.current, {
@@ -3158,7 +3204,15 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
   useLayoutEffect(() => {
     if (!sessionReady || !meRef.current || !gcBootstrapReady || !companies.length) return;
-    scheduleLoadCurrenciesRef.current();
+    const primed = primeCurrenciesFromCache({
+      companyId,
+      selectedGroup,
+      groupsAllMode,
+      groupAllMode,
+      clearOnMiss: false,
+    });
+    // First paint with no cached pills: skip coalesce so Currency row lands with Group/Company.
+    scheduleLoadCurrenciesRef.current(!primed && currenciesRef.current.length < 1);
   }, [
     buildScopeCurrencyKey,
     groupIds.length,
@@ -3168,8 +3222,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     groupsAllMode,
     groupAllMode,
     companyId,
+    selectedGroup,
     me?.user_id,
     me?.id,
+    primeCurrenciesFromCache,
   ]);
 
   useEffect(() => {

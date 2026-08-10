@@ -76,7 +76,7 @@ export default function TransactionDashboardPage() {
             companiesForPicker={page.companiesForPicker}
             companyId={page.companyId}
             mergedSubsetIds={page.mergedSubsetIds}
-            currencies={page.currencies}
+            currencies={page.displayCurrencies ?? page.currencies}
             currencyCode={page.currencyCode}
             onPickGroup={page.handlePickGroup}
             onPickAllGroups={page.handlePickAllGroups}
