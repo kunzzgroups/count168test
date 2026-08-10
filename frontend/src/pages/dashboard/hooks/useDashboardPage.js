@@ -133,6 +133,8 @@ import {
   persistDashboardGroupAllMode,
   readDashboardSelectedCompanyId,
   persistDashboardSelectedCompany,
+  persistDashboardKnownCompanyIds,
+  findCompanyAddedSinceLastBoot,
   notifyDashboardGcBootstrapReady,
   DASHBOARD_GROUP_FILTER_OPT_OUT_KEY,
   DASHBOARD_GROUP_FILTER_EVENT,
@@ -1492,6 +1494,22 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           : scopedCompanies
       );
       applyLoginScopeToSessionStorageIfNeeded(u, scopedCompanies);
+
+      // Sticky Group/Company memory (below) keeps repeat visits fast, but it also means a
+      // company created after the last boot in this tab (e.g. a brand-new standalone
+      // company with no group) never gets picked — the cached selection always still
+      // resolves fine. Detect that case once and pre-seed the persisted selection with the
+      // new company, same as if the user had just clicked it; a genuinely fresh tab (no
+      // prior snapshot) or an unchanged company list is a no-op, so daily AP/C168-style use
+      // is unaffected.
+      if (!isDashboardGroupOnlyMode() && !isDashboardGroupsAllMode()) {
+        const addedCompany = findCompanyAddedSinceLastBoot(scopedCompanies);
+        if (addedCompany) {
+          persistDashboardSelectedCompany(addedCompany.id);
+          persistDashboardGroupFilter(addedCompany.group_id || null);
+        }
+      }
+      persistDashboardKnownCompanyIds(scopedCompanies);
 
       const bootSessionKey = [
         u?.user_id ?? u?.id ?? "",

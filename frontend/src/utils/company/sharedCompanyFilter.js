@@ -56,6 +56,8 @@ export const DASHBOARD_GROUPS_ALL_MODE_KEY = "dashboard_groups_all_mode";
 export const DASHBOARD_GROUPS_ALL_SIDEBAR_GROUP_KEY = "dashboard_groups_all_sidebar_group";
 /** Last explicitly selected company id (SPA navigation; overrides stale PHP session when set). */
 export const DASHBOARD_SELECTED_COMPANY_KEY = "dashboard_selected_company_id";
+/** Company ids seen at the last boot in this tab — detects newly created companies so sticky Group/Company memory doesn't hide them. */
+export const DASHBOARD_KNOWN_COMPANY_IDS_KEY = "dashboard_known_company_ids";
 /** Cross-page currency pill / dropdown selection (scoped by company or group). */
 export const DASHBOARD_SELECTED_CURRENCY_KEY = "dashboard_selected_currency_code";
 export const DASHBOARD_SELECTED_CURRENCY_SCOPE_KEY = "dashboard_selected_currency_scope";
@@ -80,6 +82,7 @@ const DASHBOARD_TAB_BOOTSTRAP_KEYS = [
   DASHBOARD_GROUPS_ALL_MODE_KEY,
   DASHBOARD_GROUPS_ALL_SIDEBAR_GROUP_KEY,
   DASHBOARD_SELECTED_COMPANY_KEY,
+  DASHBOARD_KNOWN_COMPANY_IDS_KEY,
   DASHBOARD_SELECTED_CURRENCY_KEY,
   DASHBOARD_SELECTED_CURRENCY_SCOPE_KEY,
   DASHBOARD_SELECTED_CURRENCY_BY_SCOPE_KEY,
@@ -96,6 +99,7 @@ export function clearDashboardFilterSession() {
   sessionStorage.removeItem(DASHBOARD_GROUPS_ALL_MODE_KEY);
   sessionStorage.removeItem(DASHBOARD_GROUPS_ALL_SIDEBAR_GROUP_KEY);
   sessionStorage.removeItem(DASHBOARD_SELECTED_COMPANY_KEY);
+  sessionStorage.removeItem(DASHBOARD_KNOWN_COMPANY_IDS_KEY);
   sessionStorage.removeItem(DASHBOARD_SELECTED_CURRENCY_KEY);
   sessionStorage.removeItem(DASHBOARD_SELECTED_CURRENCY_SCOPE_KEY);
   sessionStorage.removeItem(DASHBOARD_SELECTED_CURRENCY_BY_SCOPE_KEY);
@@ -508,6 +512,40 @@ export function readDashboardSelectedCompanyId() {
   if (saved == null || saved === "") return null;
   const id = Number(saved);
   return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+/** Snapshot the current company id set so the next boot in this tab can detect newly added companies. */
+export function persistDashboardKnownCompanyIds(companies) {
+  const ids = [];
+  for (const c of companies || []) {
+    const id = Number(c?.id);
+    if (Number.isFinite(id) && id > 0) ids.push(id);
+  }
+  sessionStorage.setItem(DASHBOARD_KNOWN_COMPANY_IDS_KEY, ids.sort((a, b) => a - b).join(","));
+}
+
+/**
+ * A company in the fresh list absent from the last-known snapshot (e.g. just created) —
+ * used so the sticky Group/Company memory doesn't silently keep hiding it. Returns the
+ * newest such row (highest id), or null when nothing is new or no prior snapshot exists
+ * yet (first boot in this tab: no stale memory to correct, let the normal default apply).
+ */
+export function findCompanyAddedSinceLastBoot(companies) {
+  const raw = sessionStorage.getItem(DASHBOARD_KNOWN_COMPANY_IDS_KEY);
+  if (raw == null) return null;
+  const known = new Set(
+    raw
+      .split(",")
+      .map((s) => Number(s))
+      .filter((n) => Number.isFinite(n) && n > 0)
+  );
+  let newest = null;
+  for (const c of companies || []) {
+    const id = Number(c?.id);
+    if (!Number.isFinite(id) || id <= 0 || known.has(id)) continue;
+    if (!newest || id > Number(newest.id)) newest = c;
+  }
+  return newest;
 }
 
 /** Cross-page Group / Company filter snapshot from sessionStorage. */
