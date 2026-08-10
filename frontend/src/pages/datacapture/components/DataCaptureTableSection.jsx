@@ -159,6 +159,7 @@ export default function DataCaptureTableSection({
                 >
                   {t("reset")}
                 </button>
+                {/* 删除按钮暂时隐藏，需要重新评估其必要性 
                 <button
                   type="button"
                   className="btn btn-cancel dc-table-header-delete-btn"
@@ -168,6 +169,7 @@ export default function DataCaptureTableSection({
                 >
                   {deleteBtnLabel}
                 </button>
+                */}
               </>
             ) : null}
           </div>
