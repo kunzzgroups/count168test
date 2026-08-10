@@ -19,11 +19,13 @@ export function pastedPlainTextLooksCitibetReport(pastedData) {
 /** Strict auto-detect — avoids misclassifying generic Excel pastes as CITIBET. */
 export function autoDetectCaptureTypeFromPaste(pastedData) {
   if (!pastedData || typeof pastedData !== "string") return null;
+  // Major parser first (strictest gate: needs Downline+Overall+MyEarnings).
   if (parseCitibetMajorPaymentReport(pastedData)) return "CITIBET";
-  if (pastedPlainTextLooksCitibetReport(pastedData)) {
-    if (parseCitibetPaymentReport(pastedData)) return "CITIBET";
-    if (parseCitibetFormatBasedPaste(pastedData)) return "CITIBET";
-  }
+  // Payment parser runs unconditionally — matches CITIBET mode behavior.
+  // Its own gate (Overall + My Earnings) is strict enough to avoid false positives.
+  if (parseCitibetPaymentReport(pastedData)) return "CITIBET";
+  // FormatBased is the last resort and needs the keyword guard.
+  if (pastedPlainTextLooksCitibetReport(pastedData) && parseCitibetFormatBasedPaste(pastedData)) return "CITIBET";
   return null;
 }
 
