@@ -380,6 +380,14 @@ export function useDataCaptureSubmitReset({
       await callDataCaptureRuntime("restoreCaptureTable", tableData, savedType);
       await callDataCaptureRuntime("syncRestoreForm", processData);
 
+      // The syncRestoreForm call above queues setSelectedProcess/setCurrencyId
+      // updates; React flushes those (and the draft-clear effects in
+      // useDataCaptureFormEngine that key off them) asynchronously. Give that a
+      // beat to settle *before* we clear isRestoring/strip "restore=1" — those
+      // are the guards that keep those effects from wiping the grid we just
+      // restored above.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       stripRestoreParamFromUrl();
       getDataCaptureState().restoreCompleted = true;
     } catch (err) {
