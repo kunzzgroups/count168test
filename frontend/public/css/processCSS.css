@@ -2679,9 +2679,8 @@ body.ec-auth-shell.process-page.process-page--bank .bank-process-toolbar-primary
     width: clamp(150px, 17vw, 240px);
 }
 
-/* Bank 搜索：供应商/卡号大小写敏感，不强制大写 */
 body.process-page.process-page--bank .search-container.userlist-search-bar .userlist-search-input {
-    text-transform: none !important;
+    text-transform: uppercase !important;
 }
 
 /* Bank 旧式 search-input（无 userlist 外壳时） */

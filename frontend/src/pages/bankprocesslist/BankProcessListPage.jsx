@@ -480,7 +480,6 @@ export default function BankProcessListPage() {
                           className="search-input userlist-search-input"
                           placeholder={t("search")}
                           value={search}
-                          style={{ textTransform: "uppercase" }}
                           aria-expanded={isNarrowToolbar ? searchExpanded || Boolean(search.trim()) : undefined}
                           onChange={(e) => setSearch(e.target.value)}
                           onBlur={() => {
