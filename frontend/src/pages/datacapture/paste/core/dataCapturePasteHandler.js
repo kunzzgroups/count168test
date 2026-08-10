@@ -163,14 +163,12 @@ export function handleCellPasteEvent(e) {
   }
 
   if (captureType === "1.Text") {
-    // Fail-closed Citibet layout bypass: only when clipboard strictly detects as a
-    // Citibet report. Dropdown stays on 1.Text — reuse CITIBET parse/fill only.
-    // Miss → existing 1.Text path unchanged (vertical dump / HTML / plain).
-    if (autoDetectCaptureTypeFromPaste(pastedData) === "CITIBET") {
-      const citibetParsed = parseCitibetPasteData(pastedData, "CITIBET");
-      if (citibetParsed && handleCitibetPaste(e, pastedData, cell, "CITIBET", citibetParsed)) {
-        return;
-      }
+    // Direct CITIBET parse attempt — same as explicit CITIBET mode.
+    // parseCitibetPasteData gates strictly (tabs, Overall, My Earnings); safe to
+    // try unconditionally before the generic Text path.
+    const citibetParsed = parseCitibetPasteData(pastedData, "CITIBET");
+    if (citibetParsed && handleCitibetPaste(e, pastedData, cell, "CITIBET", citibetParsed)) {
+      return;
     }
     if (handleTextModePaste(e, pastedData, cell)) return;
     invokeGenericPasteFallback(e, pastedData);
