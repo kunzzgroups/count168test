@@ -2435,8 +2435,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
       if (isSubsidiaryCurrencyScope) {
         if (!cached?.length) {
-          setCurrencies([]);
-          setCurrencyCode("");
+          // Do not clear pill paint on miss — empty intermediate list was read as
+          // company/currency filter flicker while loadCurrencies is still in flight.
           return false;
         }
       } else {
@@ -2510,10 +2510,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         }
       }
       if (!cached?.length) {
-        if (clearOnMiss) {
-          setCurrencies([]);
-          setCurrencyCode("");
-        }
+        // Keep previous filter currency pills until network load settles (clearOnMiss
+        // used to wipe → 11→0→4→10 height churn next to company pills).
         return false;
       }
 

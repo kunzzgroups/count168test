@@ -16,6 +16,8 @@ export const DashboardFilterPanel = memo(function DashboardFilterPanel({
   mergedSubsetIds,
   currencies,
   currencyCode,
+  /** When false, hide Group/Company/Currency until one atomic ready package is available. */
+  gcPanelReady = true,
   onPickGroup,
   onPickAllGroups,
   onPickCompany,
@@ -24,11 +26,10 @@ export const DashboardFilterPanel = memo(function DashboardFilterPanel({
   onCurrencyDropOn,
 }) {
   const showCompanyAll = companiesForPicker.length > 1;
-  // Only paint Company when pills exist — `groupIds > 0` alone left an empty
-  // "Company:" row (label, no buttons) that reads as company-pill flicker.
   const showCompanyRow = companiesForPicker.length > 0;
   const showPanel =
-    groupIds.length > 0 || companiesForPicker.length > 0 || currencies.length > 0;
+    gcPanelReady &&
+    (groupIds.length > 0 || companiesForPicker.length > 0 || currencies.length > 0);
   const paintedGroupAll =
     displayGroupAllMode !== undefined ? displayGroupAllMode : groupAllMode;
   const paintedSelectedGroup =

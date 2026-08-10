@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDashboardDateRange, useDashboardDateRangeState } from "./hooks/useDashboardDateRange.js";
 import { useDashboardLang } from "./hooks/useDashboardLang.js";
 import { useDashboardPage } from "./hooks/useDashboardPage.js";
@@ -26,6 +26,51 @@ export default function TransactionDashboardPage() {
     setDateFrom,
     setDateTo,
   });
+
+  // Sticky non-empty picker / currencies so filter height does not thrash mid-switch.
+  const stickyPickerRef = useRef([]);
+  const stickyCurrenciesRef = useRef([]);
+  const stickyCurrencyCodeRef = useRef("");
+  if (page.companiesForPicker?.length) {
+    stickyPickerRef.current = page.companiesForPicker;
+  }
+  if (page.currencies?.length) {
+    stickyCurrenciesRef.current = page.currencies;
+  }
+  if (page.currencyCode) {
+    stickyCurrencyCodeRef.current = page.currencyCode;
+  }
+  const filterCompaniesForPicker =
+    page.companiesForPicker?.length > 0
+      ? page.companiesForPicker
+      : stickyPickerRef.current;
+  const filterCurrencies =
+    page.currencies?.length > 0 ? page.currencies : stickyCurrenciesRef.current;
+  const filterCurrencyCode =
+    page.currencyCode || stickyCurrencyCodeRef.current;
+
+  // First paint: hold Group+Company+Currency until company+currency both exists so the
+  // GC block does not insert company row ~200ms after first paint (user: company flicker).
+  const [gcPanelReady, setGcPanelReady] = useState(false);
+  useLayoutEffect(() => {
+    if (gcPanelReady) return;
+    const pickerOk = (page.companiesForPicker?.length || 0) > 0;
+    const currencyOk =
+      (page.currencies?.length || 0) > 0 || stickyCurrenciesRef.current.length > 0;
+    // Independent/no-company scopes: group-less + currencies/or empty picker eventually.
+    const noCompanyScope =
+      (page.groupIds?.length || 0) === 0 &&
+      (page.companiesForPicker?.length || 0) === 0 &&
+      (page.currencies?.length || 0) > 0;
+    if ((pickerOk && currencyOk) || noCompanyScope) {
+      setGcPanelReady(true);
+    }
+  }, [
+    gcPanelReady,
+    page.companiesForPicker,
+    page.currencies,
+    page.groupIds,
+  ]);
 
   // While a new scope is loading, show 0.00 instead of the outgoing scope's real
   // numbers — keep `showEarnings` as-is so the card count doesn't flicker 3↔4.
@@ -73,13 +118,12 @@ export default function TransactionDashboardPage() {
             selectedGroup={page.selectedGroup}
             groupsAllMode={page.groupsAllMode}
             groupAllMode={page.groupAllMode}
-            companiesForPicker={page.companiesForPicker}
+            companiesForPicker={filterCompaniesForPicker}
             companyId={page.companyId}
             mergedSubsetIds={page.mergedSubsetIds}
-            /* Live only — do not freeze currency on displayCurrencies while company
-               selection is live (mixed freeze caused 10→11→10 pill reflow / flicker). */
-            currencies={page.currencies}
-            currencyCode={page.currencyCode}
+            currencies={filterCurrencies}
+            currencyCode={filterCurrencyCode}
+            gcPanelReady={gcPanelReady}
             onPickGroup={page.handlePickGroup}
             onPickAllGroups={page.handlePickAllGroups}
             onPickCompany={page.handlePickCompany}
