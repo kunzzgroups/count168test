@@ -100,6 +100,51 @@ export function readUserCurrencyDisplayOrder() {
   }
 }
 
+export const PAYMENT_MAINTENANCE_CURRENCY_ORDER_LS_PREFIX =
+  "eazycount:payment_maintenance_currency_order:";
+
+/** Payment Maintenance's own drag order (per company/group) — never written to Dashboard's keys. */
+export function persistPaymentMaintenanceCurrencyOrder(orderKey, order) {
+  const key = currencyOrderStorageSuffix(orderKey);
+  if (!key || !Array.isArray(order) || !order.length) return;
+  try {
+    localStorage.setItem(
+      `${PAYMENT_MAINTENANCE_CURRENCY_ORDER_LS_PREFIX}${key}`,
+      JSON.stringify(order.map((c) => String(c).trim().toUpperCase()).filter(Boolean)),
+    );
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+export function readPaymentMaintenanceCurrencyOrder(orderKey) {
+  const key = currencyOrderStorageSuffix(orderKey);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(`${PAYMENT_MAINTENANCE_CURRENCY_ORDER_LS_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.map((c) => String(c).trim().toUpperCase()).filter(Boolean)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Payment Maintenance pill order: page-local drag override (per company/group) wins when present;
+ * otherwise falls back to the shared Dashboard order (global user order, then per-company/group),
+ * so the two stay in sync until the user drags inside Payment Maintenance for this scope.
+ */
+export function resolvePaymentMaintenanceCurrencyOrder(orderKey) {
+  const local = readPaymentMaintenanceCurrencyOrder(orderKey);
+  if (local?.length) return local;
+  const userGlobal = readUserCurrencyDisplayOrder();
+  if (userGlobal?.length) return userGlobal;
+  return readCurrencyDisplayOrder(orderKey);
+}
+
 /**
  * Dashboard currency pills: user drag order (session + localStorage) wins over per-company API.
  * @param {number|null} orderCompanyId

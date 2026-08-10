@@ -1,6 +1,10 @@
 import { buildApiUrl } from "../../../utils/core/apiUrl.js";
 import { fetchReportScopeCurrencies } from "../../report/shared/reportCompanyApi.js";
 import { paymentMaintenanceScopeApiParams } from "./paymentMaintenanceScope.js";
+import {
+  mergeCurrencyCodesWithSavedOrder,
+  resolvePaymentMaintenanceCurrencyOrder,
+} from "../../../utils/company/currencyDisplayOrder.js";
 
 function appendPaymentScopeToParams(params, scope) {
   const {
@@ -37,6 +41,33 @@ export function pickPaymentMaintenanceCurrency(currList, scope) {
 export async function fetchCompanyCurrencies(_companyId, scope = null) {
   if (!scope) return [];
   return fetchReportScopeCurrencies(scope);
+}
+
+/** Storage key for currency order: numeric company id, or `g:GROUPCODE` for pure Group ledger. */
+export function resolvePaymentMaintenanceCurrencyOrderKey(scope) {
+  const { companyId, groupId } = paymentMaintenanceScopeApiParams(scope);
+  const cid = companyId != null ? Number(companyId) : NaN;
+  if (Number.isFinite(cid) && cid > 0) return cid;
+  const gid = groupId ? String(groupId).trim().toUpperCase() : "";
+  return gid ? `g:${gid}` : null;
+}
+
+/**
+ * Reorder currency rows for pill display only (selection logic keeps using the raw API list).
+ * Local Payment Maintenance drag order wins; otherwise follows the shared Dashboard order.
+ */
+export function orderPaymentMaintenanceCurrencies(currList, scope) {
+  if (!Array.isArray(currList) || currList.length === 0) return currList || [];
+  const orderKey = resolvePaymentMaintenanceCurrencyOrderKey(scope);
+  if (orderKey == null) return currList;
+  const savedOrder = resolvePaymentMaintenanceCurrencyOrder(orderKey);
+  if (!savedOrder?.length) return currList;
+  const byCode = new Map(currList.map((row) => [String(row?.code || "").toUpperCase(), row]));
+  const orderedCodes = mergeCurrencyCodesWithSavedOrder(
+    currList.map((row) => row?.code),
+    savedOrder,
+  );
+  return orderedCodes.map((code) => byCode.get(code)).filter(Boolean);
 }
 
 /**
