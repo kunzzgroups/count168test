@@ -15,6 +15,16 @@ import { DASHBOARD_EARNINGS_PIE_MIN_ANGLE } from "../lib/dashboardConstants.js";
 import { formatCurrency, formatI18nTemplate } from "../lib/dashboardFormat.js";
 import { EarningsPieSectorTooltip } from "./EarningsPieSectorTooltip.jsx";
 
+/**
+ * Minimum visible beat between KPI/chart appearing and the Currency card following —
+ * without this, a scope with few currencies can resolve its own data so fast (now that
+ * the fetch starts almost alongside KPI/chart instead of after) that it would reveal in
+ * the same tick as KPI/chart, which reads as "popped in together" rather than in order.
+ * Doubles as slack for the earnings-by-currency fetch itself: a longer gap means more
+ * scopes land already-fully-loaded by the time this timer opens the gate.
+ */
+const CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS = 450;
+
 /** Debounce layout sync so resize/ResizeObserver bursts re-render the pie shell at most
  *  once per frame — previously every resize event setState'd and re-rendered the card.
  *  `measureTick` re-runs one measurement when a reveal/scope change lands (mirrors the
@@ -138,20 +148,24 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
     setHoveredPieSector(null);
   }, [currencyCode, earningsPanelView]);
 
-  // Reveal the Currency card in the same tick as KPI/chart — no artificial delay.
-  // (Previously a fixed 450ms gap paced it after KPI/chart, which read as a "delayed
-  // expand" to users; feedback: reveal everything uniformly.)
-  const showMultiCurrencyBreakdown = currencies.length > 1;
+  // Holds `kpiChartReady` back by a fixed minimum beat so the Currency card never
+  // reveals in the same tick as KPI/chart, even when its own data was already sitting
+  // ready (the atomic-paint fetch now starts almost alongside KPI/chart, so this can
+  // genuinely happen). Snaps back to false immediately when KPI/chart go pending again
+  // — only the reveal itself is paced, same rule as the reveal animation's own timing.
+  const [kpiChartReadyPaced, setKpiChartReadyPaced] = useState(false);
+  useEffect(() => {
+    if (!kpiChartReady) {
+      setKpiChartReadyPaced(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      setKpiChartReadyPaced(true);
+    }, CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS);
+    return () => window.clearTimeout(timer);
+  }, [kpiChartReady]);
 
-  // While per-currency earnings are still landing, render one placeholder row per
-  // known currency (code + "—") so the list expands together with KPI/chart
-  // instead of appearing later as a whole block.
-  const currencyRowsForDisplay =
-    panelCurrencyRows.length > 0
-      ? panelCurrencyRows
-      : showMultiCurrencyBreakdown
-        ? currencies.map((code) => ({ code: String(code), earnings: null }))
-        : panelCurrencyRows;
+  const showMultiCurrencyBreakdown = currencies.length > 1;
 
   // FX still resolving for a multi-currency scope: hold amounts on a shimmer instead of
   // painting native figures that jump to converted the moment rates land (the
@@ -160,13 +174,23 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   const fxAmountPending =
     showMultiCurrencyBreakdown && exchangeRatesLoading && !useConvertedEarnings;
 
-  // Always revealed — the card is visible from first mount, exactly like the KPI
-  // cards (which paint instantly with 0.00 while a scope loads). Hiding it until
-  // KPI/scope data landed read as a "delayed expand" to users even after the
-  // artificial 450ms pacing was removed (feedback: reveal everything uniformly).
-  // Hero/pie/rows self-represent their own loading state (shimmer / "—" rows)
-  // and fill in as the asynchronous per-currency data lands.
-  const currencyCardReady = true;
+  // Card-level readiness gate — hide only while the first multi-currency paint is
+  // still pending. Do NOT require every currency row to be non-null: after a date
+  // filter on Group+Company All, secondary currencies can stay null (or retries
+  // exhaust) while KPI/chart already painted — requiring `every` left the card at
+  // opacity 0 forever. Missing cells already render as "—".
+  // FX rates are intentionally NOT part of this gate (fire-and-forget off the
+  // critical path in useDashboardPage.js).
+  // `kpiChartReadyPaced` pins this card to a fixed reveal order (never before, never
+  // simultaneous with KPI/chart), even when its own data resolves first — otherwise
+  // the reveal order/timing flips depending on how many currencies this scope has.
+  const currencyCardReady =
+    kpiChartReadyPaced &&
+    (showMultiCurrencyBreakdown
+      ? !earningsByCurrencyLoading &&
+        panelCurrencyRows.length > 0 &&
+        panelCurrencyRows.some((row) => row.earnings != null)
+      : !summaryEarningsLoading);
 
   const syncPieLayout = useCallback(() => {
     const wrap = pieAreaRef.current;
@@ -434,7 +458,7 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
             )}
           </div>
           <div className="dashboard-summary-currency-list-body" role="list">
-            {currencyRowsForDisplay.map((row, index) => {
+            {panelCurrencyRows.map((row, index) => {
               const sharePct = computeCurrencySharePct(row, earningsShareByCode);
               const { primary, native } = resolveEarningsRowDisplayAmounts(
                 row,
