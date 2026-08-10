@@ -500,6 +500,15 @@ function inboxAppendMonthlyNeedToday(
     string $profit,
     bool $hasDayEndMonthlyCapCol = false
 ): void {
+    // Resend 补账行与「正常流程」补偿行各自独立计算锚点：当 Resend 选的日期撞上 process 自身
+    // 持久化的 day_start 时，两边会算出同一个 monthly_billing_month，需在此去重，避免 Accounting Due 出现两条相同账单。
+    $processIdForDedupe = (int) ($r['id'] ?? 0);
+    foreach ($needToday as $existing) {
+        if (($existing['id'] ?? null) === $processIdForDedupe
+            && ($existing['monthly_billing_month'] ?? null) === $monthlyBillingMonth) {
+            return;
+        }
+    }
     $prorationRatio = null;
     try {
         $createdDt = new DateTimeImmutable($createdYmd);
