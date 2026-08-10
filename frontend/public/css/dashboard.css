@@ -1956,60 +1956,10 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
         transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row {
-    opacity: 0;
-    transform: translateY(4px);
-}
-
-.dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row {
-    animation: dashboard-row-step-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row:nth-child(1) {
-    animation-delay: 0s;
-}
-
-.dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row:nth-child(2) {
-    animation-delay: 0.06s;
-}
-
-.dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row:nth-child(3) {
-    animation-delay: 0.12s;
-}
-
-.dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row:nth-child(4) {
-    animation-delay: 0.18s;
-}
-
-.dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row:nth-child(5) {
-    animation-delay: 0.24s;
-}
-
-.dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row:nth-child(n + 6) {
-    animation-delay: 0.3s;
-}
-
-@keyframes dashboard-row-step-in {
-    from {
-        opacity: 0;
-        transform: translateY(4px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
 
 @media (prefers-reduced-motion: reduce) {
     .dashboard-summary-reveal.is-revealed {
         transition: none;
-    }
-
-    .dashboard-summary-currency-list.is-revealed .dashboard-summary-currency-row {
-        animation: none;
-        opacity: 1;
-        transform: none;
     }
 
     .dashboard-panel-chart-placeholder-line {

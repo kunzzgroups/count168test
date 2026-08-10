@@ -160,11 +160,13 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   const fxAmountPending =
     showMultiCurrencyBreakdown && exchangeRatesLoading && !useConvertedEarnings;
 
-  // Reveal together with KPI/chart (unified expand) — no extra data gate.
-  // Per-currency earnings land asynchronously after KPI/chart; rows render
-  // placeholder "—" until then (placeholderRows below) and fill in as data
-  // arrives. FX rates stay off this gate (fire-and-forget in useDashboardPage.js).
-  const currencyCardReady = kpiChartReady;
+  // Always revealed — the card is visible from first mount, exactly like the KPI
+  // cards (which paint instantly with 0.00 while a scope loads). Hiding it until
+  // KPI/scope data landed read as a "delayed expand" to users even after the
+  // artificial 450ms pacing was removed (feedback: reveal everything uniformly).
+  // Hero/pie/rows self-represent their own loading state (shimmer / "—" rows)
+  // and fill in as the asynchronous per-currency data lands.
+  const currencyCardReady = true;
 
   const syncPieLayout = useCallback(() => {
     const wrap = pieAreaRef.current;
