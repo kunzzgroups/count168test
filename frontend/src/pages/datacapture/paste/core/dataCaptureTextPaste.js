@@ -124,10 +124,6 @@ export function parsePlainTextMatrix(pastedData) {
   // Scoped allGames (iview) helper — % tokens + Total(N) break shared vertical-dump.
   const allGames = tryReshapeAllGamesPlainMatrix(normalized);
   if (allGames?.length) return finalizePlainMatrix(allGames);
-  // Scoped AWC / Usplaynet WinLoss Summary — wide TSV (10-25 cols),
-  // single-row fix when shared TSV detection rejects <2 lines.
-  const awcWinLoss = tryReshapeAWCWinLossPlainMatrix(normalized);
-  if (awcWinLoss?.length) return finalizePlainMatrix(awcWinLoss);
 
   const rawLines = normalized.split("\n");
   const nonEmptyLines = rawLines.filter((line) => line.trim() !== "");
@@ -325,13 +321,7 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
     }
   }
 
-  // AWC WinLoss helper: single-row TSV must bypass HTML path
-  // (plainTextLooksLikeAlignedTsv rejects <2 lines, but HTML would land Nx1).
-  if (tryReshapeAWCWinLossPlainMatrix(pastedData)) {
-    if (handleTextPlainPaste(e, pastedData, anchorCell)) return true;
-  }
-
-    if (htmlCandidate && (isFormatRichHtmlTable(htmlCandidate) || clipboardHtmlLooksLikeGrid(rawHtmlCandidate))) {
+  if (htmlCandidate && (isFormatRichHtmlTable(htmlCandidate) || clipboardHtmlLooksLikeGrid(rawHtmlCandidate))) {
     const formatHtml = resolveTextPasteHtml(htmlCandidate) || htmlCandidate;
     if (parseAndFillHtmlTableForTextWithFormat(formatHtml, anchorCell)) return true;
 
