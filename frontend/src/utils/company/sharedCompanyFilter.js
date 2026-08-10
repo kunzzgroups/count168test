@@ -2011,6 +2011,16 @@ export function resolveGroupsAllMergeCompanyList(companies, groupIds = null) {
 }
 
 /**
+ * Companies to merge when Company "All" is active with no Group tab
+ * (independent / ungrouped picker — e.g. DEMO1 + DEMO2 owner login).
+ */
+export function resolveIndependentAllMergeCompanyList(companies, groupIds = null) {
+  return independentCompaniesForPicker(companies, groupIds).filter(
+    (c) => !isVirtualGroupLinkCompanyRow(c),
+  );
+}
+
+/**
  * Resolve a grouped company row for GroupID "All" contexts that still pick a subsidiary
  * (e.g. other pages). Dashboard Group All aggregate leaves company unset instead.
  */

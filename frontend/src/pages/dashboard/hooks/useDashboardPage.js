@@ -125,6 +125,7 @@ import {
   allGroupedCompaniesForPicker,
   resolveGroupAllMergeCompanyList,
   resolveGroupsAllMergeCompanyList,
+  resolveIndependentAllMergeCompanyList,
   isSubsidiaryCompanyRow,
   companyRowIsIndependent,
   normalizeNativeCompanyGroupId,
@@ -938,6 +939,7 @@ function parsePaintedCompanyIdFromScopeKey(scopeKey, fallbackCompanyId) {
   if (!raw) return null;
   if (
     raw === "groups:all" ||
+    raw === "independents:all" ||
     raw.startsWith("groupAll:") ||
     raw.startsWith("group:") ||
     raw.startsWith("subset:")
@@ -1299,6 +1301,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       }
       if (scopeCompanyKey == null && gaMode && selGroup) {
         scopeCompanyKey = `groupAll:${selGroup}`;
+      }
+      // Company "All" with no Group tab (independent companies merge).
+      if (scopeCompanyKey == null && gaMode) {
+        scopeCompanyKey = "independents:all";
       }
       if (scopeCompanyKey == null && subset?.length > 1) {
         scopeCompanyKey = `subset:${subset.join(",")}`;
@@ -2154,6 +2160,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     if (groupsAllMode) list = resolveGroupsAllMergeCompanyList(companies, ledgerGroupIds);
     else if (selectedGroup) {
       list = resolveGroupAllMergeCompanyList(companies, selectedGroup, groupIds);
+    } else {
+      // No Group tab: Company "All" merges independent (ungrouped) picker companies.
+      list = resolveIndependentAllMergeCompanyList(companies, groupIds);
     }
     return filterCompaniesForDashboardApiAccess(
       meRef.current,
@@ -2703,13 +2712,15 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     /** Company "All": union currencies from every merged subsidiary (deduped). */
     if (groupAllMode && !(Number.isFinite(singleCid) && singleCid > 0)) {
       let mergeRows = resolveMergeCompanyList();
-      if (!mergeRows.length && groupsAllMode && companiesForPicker?.length) {
+      if (!mergeRows.length && companiesForPicker?.length) {
         mergeRows = companiesForPicker;
       }
       if (!mergeRows.length && groupsAllMode) {
         mergeRows = resolveGroupsAllMergeCompanyList(companies, ledgerGroupIds);
       } else if (!mergeRows.length && groupKey) {
         mergeRows = resolveGroupAllMergeCompanyList(companies, groupKey, groupIds);
+      } else if (!mergeRows.length) {
+        mergeRows = resolveIndependentAllMergeCompanyList(companies, groupIds);
       }
       let mergeCompanyIds = mergeRows
         .map((c) => parseInt(c.id, 10))
@@ -3865,7 +3876,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           : resolveGroupsAllMergeCompanyList(companies, ledgerGroupIds)
         : selGroup
           ? resolveGroupAllMergeCompanyList(companies, selGroup, groupIds)
-          : [];
+          : resolveIndependentAllMergeCompanyList(companies, groupIds);
 
       const mergeRows = filterCompaniesForDashboardApiAccess(
         meRef.current,
@@ -5414,6 +5425,19 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             currencies,
           });
         }
+        // Independent company All (no Group tab): merge ungrouped picker companies.
+        const independentRows = resolveMergeCompanyList();
+        if (independentRows.length) {
+          return fetchMergedCompanyDashboards(
+            independentRows,
+            rangeFrom,
+            rangeTo,
+            currencyOverride,
+            null,
+            mergeAbort,
+            earningsOpts
+          );
+        }
       }
 
       if (
@@ -5487,6 +5511,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       fetchGroupDashboardPayload,
       fetchGroupAllMergedDashboard,
       fetchMergedCompanyDashboards,
+      resolveMergeCompanyList,
       i18n.failedToLoadDashboard,
       me,
     ]
@@ -8991,7 +9016,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     if (!displayScopeKey || !scopeDataPending) return groupAllMode;
     const parts = String(displayScopeKey).split("|");
     const raw = parts[0] || "";
-    if (raw.startsWith("groupAll:") || raw === "groups:all") return true;
+    if (raw.startsWith("groupAll:") || raw === "groups:all" || raw === "independents:all") {
+      return true;
+    }
     return parts[5] === "1";
   }, [displayScopeKey, scopeDataPending, groupAllMode]);
   const displaySelectedGroup = useMemo(() => {
@@ -9402,7 +9429,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
   );
 
   const handlePickAllInGroup = useCallback(() => {
-    const list = resolveMergeCompanyList();
+    let list = resolveMergeCompanyList();
+    // Defense in depth: when picker shows multiple companies, never no-op All.
+    if (!list.length && companiesForPicker?.length > 1) {
+      list = companiesForPicker;
+    }
     const groupForPersist = groupsAllMode ? null : selectedGroup;
     const sidebarGroup = groupsAllMode ? readGroupsAllSidebarGroup() : groupForPersist;
 
@@ -9489,6 +9520,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     groupAllMode,
     companyId,
     resolveMergeCompanyList,
+    companiesForPicker,
     groupsAllMode,
     selectedGroup,
     companies,
