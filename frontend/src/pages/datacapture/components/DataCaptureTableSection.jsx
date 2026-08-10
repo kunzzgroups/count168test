@@ -45,6 +45,8 @@ export default function DataCaptureTableSection({
   formatGridReady = false,
   hideCaptureTypeSelector = false,
   groupOnlyTable = false,
+  /** Process "Save Data Capture Table" off → Delete Draft clears whole table. */
+  saveDataCaptureTableEnabled = false,
   onCaptureTypeChange,
   submitDisabled = true,
   isSubmitting = false,
@@ -52,6 +54,10 @@ export default function DataCaptureTableSection({
   onReset,
   engineReady = false,
 }) {
+  const deleteDraftMode = !saveDataCaptureTableEnabled;
+  const deleteBtnLabel = deleteDraftMode ? t("deleteDraft") : t("deleteRowData");
+  const deleteBtnTitle = deleteDraftMode ? t("deleteDraftTitle") : t("selectRowToDeleteData");
+  const deleteBtnRuntime = deleteDraftMode ? "deleteDraftClearTable" : "deleteSelectedRowData";
   const tableAreaRef = useRef(null);
   const [tableExpanded, setTableExpanded] = useState(false);
   useDataCaptureGridViewportFit(groupOnlyTable, engineReady, tableAreaRef);
@@ -157,10 +163,10 @@ export default function DataCaptureTableSection({
                   type="button"
                   className="btn btn-cancel dc-table-header-delete-btn"
                   disabled={!engineReady}
-                  title={t("selectRowToDeleteData")}
-                  onClick={() => callDataCaptureRuntime("deleteSelectedRowData")}
+                  title={deleteBtnTitle}
+                  onClick={() => callDataCaptureRuntime(deleteBtnRuntime)}
                 >
-                  {t("deleteRowData")}
+                  {deleteBtnLabel}
                 </button>
               </>
             ) : null}
@@ -185,10 +191,10 @@ export default function DataCaptureTableSection({
                 type="button"
                 className="btn btn-cancel dc-table-header-delete-btn"
                 disabled={!engineReady}
-                title={t("selectRowToDeleteData")}
-                onClick={() => callDataCaptureRuntime("deleteSelectedRowData")}
+                title={deleteBtnTitle}
+                onClick={() => callDataCaptureRuntime(deleteBtnRuntime)}
               >
-                {t("deleteRowData")}
+                {deleteBtnLabel}
               </button>
             </div>
           ) : null}

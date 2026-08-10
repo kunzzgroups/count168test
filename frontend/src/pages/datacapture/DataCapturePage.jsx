@@ -1402,6 +1402,7 @@ function DataCapturePageContent() {
         formatGridReady={formatGridReady}
         hideCaptureTypeSelector={groupOnlyTable}
         groupOnlyTable={groupOnlyTable}
+        saveDataCaptureTableEnabled={Boolean(form.selectedProcess?.enable_save_draft)}
         engineReady={scriptsReady}
         onCaptureTypeChange={handleCaptureTypeChange}
         submitDisabled={submitReset.submitDisabled || mutationsBlocked}
