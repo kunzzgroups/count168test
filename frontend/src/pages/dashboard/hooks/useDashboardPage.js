@@ -2342,10 +2342,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         !(Number.isFinite(singleCid) && singleCid > 0) &&
         !(scope.groupAllMode ?? groupAllMode) &&
         !gAll;
-      const clearOnMiss =
-        scope.clearOnMiss !== undefined
-          ? scope.clearOnMiss
-          : isCompanyOnlyScope || isGroupOnlyScope;
+      // scope.clearOnMiss ignored: never wipe currency pills on cache miss mid-flight.
 
       let cached = null;
       if (Number.isFinite(singleCid) && singleCid > 0) {
@@ -2369,8 +2366,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
       if (isSubsidiaryCurrencyScope) {
         if (!cached?.length) {
-          setCurrencies([]);
-          setCurrencyCode("");
+          // Keep previous pills while loadCurrencies is still in flight.
           return false;
         }
       } else {
@@ -2444,10 +2440,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         }
       }
       if (!cached?.length) {
-        if (clearOnMiss) {
-          setCurrencies([]);
-          setCurrencyCode("");
-        }
+        // Keep previous currency pills until network load settles (avoids height churn).
         return false;
       }
 
@@ -9825,6 +9818,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     loadError,
     companyAccessModal,
     closeCompanyAccessModal,
+    gcBootstrapReady,
     companiesForPicker,
     groupIds,
     selectedGroup,

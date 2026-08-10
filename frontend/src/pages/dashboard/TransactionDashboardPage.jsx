@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDashboardDateRange, useDashboardDateRangeState } from "./hooks/useDashboardDateRange.js";
 import { useDashboardLang } from "./hooks/useDashboardLang.js";
 import { useDashboardPage } from "./hooks/useDashboardPage.js";
@@ -26,6 +26,55 @@ export default function TransactionDashboardPage() {
     setDateFrom,
     setDateTo,
   });
+
+  // Sticky last-good package so first paint is complete (no empty Company / missing Currency).
+  const stickyPickerRef = useRef([]);
+  const stickyCurrenciesRef = useRef([]);
+  const stickyCurrencyCodeRef = useRef("");
+  const stickyGroupIdsRef = useRef([]);
+  if (page.companiesForPicker?.length) stickyPickerRef.current = page.companiesForPicker;
+  if (page.currencies?.length) stickyCurrenciesRef.current = page.currencies;
+  if (page.currencyCode) stickyCurrencyCodeRef.current = page.currencyCode;
+  if (page.groupIds?.length) stickyGroupIdsRef.current = page.groupIds;
+
+  const filterCompaniesForPicker =
+    page.companiesForPicker?.length > 0
+      ? page.companiesForPicker
+      : stickyPickerRef.current;
+  const filterCurrencies =
+    page.currencies?.length > 0 ? page.currencies : stickyCurrenciesRef.current;
+  const filterCurrencyCode = page.currencyCode || stickyCurrencyCodeRef.current;
+  const filterGroupIds =
+    page.groupIds?.length > 0 ? page.groupIds : stickyGroupIdsRef.current;
+
+  // Hold the whole filter card until one complete package is ready, then paint once.
+  // No artificial delay on the happy path — unlock in the same layout as data lands.
+  const [filterSurfaceReady, setFilterSurfaceReady] = useState(false);
+  useLayoutEffect(() => {
+    if (filterSurfaceReady) return;
+
+    const currencyCount = Math.max(
+      page.currencies?.length || 0,
+      stickyCurrenciesRef.current.length
+    );
+    const pickerCount = Math.max(
+      page.companiesForPicker?.length || 0,
+      stickyPickerRef.current.length
+    );
+    const groupCount = Math.max(page.groupIds?.length || 0, stickyGroupIdsRef.current.length);
+
+    // Complete package: currencies + (company pills when groups exist).
+    if (currencyCount > 0 && (pickerCount > 0 || groupCount === 0)) {
+      setFilterSurfaceReady(true);
+    }
+  }, [filterSurfaceReady, page.currencies, page.companiesForPicker, page.groupIds]);
+
+  // Edge only: date-only / no-currency scopes after bootstrap — never leave blank forever.
+  useLayoutEffect(() => {
+    if (filterSurfaceReady || !page.gcBootstrapReady) return undefined;
+    const t = window.setTimeout(() => setFilterSurfaceReady(true), 800);
+    return () => window.clearTimeout(t);
+  }, [filterSurfaceReady, page.gcBootstrapReady]);
 
   // While a new scope is loading, show 0.00 instead of the outgoing scope's real
   // numbers — keep `showEarnings` as-is so the card count doesn't flicker 3↔4.
@@ -65,26 +114,27 @@ export default function TransactionDashboardPage() {
         )}
 
         <div id="app" className="dashboard-content">
-          <DashboardFilterPanel
-            i18n={i18n}
-            /* Live selection highlight — do not freeze pills while KPI/chart/pie catch up. */
-            effectiveDateRangeText={effectiveDateRangeText}
-            groupIds={page.groupIds}
-            selectedGroup={page.selectedGroup}
-            groupsAllMode={page.groupsAllMode}
-            groupAllMode={page.groupAllMode}
-            companiesForPicker={page.companiesForPicker}
-            companyId={page.companyId}
-            mergedSubsetIds={page.mergedSubsetIds}
-            currencies={page.currencies}
-            currencyCode={page.currencyCode}
-            onPickGroup={page.handlePickGroup}
-            onPickAllGroups={page.handlePickAllGroups}
-            onPickCompany={page.handlePickCompany}
-            onPickAllInGroup={page.handlePickAllInGroup}
-            onCurrencyChange={page.handleCurrencyChange}
-            onCurrencyDropOn={page.handleCurrencyDropOn}
-          />
+          {filterSurfaceReady ? (
+            <DashboardFilterPanel
+              i18n={i18n}
+              effectiveDateRangeText={effectiveDateRangeText}
+              groupIds={filterGroupIds}
+              selectedGroup={page.selectedGroup}
+              groupsAllMode={page.groupsAllMode}
+              groupAllMode={page.groupAllMode}
+              companiesForPicker={filterCompaniesForPicker}
+              companyId={page.companyId}
+              mergedSubsetIds={page.mergedSubsetIds}
+              currencies={filterCurrencies}
+              currencyCode={filterCurrencyCode}
+              onPickGroup={page.handlePickGroup}
+              onPickAllGroups={page.handlePickAllGroups}
+              onPickCompany={page.handlePickCompany}
+              onPickAllInGroup={page.handlePickAllInGroup}
+              onCurrencyChange={page.handleCurrencyChange}
+              onCurrencyDropOn={page.handleCurrencyDropOn}
+            />
+          ) : null}
 
           <div
             className="dashboard-data-surface"
