@@ -143,6 +143,16 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   // expand" to users; feedback: reveal everything uniformly.)
   const showMultiCurrencyBreakdown = currencies.length > 1;
 
+  // While per-currency earnings are still landing, render one placeholder row per
+  // known currency (code + "—") so the list expands together with KPI/chart
+  // instead of appearing later as a whole block.
+  const currencyRowsForDisplay =
+    panelCurrencyRows.length > 0
+      ? panelCurrencyRows
+      : showMultiCurrencyBreakdown
+        ? currencies.map((code) => ({ code: String(code), earnings: null }))
+        : panelCurrencyRows;
+
   // FX still resolving for a multi-currency scope: hold amounts on a shimmer instead of
   // painting native figures that jump to converted the moment rates land (the
   // dashboard-currency-lag look). Once rates are usable (useConvertedEarnings flips) or
@@ -150,20 +160,11 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   const fxAmountPending =
     showMultiCurrencyBreakdown && exchangeRatesLoading && !useConvertedEarnings;
 
-  // Card-level readiness gate — hide only while the first multi-currency paint is
-  // still pending. Do NOT require every currency row to be non-null: after a date
-  // filter on Group+Company All, secondary currencies can stay null (or retries
-  // exhaust) while KPI/chart already painted — requiring `every` left the card at
-  // opacity 0 forever. Missing cells already render as "—".
-  // FX rates are intentionally NOT part of this gate (fire-and-forget off the
-  // critical path in useDashboardPage.js).
-  const currencyCardReady =
-    kpiChartReady &&
-    (showMultiCurrencyBreakdown
-      ? !earningsByCurrencyLoading &&
-        panelCurrencyRows.length > 0 &&
-        panelCurrencyRows.some((row) => row.earnings != null)
-      : !summaryEarningsLoading);
+  // Reveal together with KPI/chart (unified expand) — no extra data gate.
+  // Per-currency earnings land asynchronously after KPI/chart; rows render
+  // placeholder "—" until then (placeholderRows below) and fill in as data
+  // arrives. FX rates stay off this gate (fire-and-forget in useDashboardPage.js).
+  const currencyCardReady = kpiChartReady;
 
   const syncPieLayout = useCallback(() => {
     const wrap = pieAreaRef.current;
@@ -431,7 +432,7 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
             )}
           </div>
           <div className="dashboard-summary-currency-list-body" role="list">
-            {panelCurrencyRows.map((row, index) => {
+            {currencyRowsForDisplay.map((row, index) => {
               const sharePct = computeCurrencySharePct(row, earningsShareByCode);
               const { primary, native } = resolveEarningsRowDisplayAmounts(
                 row,
