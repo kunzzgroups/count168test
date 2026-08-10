@@ -20,9 +20,8 @@ export function pastedPlainTextLooksCitibetReport(pastedData) {
 export function autoDetectCaptureTypeFromPaste(pastedData) {
   if (!pastedData || typeof pastedData !== "string") return null;
   if (parseCitibetMajorPaymentReport(pastedData)) return "CITIBET";
-  if (pastedPlainTextLooksCitibetReport(pastedData)) {
-    if (parseCitibetPaymentReport(pastedData)) return "CITIBET";
-    if (parseCitibetFormatBasedPaste(pastedData)) return "CITIBET";
+  if (pastedPlainTextLooksCitibetReport(pastedData) && parseCitibetPaymentReport(pastedData)) {
+    return "CITIBET";
   }
   return null;
 }
