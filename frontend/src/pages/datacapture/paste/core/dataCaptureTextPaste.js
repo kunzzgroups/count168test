@@ -18,7 +18,7 @@ import {
 } from "./dataCaptureVerticalDumpDetect.js";
 import { tryReshapeC8WinLossPlainMatrix } from "./dataCaptureC8WinLossPasteHelper.js";
 import { tryReshapeAllGamesPlainMatrix } from "./dataCaptureAllGamesPasteHelper.js";
-import { tryReshapeGamingsoftInvoicePlainMatrix } from "./dataCaptureGamingsoftInvoicePasteHelper.js";
+import { tryReshapePdfTablePlainMatrix } from "./dataCapturePdfTablePasteHelper.js";
 import {
   plainTextLooksLikeAlignedTsv,
   sanitizePasteMatrix,
@@ -127,9 +127,9 @@ export function parsePlainTextMatrix(pastedData) {
   const allGames = tryReshapeAllGamesPlainMatrix(normalized);
   if (allGames?.length) return finalizePlainMatrix(allGames);
 
-  // Scoped Gamingsoft PDF invoice helper — single-space collapsed brand/PT/terms/(CUR)/amounts.
-  const gamingsoftInvoice = tryReshapeGamingsoftInvoicePlainMatrix(normalized);
-  if (gamingsoftInvoice?.length) return finalizePlainMatrix(gamingsoftInvoice);
+  // Universal PDF table-row helper — multi-space / single-space collapsed invoice lines.
+  const pdfTable = tryReshapePdfTablePlainMatrix(normalized);
+  if (pdfTable?.length) return finalizePlainMatrix(pdfTable);
 
   const rawLines = normalized.split("\n");
   const nonEmptyLines = rawLines.filter((line) => line.trim() !== "");
