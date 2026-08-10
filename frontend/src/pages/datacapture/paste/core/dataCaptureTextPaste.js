@@ -23,6 +23,7 @@ import {
   sanitizePasteMatrix,
 } from "./dataCapturePasteMatrixSanitize.js";
 import { splitStackedSubtotalGrandTotalRows } from "./dataCaptureStackedTotalSplit.js";
+import { tryHandleAwcWinLossReportPaste } from "../vendors/dataCaptureAwcPaste.js";
 
 /**
  * Badge / summary chips like "Total win: 2,753.79" copy as one span —
@@ -274,33 +275,6 @@ function countWideHtmlTableRows(html) {
   }
 }
 
-/**
- * Colspan-aware max column count — used to catch single/double-row HTML
- * tables that are actually wide (e.g. AWC WinLoss single-row copy) but fall
- * below countWideHtmlTableRows' >=3-row threshold, so Plan B's fixed-width
- * vertical-dump guess would otherwise truncate/drop leading cells.
- */
-function countHtmlTableMaxCols(html) {
-  if (!html || !/<table\b/i.test(html)) return 0;
-  try {
-    const root = document.createElement("div");
-    root.innerHTML = html;
-    const table = root.querySelector("table");
-    if (!table) return 0;
-    let maxCols = 0;
-    table.querySelectorAll("tr").forEach((tr) => {
-      let cols = 0;
-      tr.querySelectorAll("td, th").forEach((cell) => {
-        cols += Math.max(1, parseInt(cell.getAttribute("colspan") || "1", 10) || 1);
-      });
-      maxCols = Math.max(maxCols, cols);
-    });
-    return maxCols;
-  } catch {
-    return 0;
-  }
-}
-
 /** True when HTML table is field-per-row (col1 stack) — Plan B must still win. */
 function htmlTableLooksLikeVerticalNx1(html) {
   if (!html || !/<table\b/i.test(html)) return false;
@@ -330,20 +304,12 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
   const htmlCandidate = resolveTextPasteHtml(rawHtmlCandidate) || rawHtmlCandidate;
   const wideHtmlRows = countWideHtmlTableRows(htmlCandidate || rawHtmlCandidate);
   const htmlNx1 = htmlTableLooksLikeVerticalNx1(htmlCandidate || rawHtmlCandidate);
-  const htmlMaxCols = countHtmlTableMaxCols(htmlCandidate || rawHtmlCandidate);
+
+  if (tryHandleAwcWinLossReportPaste(html, pastedData, { anchorCell })) return true;
 
   // Match 2.FORMAT: prefer plain vertical-dump reshape whenever it yields a real
-  // multi-col matrix. HTML-first when it has a strictly fuller wide table than
-  // plain (C8 Kendo 3-row footer vs plain that lost a row), OR when the real
-  // HTML table is clearly wider than Plan B's guessed column width — regardless
-  // of row count. AWC WinLoss copies (single OR multi row) land as text/plain
-  // with one value per line and no tabs, so Plan B's anchor-guessing reshaper
-  // fabricates a short fixed width (e.g. 8) from a coincidental label+numbers
-  // run and silently drops whatever came before that anchor (including whole
-  // leading rows) — the real HTML <tr>s still have every column and row, so a
-  // clearly-wider HTML table should win even when its row count doesn't
-  // obviously exceed Plan B's (mis-chunked rows can equal or outnumber the
-  // real row count).
+  // multi-col matrix. HTML-first only when it has a strictly fuller wide table
+  // than plain (C8 Kendo 3-row footer vs plain that lost a row).
   if (plainLooksLikeReshapableVerticalDump(pastedData)) {
     const plainMatrix = parsePlainTextMatrix(pastedData);
     const plainRows = Array.isArray(plainMatrix) ? plainMatrix.length : 0;
@@ -352,10 +318,7 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
       ...(plainMatrix || []).map((row) => (Array.isArray(row) ? row.length : 0)),
     );
     const plainReshaped = plainRows >= 2 && plainCols >= 2;
-    const htmlRowsClearlyFuller = wideHtmlRows >= 3 && wideHtmlRows > plainRows && !htmlNx1;
-    const htmlColsClearlyFuller =
-      wideHtmlRows >= 1 && !htmlNx1 && htmlMaxCols >= plainCols + 6;
-    const htmlClearlyFuller = htmlRowsClearlyFuller || htmlColsClearlyFuller;
+    const htmlClearlyFuller = wideHtmlRows >= 3 && wideHtmlRows > plainRows && !htmlNx1;
     if (plainReshaped && !htmlClearlyFuller) {
       if (handleTextPlainPaste(e, pastedData, anchorCell)) return true;
     }

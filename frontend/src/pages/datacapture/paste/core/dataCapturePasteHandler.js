@@ -1,4 +1,5 @@
 import {
+  getClipboardHtml,
   getClipboardPlainText,
   isGridPasteBlockedTarget,
   clipboardLooksLikeGridPaste,
@@ -22,6 +23,7 @@ import { handleInvoicePaste } from "../vendors/dataCaptureInvoicePaste.js";
 import { handle2SpecialPaste } from "../vendors/dataCapture2SpecialPaste.js";
 import { handle3ApiPaste } from "../vendors/dataCapture3ApiPaste.js";
 import { handleAwcPaste } from "../vendors/dataCaptureAwcHandlerPaste.js";
+import { tryHandleAwcWinLossReportPaste } from "../vendors/dataCaptureAwcPaste.js";
 import { handlePegasusPaste } from "../vendors/dataCapturePegasusPaste.js";
 import { handleAlipayPaste } from "../vendors/dataCaptureAlipayPaste.js";
 import { handleC8PlayPaste } from "../vendors/dataCaptureC8PlayPaste.js";
@@ -176,6 +178,8 @@ export function handleCellPasteEvent(e) {
     invokeGenericPasteFallback(e, pastedData);
     return;
   }
+
+  if (tryHandleAwcWinLossReportPaste(getClipboardHtml(e), pastedData, { anchorCell: cell })) return;
 
   const citibetParsed = parseCitibetPasteData(pastedData, captureType);
   if (citibetParsed) {
