@@ -51,31 +51,32 @@ export default function TransactionDashboardPage() {
 
   // Hold the entire filter card (Date + Group + Company + Currency) until one atomic
   // package is ready — never paint Date alone while GC rows are still loading.
+  //
+  // On refresh, gcBootstrapReady can flip true *before* companies fetch settles
+  // (session re-bootstrap path). Do not treat empty company/group as "date-only"
+  // yet — that mounted Date early and GC rows later (the bug).
+  //
+  // Safety timeout is a separate effect (deps only bootstrap) so setCurrencies([])
+  // thrash during load cannot keep re-clearing the timer and strand the whole panel.
   const [filterSurfaceReady, setFilterSurfaceReady] = useState(false);
   useLayoutEffect(() => {
-    if (filterSurfaceReady) return undefined;
-    if (!page.gcBootstrapReady) return undefined;
+    if (filterSurfaceReady || !page.gcBootstrapReady) return;
 
     const currencyCount = Math.max(
       page.currencies?.length || 0,
       stickyCurrenciesRef.current.length
     );
-
-    // Currency list is the usual last piece; companies/groups are already known by bootstrap.
-    // Unlock only when currencies exist so every filter row mounts in the same frame.
+    // Currencies are the usual last piece; by then companies/groups are usually set.
     if (currencyCount > 0) {
       setFilterSurfaceReady(true);
-      return undefined;
     }
+  }, [filterSurfaceReady, page.gcBootstrapReady, page.currencies]);
 
-    // True date-only scopes never get currencies — don't leave the filter blank forever.
-    const t = window.setTimeout(() => setFilterSurfaceReady(true), 2000);
+  useLayoutEffect(() => {
+    if (filterSurfaceReady || !page.gcBootstrapReady) return undefined;
+    const t = window.setTimeout(() => setFilterSurfaceReady(true), 1200);
     return () => window.clearTimeout(t);
-  }, [
-    filterSurfaceReady,
-    page.gcBootstrapReady,
-    page.currencies,
-  ]);
+  }, [filterSurfaceReady, page.gcBootstrapReady]);
 
   // While a new scope is loading, show 0.00 instead of the outgoing scope's real
   // numbers — keep `showEarnings` as-is so the card count doesn't flicker 3↔4.
