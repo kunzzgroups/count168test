@@ -15,16 +15,6 @@ import { DASHBOARD_EARNINGS_PIE_MIN_ANGLE } from "../lib/dashboardConstants.js";
 import { formatCurrency, formatI18nTemplate } from "../lib/dashboardFormat.js";
 import { EarningsPieSectorTooltip } from "./EarningsPieSectorTooltip.jsx";
 
-/**
- * Minimum visible beat between KPI/chart appearing and the Currency card following —
- * without this, a scope with few currencies can resolve its own data so fast (now that
- * the fetch starts almost alongside KPI/chart instead of after) that it would reveal in
- * the same tick as KPI/chart, which reads as "popped in together" rather than in order.
- * Doubles as slack for the earnings-by-currency fetch itself: a longer gap means more
- * scopes land already-fully-loaded by the time this timer opens the gate.
- */
-const CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS = 450;
-
 /** Debounce layout sync so resize/ResizeObserver bursts re-render the pie shell at most
  *  once per frame — previously every resize event setState'd and re-rendered the card.
  *  `measureTick` re-runs one measurement when a reveal/scope change lands (mirrors the
@@ -148,23 +138,9 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
     setHoveredPieSector(null);
   }, [currencyCode, earningsPanelView]);
 
-  // Holds `kpiChartReady` back by a fixed minimum beat so the Currency card never
-  // reveals in the same tick as KPI/chart, even when its own data was already sitting
-  // ready (the atomic-paint fetch now starts almost alongside KPI/chart, so this can
-  // genuinely happen). Snaps back to false immediately when KPI/chart go pending again
-  // — only the reveal itself is paced, same rule as the reveal animation's own timing.
-  const [kpiChartReadyPaced, setKpiChartReadyPaced] = useState(false);
-  useEffect(() => {
-    if (!kpiChartReady) {
-      setKpiChartReadyPaced(false);
-      return undefined;
-    }
-    const timer = window.setTimeout(() => {
-      setKpiChartReadyPaced(true);
-    }, CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS);
-    return () => window.clearTimeout(timer);
-  }, [kpiChartReady]);
-
+  // Reveal the Currency card in the same tick as KPI/chart — no artificial delay.
+  // (Previously a fixed 450ms gap paced it after KPI/chart, which read as a "delayed
+  // expand" to users; feedback: reveal everything uniformly.)
   const showMultiCurrencyBreakdown = currencies.length > 1;
 
   // FX still resolving for a multi-currency scope: hold amounts on a shimmer instead of
@@ -181,11 +157,8 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   // opacity 0 forever. Missing cells already render as "—".
   // FX rates are intentionally NOT part of this gate (fire-and-forget off the
   // critical path in useDashboardPage.js).
-  // `kpiChartReadyPaced` pins this card to a fixed reveal order (never before, never
-  // simultaneous with KPI/chart), even when its own data resolves first — otherwise
-  // the reveal order/timing flips depending on how many currencies this scope has.
   const currencyCardReady =
-    kpiChartReadyPaced &&
+    kpiChartReady &&
     (showMultiCurrencyBreakdown
       ? !earningsByCurrencyLoading &&
         panelCurrencyRows.length > 0 &&
