@@ -18,6 +18,7 @@ import {
 } from "./dataCaptureVerticalDumpDetect.js";
 import { tryReshapeC8WinLossPlainMatrix } from "./dataCaptureC8WinLossPasteHelper.js";
 import { tryReshapeAllGamesPlainMatrix } from "./dataCaptureAllGamesPasteHelper.js";
+import { tryReshapeGamingsoftInvoicePlainMatrix } from "./dataCaptureGamingsoftInvoicePasteHelper.js";
 import {
   plainTextLooksLikeAlignedTsv,
   sanitizePasteMatrix,
@@ -125,6 +126,10 @@ export function parsePlainTextMatrix(pastedData) {
   // Scoped allGames (iview) helper — % tokens + Total(N) break shared vertical-dump.
   const allGames = tryReshapeAllGamesPlainMatrix(normalized);
   if (allGames?.length) return finalizePlainMatrix(allGames);
+
+  // Scoped Gamingsoft PDF invoice helper — single-space collapsed brand/PT/terms/(CUR)/amounts.
+  const gamingsoftInvoice = tryReshapeGamingsoftInvoicePlainMatrix(normalized);
+  if (gamingsoftInvoice?.length) return finalizePlainMatrix(gamingsoftInvoice);
 
   const rawLines = normalized.split("\n");
   const nonEmptyLines = rawLines.filter((line) => line.trim() !== "");
