@@ -325,7 +325,13 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
     }
   }
 
-  if (htmlCandidate && (isFormatRichHtmlTable(htmlCandidate) || clipboardHtmlLooksLikeGrid(rawHtmlCandidate))) {
+  // AWC WinLoss helper: single-row TSV must bypass HTML path
+  // (plainTextLooksLikeAlignedTsv rejects <2 lines, but HTML would land Nx1).
+  if (tryReshapeAWCWinLossPlainMatrix(pastedData)) {
+    if (handleTextPlainPaste(e, pastedData, anchorCell)) return true;
+  }
+
+    if (htmlCandidate && (isFormatRichHtmlTable(htmlCandidate) || clipboardHtmlLooksLikeGrid(rawHtmlCandidate))) {
     const formatHtml = resolveTextPasteHtml(htmlCandidate) || htmlCandidate;
     if (parseAndFillHtmlTableForTextWithFormat(formatHtml, anchorCell)) return true;
 
