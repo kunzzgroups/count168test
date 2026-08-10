@@ -216,32 +216,6 @@ function getLinkedProcessIdsForSync(PDO $pdo, int $companyId, int $processId): a
     return array_values(array_unique($ids));
 }
 
-/**
- * Parse profit_sharing text like "STAFF - 50, AA - 10.5" and return total amount.
- */
-function parseProfitSharingTotal(?string $profitSharing): string
-{
-    if ($profitSharing === null) {
-        return '0.00000000';
-    }
-
-    $text = trim($profitSharing);
-    if ($text === '') {
-        return '0.00000000';
-    }
-
-    $total = '0.00000000';
-    if (preg_match_all('/-\s*(-?\d+(?:\.\d+)?)/', $text, $matches)) {
-        foreach ($matches[1] as $num) {
-            if (money_is_valid($num)) {
-                $total = money_add($total, $num);
-            }
-        }
-    }
-
-    return $total;
-}
-
 // Handle different actions
 $action = $_GET['action'] ?? '';
 
@@ -1000,12 +974,6 @@ function getBankProcesses() {
 
         $formattedProcesses = [];
         foreach ($rows as $r) {
-            $storedProfit = isset($r['profit']) && $r['profit'] !== '' ? money_normalize($r['profit']) : '0.00000000';
-            $profitSharingTotal = parseProfitSharingTotal($r['profit_sharing'] ?? null);
-            $netProfit = money_sub($storedProfit, $profitSharingTotal);
-            if (money_cmp($netProfit, '0') < 0) {
-                $netProfit = '0.00000000';
-            }
             $issueFlag = normalizeBankIssueFlagValue($r['issue_flag'] ?? null);
             $formattedProcesses[] = [
                 'id' => $r['id'],
@@ -1019,7 +987,7 @@ function getBankProcesses() {
                 'customer' => $r['customer_account'] ?? '',
                 'cost' => $r['cost'] !== null && $r['cost'] !== '' ? money_out($r['cost']) : '',
                 'price' => $r['price'] !== null && $r['price'] !== '' ? money_out($r['price']) : '',
-                'profit' => money_out($netProfit),
+                'profit' => $r['profit'] !== null && $r['profit'] !== '' ? money_out($r['profit']) : '',
                 'status' => $r['status'],
                 'issue_flag' => $issueFlag,
                 'remark' => $r['remark'] ?? '',
