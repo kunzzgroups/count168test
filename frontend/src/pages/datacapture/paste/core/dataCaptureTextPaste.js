@@ -333,13 +333,17 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
   const htmlMaxCols = countHtmlTableMaxCols(htmlCandidate || rawHtmlCandidate);
 
   // Match 2.FORMAT: prefer plain vertical-dump reshape whenever it yields a real
-  // multi-col matrix. HTML-first only when it has a strictly fuller wide table
-  // than plain (C8 Kendo 3-row footer vs plain that lost a row), OR when a
-  // single/double-row HTML table is clearly wider than Plan B's guessed width
-  // (AWC WinLoss single-row copy: text/plain lands one-value-per-line with no
-  // tabs, so Plan B guesses a short fixed width and drops the leading cells —
-  // the real HTML <tr> still has every column, just too few rows to trip the
-  // >=3-row check above).
+  // multi-col matrix. HTML-first when it has a strictly fuller wide table than
+  // plain (C8 Kendo 3-row footer vs plain that lost a row), OR when the real
+  // HTML table is clearly wider than Plan B's guessed column width — regardless
+  // of row count. AWC WinLoss copies (single OR multi row) land as text/plain
+  // with one value per line and no tabs, so Plan B's anchor-guessing reshaper
+  // fabricates a short fixed width (e.g. 8) from a coincidental label+numbers
+  // run and silently drops whatever came before that anchor (including whole
+  // leading rows) — the real HTML <tr>s still have every column and row, so a
+  // clearly-wider HTML table should win even when its row count doesn't
+  // obviously exceed Plan B's (mis-chunked rows can equal or outnumber the
+  // real row count).
   if (plainLooksLikeReshapableVerticalDump(pastedData)) {
     const plainMatrix = parsePlainTextMatrix(pastedData);
     const plainRows = Array.isArray(plainMatrix) ? plainMatrix.length : 0;
@@ -350,7 +354,7 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
     const plainReshaped = plainRows >= 2 && plainCols >= 2;
     const htmlRowsClearlyFuller = wideHtmlRows >= 3 && wideHtmlRows > plainRows && !htmlNx1;
     const htmlColsClearlyFuller =
-      wideHtmlRows >= 1 && wideHtmlRows < 3 && !htmlNx1 && htmlMaxCols >= plainCols + 6;
+      wideHtmlRows >= 1 && !htmlNx1 && htmlMaxCols >= plainCols + 6;
     const htmlClearlyFuller = htmlRowsClearlyFuller || htmlColsClearlyFuller;
     if (plainReshaped && !htmlClearlyFuller) {
       if (handleTextPlainPaste(e, pastedData, anchorCell)) return true;
