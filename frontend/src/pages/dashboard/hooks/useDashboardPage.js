@@ -530,13 +530,9 @@ function companyCurrencyStorageKey(companyId, groupKey) {
     : `${DASHBOARD_COMPANY_CURRENCIES_PREFIX}${cid}`;
 }
 
-function readPersistedCompanyCurrencyCodes(companyId, groupKey) {
-  if (typeof sessionStorage === "undefined") return null;
-  const key = companyCurrencyStorageKey(companyId, groupKey);
-  if (!key) return null;
+function parseCurrencyCodesJson(raw) {
+  if (!raw) return null;
   try {
-    const raw = sessionStorage.getItem(key);
-    if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
     const list = parsed.map((c) => String(c).toUpperCase()).filter(Boolean);
@@ -546,17 +542,40 @@ function readPersistedCompanyCurrencyCodes(companyId, groupKey) {
   }
 }
 
+function readPersistedCompanyCurrencyCodes(companyId, groupKey) {
+  if (typeof sessionStorage === "undefined") return null;
+  const primary = companyCurrencyStorageKey(companyId, groupKey);
+  const fallback = groupKey
+    ? companyCurrencyStorageKey(companyId, null)
+    : null;
+  for (const key of [primary, fallback].filter(Boolean)) {
+    try {
+      const list = parseCurrencyCodesJson(sessionStorage.getItem(key));
+      if (list?.length) return list;
+    } catch {
+      /* private mode */
+    }
+  }
+  return null;
+}
+
 function persistCompanyCurrencyCodes(companyId, groupKey, codes) {
   if (typeof sessionStorage === "undefined" || !Array.isArray(codes) || !codes.length) return;
-  const key = companyCurrencyStorageKey(companyId, groupKey);
-  if (!key) return;
-  try {
-    sessionStorage.setItem(
-      key,
-      JSON.stringify([...new Set(codes.map((c) => String(c).toUpperCase()).filter(Boolean))])
-    );
-  } catch {
-    /* quota / private mode */
+  const unique = [
+    ...new Set(codes.map((c) => String(c).toUpperCase()).filter(Boolean)),
+  ];
+  if (!unique.length) return;
+  const payload = JSON.stringify(unique);
+  // Store both scoped and company-only keys so cold paint hits even if group tab differs.
+  for (const key of [
+    companyCurrencyStorageKey(companyId, groupKey),
+    companyCurrencyStorageKey(companyId, null),
+  ].filter(Boolean)) {
+    try {
+      sessionStorage.setItem(key, payload);
+    } catch {
+      /* quota / private mode */
+    }
   }
 }
 
@@ -2359,6 +2378,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       if (!userCurrencyDisplayOrderRef.current?.length) {
         persistDashboardCurrencyDisplayOrder(currencyDisplayOrderByCompanyRef, cid, ordered);
       }
+      const gid = selectedGroup ? String(selectedGroup).trim().toUpperCase() : null;
+      persistCompanyCurrencyCodes(cid, gid, ordered);
     }
   }, [companyId, selectedGroup, groupsAllMode, groupAllMode, mergedSubsetIds, companies, me, companiesForPicker, resolveActiveCurrencyForScope]);
 
@@ -3211,8 +3232,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       groupAllMode,
       clearOnMiss: false,
     });
-    // First paint with no cached pills: skip coalesce so Currency row lands with Group/Company.
-    scheduleLoadCurrenciesRef.current(!primed && currenciesRef.current.length < 1);
+    // Immediate network load whenever pills are still missing so Currency lands with Company
+    // (300ms coalesce left ~0.5s cold lag after Group/Company painted).
+    const needImmediate = !primed || currenciesRef.current.length < 1;
+    scheduleLoadCurrenciesRef.current(needImmediate);
   }, [
     buildScopeCurrencyKey,
     groupIds.length,

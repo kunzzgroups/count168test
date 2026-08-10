@@ -76,7 +76,9 @@ export default function TransactionDashboardPage() {
             companiesForPicker={page.companiesForPicker}
             companyId={page.companyId}
             mergedSubsetIds={page.mergedSubsetIds}
-            currencies={page.displayCurrencies ?? page.currencies}
+            /* Live only — do not freeze currency on displayCurrencies while company
+               selection is live (mixed freeze caused 10→11→10 pill reflow / flicker). */
+            currencies={page.currencies}
             currencyCode={page.currencyCode}
             onPickGroup={page.handlePickGroup}
             onPickAllGroups={page.handlePickAllGroups}
