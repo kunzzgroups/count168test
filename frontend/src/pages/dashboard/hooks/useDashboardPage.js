@@ -9902,6 +9902,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     loadError,
     companyAccessModal,
     closeCompanyAccessModal,
+    /** True after GC bootstrap finished (companies list known; currencies may still be loading). */
+    gcBootstrapReady,
     companiesForPicker,
     groupIds,
     selectedGroup,

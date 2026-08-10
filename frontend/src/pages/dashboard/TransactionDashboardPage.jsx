@@ -49,27 +49,32 @@ export default function TransactionDashboardPage() {
   const filterCurrencyCode =
     page.currencyCode || stickyCurrencyCodeRef.current;
 
-  // First paint: hold Group+Company+Currency until company+currency both exists so the
-  // GC block does not insert company row ~200ms after first paint (user: company flicker).
-  const [gcPanelReady, setGcPanelReady] = useState(false);
+  // Hold the entire filter card (Date + Group + Company + Currency) until one atomic
+  // package is ready — never paint Date alone while GC rows are still loading.
+  const [filterSurfaceReady, setFilterSurfaceReady] = useState(false);
   useLayoutEffect(() => {
-    if (gcPanelReady) return;
-    const pickerOk = (page.companiesForPicker?.length || 0) > 0;
-    const currencyOk =
-      (page.currencies?.length || 0) > 0 || stickyCurrenciesRef.current.length > 0;
-    // Independent/no-company scopes: group-less + currencies/or empty picker eventually.
-    const noCompanyScope =
-      (page.groupIds?.length || 0) === 0 &&
-      (page.companiesForPicker?.length || 0) === 0 &&
-      (page.currencies?.length || 0) > 0;
-    if ((pickerOk && currencyOk) || noCompanyScope) {
-      setGcPanelReady(true);
+    if (filterSurfaceReady) return undefined;
+    if (!page.gcBootstrapReady) return undefined;
+
+    const currencyCount = Math.max(
+      page.currencies?.length || 0,
+      stickyCurrenciesRef.current.length
+    );
+
+    // Currency list is the usual last piece; companies/groups are already known by bootstrap.
+    // Unlock only when currencies exist so every filter row mounts in the same frame.
+    if (currencyCount > 0) {
+      setFilterSurfaceReady(true);
+      return undefined;
     }
+
+    // True date-only scopes never get currencies — don't leave the filter blank forever.
+    const t = window.setTimeout(() => setFilterSurfaceReady(true), 2000);
+    return () => window.clearTimeout(t);
   }, [
-    gcPanelReady,
-    page.companiesForPicker,
+    filterSurfaceReady,
+    page.gcBootstrapReady,
     page.currencies,
-    page.groupIds,
   ]);
 
   // While a new scope is loading, show 0.00 instead of the outgoing scope's real
@@ -110,27 +115,28 @@ export default function TransactionDashboardPage() {
         )}
 
         <div id="app" className="dashboard-content">
-          <DashboardFilterPanel
-            i18n={i18n}
-            /* Live selection highlight — do not freeze pills while KPI/chart/pie catch up. */
-            effectiveDateRangeText={effectiveDateRangeText}
-            groupIds={page.groupIds}
-            selectedGroup={page.selectedGroup}
-            groupsAllMode={page.groupsAllMode}
-            groupAllMode={page.groupAllMode}
-            companiesForPicker={filterCompaniesForPicker}
-            companyId={page.companyId}
-            mergedSubsetIds={page.mergedSubsetIds}
-            currencies={filterCurrencies}
-            currencyCode={filterCurrencyCode}
-            gcPanelReady={gcPanelReady}
-            onPickGroup={page.handlePickGroup}
-            onPickAllGroups={page.handlePickAllGroups}
-            onPickCompany={page.handlePickCompany}
-            onPickAllInGroup={page.handlePickAllInGroup}
-            onCurrencyChange={page.handleCurrencyChange}
-            onCurrencyDropOn={page.handleCurrencyDropOn}
-          />
+          {filterSurfaceReady ? (
+            <DashboardFilterPanel
+              i18n={i18n}
+              /* Live selection highlight — do not freeze pills while KPI/chart/pie catch up. */
+              effectiveDateRangeText={effectiveDateRangeText}
+              groupIds={page.groupIds}
+              selectedGroup={page.selectedGroup}
+              groupsAllMode={page.groupsAllMode}
+              groupAllMode={page.groupAllMode}
+              companiesForPicker={filterCompaniesForPicker}
+              companyId={page.companyId}
+              mergedSubsetIds={page.mergedSubsetIds}
+              currencies={filterCurrencies}
+              currencyCode={filterCurrencyCode}
+              onPickGroup={page.handlePickGroup}
+              onPickAllGroups={page.handlePickAllGroups}
+              onPickCompany={page.handlePickCompany}
+              onPickAllInGroup={page.handlePickAllInGroup}
+              onCurrencyChange={page.handleCurrencyChange}
+              onCurrencyDropOn={page.handleCurrencyDropOn}
+            />
+          ) : null}
 
           <div
             className="dashboard-data-surface"
