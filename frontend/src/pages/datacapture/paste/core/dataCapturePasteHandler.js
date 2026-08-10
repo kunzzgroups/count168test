@@ -170,6 +170,13 @@ export function handleCellPasteEvent(e) {
     if (citibetParsed && handleCitibetPaste(e, pastedData, cell, "CITIBET", citibetParsed)) {
       return;
     }
+    // If CITIBET parser matched but handler failed, fall through to generic fallback
+    // (same as explicit CITIBET mode).  Without this, handledTextModePaste can return
+    // true with inaccurate results for CITIBET-like data.
+    if (citibetParsed) {
+      invokeGenericPasteFallback(e, pastedData);
+      return;
+    }
     if (handleTextModePaste(e, pastedData, cell)) return;
     invokeGenericPasteFallback(e, pastedData);
     return;
