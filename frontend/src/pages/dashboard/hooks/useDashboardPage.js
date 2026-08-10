@@ -519,65 +519,6 @@ function writeDashboardGroupCurrencyCaches(groupRef, { groupKey, groupsAllMode, 
 
 const DASHBOARD_GROUPS_ALL_CURRENCIES_KEY = "dashboard_groups_all_currency_codes";
 const DASHBOARD_GROUP_ALL_CURRENCIES_PREFIX = "dashboard_group_all_currency_codes:";
-const DASHBOARD_COMPANY_CURRENCIES_PREFIX = "dashboard_company_currency_codes:";
-
-function companyCurrencyStorageKey(companyId, groupKey) {
-  const cid = parseInt(companyId, 10);
-  if (!Number.isFinite(cid) || cid <= 0) return null;
-  const g = groupKey ? String(groupKey).trim().toUpperCase() : "";
-  return g
-    ? `${DASHBOARD_COMPANY_CURRENCIES_PREFIX}${g}:${cid}`
-    : `${DASHBOARD_COMPANY_CURRENCIES_PREFIX}${cid}`;
-}
-
-function parseCurrencyCodesJson(raw) {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    const list = parsed.map((c) => String(c).toUpperCase()).filter(Boolean);
-    return list.length ? list : null;
-  } catch {
-    return null;
-  }
-}
-
-function readPersistedCompanyCurrencyCodes(companyId, groupKey) {
-  if (typeof sessionStorage === "undefined") return null;
-  const primary = companyCurrencyStorageKey(companyId, groupKey);
-  const fallback = groupKey
-    ? companyCurrencyStorageKey(companyId, null)
-    : null;
-  for (const key of [primary, fallback].filter(Boolean)) {
-    try {
-      const list = parseCurrencyCodesJson(sessionStorage.getItem(key));
-      if (list?.length) return list;
-    } catch {
-      /* private mode */
-    }
-  }
-  return null;
-}
-
-function persistCompanyCurrencyCodes(companyId, groupKey, codes) {
-  if (typeof sessionStorage === "undefined" || !Array.isArray(codes) || !codes.length) return;
-  const unique = [
-    ...new Set(codes.map((c) => String(c).toUpperCase()).filter(Boolean)),
-  ];
-  if (!unique.length) return;
-  const payload = JSON.stringify(unique);
-  // Store both scoped and company-only keys so cold paint hits even if group tab differs.
-  for (const key of [
-    companyCurrencyStorageKey(companyId, groupKey),
-    companyCurrencyStorageKey(companyId, null),
-  ].filter(Boolean)) {
-    try {
-      sessionStorage.setItem(key, payload);
-    } catch {
-      /* quota / private mode */
-    }
-  }
-}
 
 function readPersistedGroupsAllCurrencyCodes() {
   if (typeof sessionStorage === "undefined") return null;
@@ -2378,8 +2319,6 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       if (!userCurrencyDisplayOrderRef.current?.length) {
         persistDashboardCurrencyDisplayOrder(currencyDisplayOrderByCompanyRef, cid, ordered);
       }
-      const gid = selectedGroup ? String(selectedGroup).trim().toUpperCase() : null;
-      persistCompanyCurrencyCodes(cid, gid, ordered);
     }
   }, [companyId, selectedGroup, groupsAllMode, groupAllMode, mergedSubsetIds, companies, me, companiesForPicker, resolveActiveCurrencyForScope]);
 
@@ -2410,12 +2349,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
       let cached = null;
       if (Number.isFinite(singleCid) && singleCid > 0) {
-        cached =
-          currenciesByCompanyRef.current.get(singleCid) ??
-          readPersistedCompanyCurrencyCodes(singleCid, groupKey);
-        if (cached?.length && !currenciesByCompanyRef.current.get(singleCid)?.length) {
-          currenciesByCompanyRef.current.set(singleCid, cached);
-        }
+        cached = currenciesByCompanyRef.current.get(singleCid) ?? null;
       }
       const gaMode = scope.groupAllMode ?? groupAllMode;
       const pickRow =
@@ -2435,8 +2369,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
       if (isSubsidiaryCurrencyScope) {
         if (!cached?.length) {
-          // Do not clear pill paint on miss — empty intermediate list was read as
-          // company/currency filter flicker while loadCurrencies is still in flight.
+          setCurrencies([]);
+          setCurrencyCode("");
           return false;
         }
       } else {
@@ -2510,8 +2444,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         }
       }
       if (!cached?.length) {
-        // Keep previous filter currency pills until network load settles (clearOnMiss
-        // used to wipe → 11→0→4→10 height churn next to company pills).
+        if (clearOnMiss) {
+          setCurrencies([]);
+          setCurrencyCode("");
+        }
         return false;
       }
 
@@ -2655,7 +2591,6 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         currenciesByCompanyRef.current.set(singleCid, list);
         if (list.length) {
           persistDashboardCurrencyDisplayOrder(currencyDisplayOrderByCompanyRef, singleCid, list);
-          persistCompanyCurrencyCodes(singleCid, groupKey, list);
         }
       } else {
         writeDashboardGroupCurrencyCaches(currenciesByGroupRef.current, {
@@ -3223,17 +3158,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
 
   useLayoutEffect(() => {
     if (!sessionReady || !meRef.current || !gcBootstrapReady || !companies.length) return;
-    const primed = primeCurrenciesFromCache({
-      companyId,
-      selectedGroup,
-      groupsAllMode,
-      groupAllMode,
-      clearOnMiss: false,
-    });
-    // Immediate network load whenever pills are still missing so Currency lands with Company
-    // (300ms coalesce left ~0.5s cold lag after Group/Company painted).
-    const needImmediate = !primed || currenciesRef.current.length < 1;
-    scheduleLoadCurrenciesRef.current(needImmediate);
+    scheduleLoadCurrenciesRef.current();
   }, [
     buildScopeCurrencyKey,
     groupIds.length,
@@ -3243,10 +3168,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     groupsAllMode,
     groupAllMode,
     companyId,
-    selectedGroup,
     me?.user_id,
     me?.id,
-    primeCurrenciesFromCache,
   ]);
 
   useEffect(() => {
@@ -9902,8 +9825,6 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
     loadError,
     companyAccessModal,
     closeCompanyAccessModal,
-    /** True after GC bootstrap finished (companies list known; currencies may still be loading). */
-    gcBootstrapReady,
     companiesForPicker,
     groupIds,
     selectedGroup,

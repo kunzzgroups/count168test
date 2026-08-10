@@ -416,34 +416,6 @@ body.dashboard-page {
     margin-bottom: 0;
 }
 
-/* Light whole-surface entrance — one short bloom (no row/block stagger).
-   Applied when a block first mounts so filter + KPI + panels feel present
-   without resurrecting "Date first, Currency later" expand lag. */
-@keyframes dashboard-surface-enter {
-    from {
-        opacity: 0;
-        transform: translateY(8px) scale(0.985);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-body.dashboard-page .dashboard-surface-enter {
-    animation: dashboard-surface-enter 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-body.dashboard-page .dashboard-panels-row.dashboard-surface-enter {
-    animation-delay: 0.04s;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    body.dashboard-page .dashboard-surface-enter {
-        animation: none;
-    }
-}
-
 /* 与 User List .action-buttons-container 同款白卡 */
 body.dashboard-page .dashboard-filter-panel.action-buttons-container {
     margin-top: var(--layout-page-first-block-mt);
@@ -1938,17 +1910,19 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     line-height: 1.3;
 }
 
-/* Currency / summary card reveal — light whole-card bloom on first mount.
-   Transition only on .is-revealed (retract snaps). No artificial 450ms KPI wait
-   and no per-row stagger; hero + list share the same timing. */
+/* Currency card reveal — content stays fully hidden (not "loading", just quiet)
+   until data is complete, then blooms in from the center with a scale + fade.
+   Transition lives only on .is-revealed so hiding (scope switch, going back to
+   not-ready) snaps instantly — only the reveal itself animates, never a retract. */
 .dashboard-summary-reveal {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.85);
     transform-origin: center;
 }
 
-/* KPI value/foot inherit reveal class but stay fully painted — enter is handled
-   by the outer .dashboard-surface-enter wrapper on the grid. */
+/* KPI cards paint instantly — no scale/fade reveal, no waiting behind the heavier
+   per-company × currency fan-out. Their value shows 0.00 while a scope loads and
+   snaps to real figures when data lands (user feedback: KPI must not animate). */
 .dashboard-kpi-card .dashboard-summary-reveal {
     opacity: 1;
     transform: none;
@@ -1962,15 +1936,24 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     opacity: 1;
     transform: scale(1);
     transition:
-        opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1),
-        transform 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+        opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.dashboard-summary-top-row.dashboard-summary-reveal.is-revealed,
+/* Layered reveal: the hero + pie (top row) resolves with its own fetch and should
+   surface fast; the currency list below follows, with each row stepping in as the
+   progressive per-currency data lands — reads as data streaming in, not one big
+   delayed pop. (User feedback: pick per-block pacing to match API arrival.) */
+.dashboard-summary-top-row.dashboard-summary-reveal.is-revealed {
+    transition:
+        opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .dashboard-summary-currency-list.dashboard-summary-reveal.is-revealed {
     transition:
-        opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1),
-        transform 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+        opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 

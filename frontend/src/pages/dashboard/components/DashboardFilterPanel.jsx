@@ -24,9 +24,7 @@ export const DashboardFilterPanel = memo(function DashboardFilterPanel({
   onCurrencyDropOn,
 }) {
   const showCompanyAll = companiesForPicker.length > 1;
-  // Only paint Company when pills exist — bare label without buttons reads as flicker.
-  const showCompanyRow = companiesForPicker.length > 0;
-  // Parent mounts this panel only when Date+GC package is ready to paint together.
+  const showCompanyRow = groupIds.length > 0 || companiesForPicker.length > 0;
   const showPanel =
     groupIds.length > 0 || companiesForPicker.length > 0 || currencies.length > 0;
   const paintedGroupAll =
@@ -37,7 +35,7 @@ export const DashboardFilterPanel = memo(function DashboardFilterPanel({
     displayGroupsAllMode !== undefined ? displayGroupsAllMode : groupsAllMode;
 
   return (
-    <div className="dashboard-card dashboard-filter-panel action-buttons-container dashboard-surface-enter">
+    <div className="dashboard-card dashboard-filter-panel action-buttons-container">
       <div className="dashboard-filter-date-row">
         <span className="user-gc-inline-label">{i18n.dateRange}</span>
         <div className="dashboard-filter-date-field report-outlined-anchor transaction-outlined-field-col transaction-outlined-field-col--date">

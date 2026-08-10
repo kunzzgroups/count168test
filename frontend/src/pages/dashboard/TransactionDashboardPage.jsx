@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useDashboardDateRange, useDashboardDateRangeState } from "./hooks/useDashboardDateRange.js";
 import { useDashboardLang } from "./hooks/useDashboardLang.js";
 import { useDashboardPage } from "./hooks/useDashboardPage.js";
@@ -26,57 +26,6 @@ export default function TransactionDashboardPage() {
     setDateFrom,
     setDateTo,
   });
-
-  // Sticky non-empty picker / currencies so filter height does not thrash mid-switch.
-  const stickyPickerRef = useRef([]);
-  const stickyCurrenciesRef = useRef([]);
-  const stickyCurrencyCodeRef = useRef("");
-  if (page.companiesForPicker?.length) {
-    stickyPickerRef.current = page.companiesForPicker;
-  }
-  if (page.currencies?.length) {
-    stickyCurrenciesRef.current = page.currencies;
-  }
-  if (page.currencyCode) {
-    stickyCurrencyCodeRef.current = page.currencyCode;
-  }
-  const filterCompaniesForPicker =
-    page.companiesForPicker?.length > 0
-      ? page.companiesForPicker
-      : stickyPickerRef.current;
-  const filterCurrencies =
-    page.currencies?.length > 0 ? page.currencies : stickyCurrenciesRef.current;
-  const filterCurrencyCode =
-    page.currencyCode || stickyCurrencyCodeRef.current;
-
-  // Hold the entire filter card (Date + Group + Company + Currency) until one atomic
-  // package is ready — never paint Date alone while GC rows are still loading.
-  //
-  // On refresh, gcBootstrapReady can flip true *before* companies fetch settles
-  // (session re-bootstrap path). Do not treat empty company/group as "date-only"
-  // yet — that mounted Date early and GC rows later (the bug).
-  //
-  // Safety timeout is a separate effect (deps only bootstrap) so setCurrencies([])
-  // thrash during load cannot keep re-clearing the timer and strand the whole panel.
-  const [filterSurfaceReady, setFilterSurfaceReady] = useState(false);
-  useLayoutEffect(() => {
-    if (filterSurfaceReady || !page.gcBootstrapReady) return;
-
-    const currencyCount = Math.max(
-      page.currencies?.length || 0,
-      stickyCurrenciesRef.current.length
-    );
-    // Currencies are the usual last piece; by then companies/groups are usually set.
-    if (currencyCount > 0) {
-      setFilterSurfaceReady(true);
-    }
-  }, [filterSurfaceReady, page.gcBootstrapReady, page.currencies]);
-
-  useLayoutEffect(() => {
-    if (filterSurfaceReady || !page.gcBootstrapReady) return undefined;
-    const t = window.setTimeout(() => setFilterSurfaceReady(true), 1200);
-    return () => window.clearTimeout(t);
-  }, [filterSurfaceReady, page.gcBootstrapReady]);
 
   // While a new scope is loading, show 0.00 instead of the outgoing scope's real
   // numbers — keep `showEarnings` as-is so the card count doesn't flicker 3↔4.
@@ -116,28 +65,26 @@ export default function TransactionDashboardPage() {
         )}
 
         <div id="app" className="dashboard-content">
-          {filterSurfaceReady ? (
-            <DashboardFilterPanel
-              i18n={i18n}
-              /* Live selection highlight — do not freeze pills while KPI/chart/pie catch up. */
-              effectiveDateRangeText={effectiveDateRangeText}
-              groupIds={page.groupIds}
-              selectedGroup={page.selectedGroup}
-              groupsAllMode={page.groupsAllMode}
-              groupAllMode={page.groupAllMode}
-              companiesForPicker={filterCompaniesForPicker}
-              companyId={page.companyId}
-              mergedSubsetIds={page.mergedSubsetIds}
-              currencies={filterCurrencies}
-              currencyCode={filterCurrencyCode}
-              onPickGroup={page.handlePickGroup}
-              onPickAllGroups={page.handlePickAllGroups}
-              onPickCompany={page.handlePickCompany}
-              onPickAllInGroup={page.handlePickAllInGroup}
-              onCurrencyChange={page.handleCurrencyChange}
-              onCurrencyDropOn={page.handleCurrencyDropOn}
-            />
-          ) : null}
+          <DashboardFilterPanel
+            i18n={i18n}
+            /* Live selection highlight — do not freeze pills while KPI/chart/pie catch up. */
+            effectiveDateRangeText={effectiveDateRangeText}
+            groupIds={page.groupIds}
+            selectedGroup={page.selectedGroup}
+            groupsAllMode={page.groupsAllMode}
+            groupAllMode={page.groupAllMode}
+            companiesForPicker={page.companiesForPicker}
+            companyId={page.companyId}
+            mergedSubsetIds={page.mergedSubsetIds}
+            currencies={page.currencies}
+            currencyCode={page.currencyCode}
+            onPickGroup={page.handlePickGroup}
+            onPickAllGroups={page.handlePickAllGroups}
+            onPickCompany={page.handlePickCompany}
+            onPickAllInGroup={page.handlePickAllInGroup}
+            onCurrencyChange={page.handleCurrencyChange}
+            onCurrencyDropOn={page.handleCurrencyDropOn}
+          />
 
           <div
             className="dashboard-data-surface"
@@ -147,18 +94,16 @@ export default function TransactionDashboardPage() {
                 loading state (0.00 defaults, chart placeholder, currency shimmer) instead of
                 being hidden behind a full-surface placeholder. */}
             <div className="dashboard-data-surface__live">
-              <div className="dashboard-surface-enter">
-                <DashboardKpiGrid
-                  i18n={i18n}
-                  kpi={kpiForDisplay}
-                  kpiCompareLabel={page.kpiCompareLabel}
-                  kpiFooter={page.kpiFooter}
-                  loading={page.loading || page.scopeDataPending}
-                />
-              </div>
+              <DashboardKpiGrid
+                i18n={i18n}
+                kpi={kpiForDisplay}
+                kpiCompareLabel={page.kpiCompareLabel}
+                kpiFooter={page.kpiFooter}
+                loading={page.loading || page.scopeDataPending}
+              />
 
               <div
-                className={`dashboard-panels-row dashboard-surface-enter${
+                className={`dashboard-panels-row${
                   page.showSummaryPanelTabs ? " dashboard-panels-row--with-summary-tabs" : ""
                 }`}
               >
