@@ -77,8 +77,10 @@ if (!isGitRepo()) {
 }
 
 console.log("[git-sync-after-build] restore dist/assets + index.html churn…");
-run("git restore frontend/dist/assets frontend/dist/index.html", { allowFail: true });
-run("git clean -fd frontend/dist/assets", { allowFail: true });
+// DISABLED: keep Vite build output for deployment
+// run("git restore frontend/dist/assets frontend/dist/index.html", { allowFail: true });
+// DISABLED: keep Vite build output for deployment
+// run("git clean -fd frontend/dist/assets", { allowFail: true });
 
 run("node frontend/scripts/patch-index-sidebar-css.mjs", { allowFail: true });
 
