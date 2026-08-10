@@ -138,9 +138,8 @@ export function useTransactionData({
       return;
     }
 
-    setAccountOptions([]);
-    setCurrencyOptions([]);
-    setCurrencyScopeBundle({ scopeKey: null, rows: [] });
+    // Keep previous currency / account pills until the new scope fetch lands —
+    // clearing here painted Group+Company with a missing Currency row on refresh/switch.
   }, [scopeCacheKey, queryClient, transactionScope]);
 
   const setCurrencyRowsOrdered = useCallback((next) => {
@@ -504,11 +503,9 @@ export function useTransactionData({
         setCurrencyScopeBundle({ scopeKey: fetchScopeKey, rows: ordered });
         setCurrencyOptions([...new Set(codes)]);
       } catch {
+        // Keep last-good currency/account options on network blip so filter package stays solid.
         if (!cancelled && fetchScopeKey === scopeCacheKeyRef.current) {
           setCategories([]);
-          setAccountOptions([]);
-          setCurrencyOptions([]);
-          setCurrencyScopeBundle({ scopeKey: null, rows: [] });
         }
       }
     })();
