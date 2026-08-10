@@ -147,16 +147,18 @@ export default function TransactionDashboardPage() {
                 loading state (0.00 defaults, chart placeholder, currency shimmer) instead of
                 being hidden behind a full-surface placeholder. */}
             <div className="dashboard-data-surface__live">
-              <DashboardKpiGrid
-                i18n={i18n}
-                kpi={kpiForDisplay}
-                kpiCompareLabel={page.kpiCompareLabel}
-                kpiFooter={page.kpiFooter}
-                loading={page.loading || page.scopeDataPending}
-              />
+              <div className="dashboard-surface-enter">
+                <DashboardKpiGrid
+                  i18n={i18n}
+                  kpi={kpiForDisplay}
+                  kpiCompareLabel={page.kpiCompareLabel}
+                  kpiFooter={page.kpiFooter}
+                  loading={page.loading || page.scopeDataPending}
+                />
+              </div>
 
               <div
-                className={`dashboard-panels-row${
+                className={`dashboard-panels-row dashboard-surface-enter${
                   page.showSummaryPanelTabs ? " dashboard-panels-row--with-summary-tabs" : ""
                 }`}
               >

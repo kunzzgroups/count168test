@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { formatFrankfurterUnitRate } from "../../../utils/dashboard/frankfurterRates.js";
 import {
@@ -160,13 +160,21 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   const fxAmountPending =
     showMultiCurrencyBreakdown && exchangeRatesLoading && !useConvertedEarnings;
 
-  // Always revealed — the card is visible from first mount, exactly like the KPI
-  // cards (which paint instantly with 0.00 while a scope loads). Hiding it until
-  // KPI/scope data landed read as a "delayed expand" to users even after the
-  // artificial 450ms pacing was removed (feedback: reveal everything uniformly).
-  // Hero/pie/rows self-represent their own loading state (shimmer / "—" rows)
-  // and fill in as the asynchronous per-currency data lands.
-  const currencyCardReady = true;
+  // Whole-card bloom on first mount only (no 450ms KPI wait, no row stagger).
+  // Double rAF so the browser paints the pre-reveal state before .is-revealed
+  // transitions opacity/scale — otherwise first paint already has the class and
+  // the CSS transition never runs.
+  const [currencyCardReady, setCurrencyCardReady] = useState(false);
+  useLayoutEffect(() => {
+    let raf2 = 0;
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => setCurrencyCardReady(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      window.cancelAnimationFrame(raf2);
+    };
+  }, []);
 
   const syncPieLayout = useCallback(() => {
     const wrap = pieAreaRef.current;
