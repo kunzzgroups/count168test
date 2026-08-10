@@ -124,6 +124,10 @@ export function parsePlainTextMatrix(pastedData) {
   // Scoped allGames (iview) helper — % tokens + Total(N) break shared vertical-dump.
   const allGames = tryReshapeAllGamesPlainMatrix(normalized);
   if (allGames?.length) return finalizePlainMatrix(allGames);
+  // Scoped AWC / Usplaynet WinLoss Summary — wide TSV (10-25 cols),
+  // single-row fix when shared TSV detection rejects <2 lines.
+  const awcWinLoss = tryReshapeAWCWinLossPlainMatrix(normalized);
+  if (awcWinLoss?.length) return finalizePlainMatrix(awcWinLoss);
 
   const rawLines = normalized.split("\n");
   const nonEmptyLines = rawLines.filter((line) => line.trim() !== "");
