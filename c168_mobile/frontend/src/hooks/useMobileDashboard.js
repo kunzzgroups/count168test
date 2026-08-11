@@ -21,7 +21,13 @@ import {
   resolveViewGroupForCompany,
   sortedUniqueGroupIds,
 } from "../lib/dashboardScope.js";
-import { canUseGroupOnlyMode, filterCompaniesForUserScope } from "../lib/loginScope.js";
+import {
+  canUseGroupOnlyMode,
+  companyLoginCanUseGroupsAllLedger,
+  filterCompaniesForUserScope,
+  isCompanyLogin,
+  isGroupLogin,
+} from "../lib/loginScope.js";
 import { fetchMobileCurrencyCodes } from "../lib/dashboardCurrencies.js";
 import { mapPanelCurrencyRows } from "../lib/dashboardEarnings.js";
 import { loadMobileDashboardData, resolveMobileKpiOwnershipOpts } from "../lib/dashboardLoad.js";
@@ -672,7 +678,8 @@ export function useMobileDashboard() {
   );
 
   const resetFilters = useCallback(() => {
-    applyPreset("thisYear");
+    // Match first paint: This Month → today (not This Year).
+    applyPreset("thisMonth");
     const fallback = pickCompany(companies, me?.company_id);
     const initial = resolveInitialMobileGcScope(me, companies, fallback);
     setGroupsAllMode(initial.groupsAllMode);
@@ -726,13 +733,49 @@ export function useMobileDashboard() {
   );
 
   const pickAllGroups = useCallback(() => {
+    // Desktop handlePickAllGroups: group-login → company aggregate (groupAllMode);
+    // company-login with ledger privilege → groupsAll ledger; else preserve company / aggregate.
+    const companyGroupsAllLedger = companyLoginCanUseGroupsAllLedger(me);
+    const companyLoginGroupsAll =
+      isCompanyLogin(me) && !isGroupLogin(me) && !companyGroupsAllLedger;
+    const preserveCompanyId = (() => {
+      if (!companyLoginGroupsAll) return null;
+      const fromState = companyId != null ? Number(companyId) : NaN;
+      if (Number.isFinite(fromState) && fromState > 0) return fromState;
+      const fromMe = me?.company_id != null ? Number(me.company_id) : NaN;
+      if (Number.isFinite(fromMe) && fromMe > 0) return fromMe;
+      const first = resolveCompaniesForPicker(companies, {
+        selectedGroup: null,
+        groupsAllMode: true,
+      })[0];
+      const firstId = first?.id != null ? Number(first.id) : NaN;
+      return Number.isFinite(firstId) && firstId > 0 ? firstId : null;
+    })();
+    const useCompanyAllAggregate = companyLoginGroupsAll && !preserveCompanyId;
+    const groupLoginAllGroupsAggregate =
+      isGroupLogin(me) && !companyGroupsAllLedger && !useCompanyAllAggregate;
+    const nextGroupAllMode = companyGroupsAllLedger
+      ? false
+      : useCompanyAllAggregate || groupLoginAllGroupsAggregate;
+    const nextCompanyId = companyGroupsAllLedger
+      ? null
+      : companyLoginGroupsAll && !useCompanyAllAggregate
+        ? preserveCompanyId
+        : null;
+
     setGroupsAllMode(true);
-    setGroupAllMode(false);
+    setGroupAllMode(nextGroupAllMode);
     setSelectedGroup(null);
-    setCompanyId(null);
-  }, []);
+    setCompanyId(nextCompanyId);
+  }, [me, companyId, companies]);
 
   const pickAllInGroup = useCallback(() => {
+    // Desktop: Company All under Groups All keeps groupsAllMode + groupAllMode.
+    if (groupsAllMode) {
+      setGroupAllMode(true);
+      setSelectedGroup(null);
+      return;
+    }
     if (!selectedGroup) return;
     setGroupsAllMode(false);
     setGroupAllMode(true);
@@ -743,7 +786,7 @@ export function useMobileDashboard() {
       })[0];
       if (first?.id != null) setCompanyId(Number(first.id));
     }
-  }, [selectedGroup, companyId, companies]);
+  }, [groupsAllMode, selectedGroup, companyId, companies]);
 
   const applyFilters = useCallback(
     async (draft) => {
@@ -766,9 +809,21 @@ export function useMobileDashboard() {
 
       if (draft.groupsAllMode) {
         setGroupsAllMode(true);
-        setGroupAllMode(false);
+        setGroupAllMode(Boolean(draft.groupAllMode));
         setSelectedGroup(null);
-        setCompanyId(null);
+        const cid = Number(draft.companyId);
+        const nextCid =
+          Number.isFinite(cid) && cid > 0 && !draft.groupAllMode ? cid : null;
+        if (nextCid && Number(nextCid) !== Number(companyId)) {
+          try {
+            await syncCompanySession(nextCid);
+          } catch (e) {
+            setError(e?.message || i18n.loadError);
+            setBootstrapping(false);
+            return;
+          }
+        }
+        setCompanyId(nextCid);
         return;
       }
 
@@ -882,6 +937,27 @@ export function useMobileDashboard() {
       return;
     }
     setSessionNonce((n) => n + 1);
+  }, [companyId, selectedGroup, groupsAllMode, groupAllMode]);
+
+  // Soft LEDGER refresh: desktop uses SSE; mobile reloads on focus/visibility + light poll.
+  useEffect(() => {
+    const softReload = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const hasCompany = Number.isFinite(Number(companyId)) && Number(companyId) > 0;
+      if (!(hasCompany || Boolean(selectedGroup) || groupsAllMode || groupAllMode)) return;
+      setReloadNonce((n) => n + 1);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") softReload();
+    };
+    window.addEventListener("focus", softReload);
+    document.addEventListener("visibilitychange", onVisibility);
+    const timer = window.setInterval(softReload, 60_000);
+    return () => {
+      window.removeEventListener("focus", softReload);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(timer);
+    };
   }, [companyId, selectedGroup, groupsAllMode, groupAllMode]);
 
   const summaryPanelLabel =

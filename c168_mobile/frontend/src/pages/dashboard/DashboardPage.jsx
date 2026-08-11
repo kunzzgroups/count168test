@@ -210,14 +210,14 @@ export default function DashboardPage() {
                 <button type="button" className="m-dash-empty-action tap-scale" onClick={dash.retry}>
                   {i18n.retry || "Retry"}
                 </button>
-              ) : dash.activePreset !== "thisYear" ? (
+              ) : dash.activePreset !== "thisMonth" ? (
                 <button
                   type="button"
                   className="m-dash-empty-action tap-scale"
                   disabled={Boolean(refreshing)}
-                  onClick={() => dash.applyPreset("thisYear")}
+                  onClick={() => dash.applyPreset("thisMonth")}
                 >
-                  {refreshing ? i18n.loading : i18n.viewThisYear || i18n.thisYear}
+                  {refreshing ? i18n.loading : i18n.viewThisMonth || i18n.thisMonth}
                 </button>
               ) : refreshing ? (
                 <p className="m-dash-empty-loading">{i18n.loading}</p>

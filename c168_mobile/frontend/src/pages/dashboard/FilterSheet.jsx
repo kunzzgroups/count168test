@@ -11,7 +11,54 @@ import {
   todayYmd,
 } from "../../lib/dashboardDateUtils.js";
 import { companiesForPicker as resolveCompaniesForPicker, pickCompany, resolveCompanyPickForGroup } from "../../lib/dashboardScope.js";
+import {
+  companyLoginCanUseGroupsAllLedger,
+  isCompanyLogin,
+  isGroupLogin,
+} from "../../lib/loginScope.js";
 import { dashboardLabel } from "../../translateFile/dashboardTranslate.js";
+
+/** Mirror useMobileDashboard.pickAllGroups for Filter draft. */
+function resolveGroupsAllDraft(dash, prev) {
+  const me = dash.me;
+  const companyGroupsAllLedger = companyLoginCanUseGroupsAllLedger(me);
+  const companyLoginGroupsAll =
+    isCompanyLogin(me) && !isGroupLogin(me) && !companyGroupsAllLedger;
+  let preserveCompanyId = null;
+  if (companyLoginGroupsAll) {
+    const fromDraft = prev?.companyId != null ? Number(prev.companyId) : NaN;
+    const fromDash = dash.companyId != null ? Number(dash.companyId) : NaN;
+    const fromMe = me?.company_id != null ? Number(me.company_id) : NaN;
+    if (Number.isFinite(fromDraft) && fromDraft > 0) preserveCompanyId = fromDraft;
+    else if (Number.isFinite(fromDash) && fromDash > 0) preserveCompanyId = fromDash;
+    else if (Number.isFinite(fromMe) && fromMe > 0) preserveCompanyId = fromMe;
+    else {
+      const first = resolveCompaniesForPicker(dash.companies, {
+        selectedGroup: null,
+        groupsAllMode: true,
+      })[0];
+      const firstId = first?.id != null ? Number(first.id) : NaN;
+      if (Number.isFinite(firstId) && firstId > 0) preserveCompanyId = firstId;
+    }
+  }
+  const useCompanyAllAggregate = companyLoginGroupsAll && !preserveCompanyId;
+  const groupLoginAllGroupsAggregate =
+    isGroupLogin(me) && !companyGroupsAllLedger && !useCompanyAllAggregate;
+  const nextGroupAllMode = companyGroupsAllLedger
+    ? false
+    : useCompanyAllAggregate || groupLoginAllGroupsAggregate;
+  const nextCompanyId = companyGroupsAllLedger
+    ? null
+    : companyLoginGroupsAll && !useCompanyAllAggregate
+      ? preserveCompanyId
+      : null;
+  return {
+    groupsAllMode: true,
+    groupAllMode: nextGroupAllMode,
+    selectedGroup: null,
+    companyId: nextCompanyId,
+  };
+}
 
 export function Pill({ active, disabled, onClick, block, tone = "blue", children }) {
   const activeMod =
@@ -126,8 +173,8 @@ function buildDraftFromDash(dash) {
 
 function buildDefaultDraft(dash) {
   const txMode = Array.isArray(dash.categories);
-  // Transaction Capture Date → today; Dashboard keeps This Year default.
-  const preset = txMode ? "today" : "thisYear";
+  // Transaction Capture Date → today; Dashboard matches first paint → This Month.
+  const preset = txMode ? "today" : "thisMonth";
   const range = periodPresetRange(preset) || defaultDashboardDateRange();
   const fallback = pickCompany(dash.companies, dash.me?.company_id);
   return {
@@ -460,10 +507,7 @@ export default function FilterSheet({ open, onClose, dash }) {
                   onClick={() =>
                     setDraft((prev) => ({
                       ...prev,
-                      groupsAllMode: true,
-                      groupAllMode: false,
-                      selectedGroup: null,
-                      companyId: null,
+                      ...resolveGroupsAllDraft(dash, prev),
                     }))
                   }
                 >
@@ -490,21 +534,35 @@ export default function FilterSheet({ open, onClose, dash }) {
 
           <Section title={i18n.company}>
             <div className="m-filter-pill-wrap">
-              {(companiesForPicker.length > 1 || draft.selectedGroup) && (
+              {(companiesForPicker.length > 1 || draft.selectedGroup || draft.groupsAllMode) && (
                 <Pill
                   active={draft.groupAllMode}
-                  disabled={!draft.selectedGroup || draft.groupsAllMode}
+                  disabled={!draft.selectedGroup && !draft.groupsAllMode}
                   onClick={() =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      groupAllMode: true,
-                      groupsAllMode: false,
-                      companyId:
-                        Number.isFinite(Number(prev.companyId)) && Number(prev.companyId) > 0
-                          ? prev.companyId
-                          : (resolveCompanyPickForGroup(dash.companies, prev.selectedGroup, prev.companyId)?.id ??
-                            null),
-                    }))
+                    setDraft((prev) => {
+                      // Desktop: Company All under Groups All keeps both flags.
+                      if (prev.groupsAllMode) {
+                        return {
+                          ...prev,
+                          groupAllMode: true,
+                          selectedGroup: null,
+                          companyId: null,
+                        };
+                      }
+                      return {
+                        ...prev,
+                        groupAllMode: true,
+                        groupsAllMode: false,
+                        companyId:
+                          Number.isFinite(Number(prev.companyId)) && Number(prev.companyId) > 0
+                            ? prev.companyId
+                            : (resolveCompanyPickForGroup(
+                                dash.companies,
+                                prev.selectedGroup,
+                                prev.companyId,
+                              )?.id ?? null),
+                      };
+                    })
                   }
                 >
                   {i18n.all}

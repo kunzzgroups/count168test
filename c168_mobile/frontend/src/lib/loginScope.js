@@ -198,6 +198,13 @@ export function companyLoginHasGroupLedgerPrivilege(me) {
   return role === "owner" || userType === "owner";
 }
 
+/** Desktop parity: company login that may use Groups All → group-ledger aggregate. */
+export function companyLoginCanUseGroupsAllLedger(me) {
+  if (!me || !isCompanyLogin(me) || isGroupLogin(me)) return false;
+  if (!canUseGroupOnlyMode(me)) return false;
+  return companyLoginHasGroupLedgerPrivilege(me) || userHasAssignedGroupLedger(me);
+}
+
 export function resolveAccessibleGroupIds(me, companies = []) {
   const set = new Set(readAccessibleGroupIds(me));
   const ident = getLoginIdentifier(me);
