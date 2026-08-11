@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import { useMobileDashboard } from "../../hooks/useMobileDashboard.js";
+import CurrencyDistributionCard from "./CurrencyDistributionCard.jsx";
+import CurrencyListCard from "./CurrencyListCard.jsx";
 import DashboardKpiCard from "./DashboardKpiCard.jsx";
 import DashboardTrendChart from "./DashboardTrendChart.jsx";
-import EarningsPanelCard from "./EarningsPanelCard.jsx";
 import FilterSheet from "./FilterSheet.jsx";
 import HeroSummaryCard from "./HeroSummaryCard.jsx";
 import ScopeBreadcrumb from "./ScopeBreadcrumb.jsx";
@@ -241,22 +242,28 @@ export default function DashboardPage() {
             tapHint={i18n.chartTapHint}
           />
 
-          <EarningsPanelCard
+          <CurrencyDistributionCard
             i18n={i18n}
-            lang={dash.lang}
             currencyCode={dash.currency}
             rows={dash.panelCurrencyRows}
-            exchangeRates={dash.exchangeRates}
-            exchangeRatesLoading={dash.exchangeRatesLoading}
             useConverted={dash.useConvertedEarnings}
             loading={loading}
-            panelView={dash.earningsPanelView}
-            isCompanyBreakdown={dash.earningsPanelView === "netProfitFor"}
             note={
               dash.earningsPanelView !== "netProfitFor" && dash.useConvertedEarnings
                 ? i18n.multiCurrencyNote
                 : ""
             }
+            title={
+              dash.earningsPanelView === "earning"
+                ? i18n.earnings
+                : dash.earningsPanelView === "netProfitFor"
+                  ? i18n.netProfitCompanyCaption || i18n.netProfit
+                  : i18n.currencyDistribution
+            }
+            badgeLabel={
+              dash.earningsPanelView === "netProfitFor" ? i18n.companies || i18n.company : i18n.currency
+            }
+            isCompanyBreakdown={dash.earningsPanelView === "netProfitFor"}
             tabs={
               dash.showSummaryPanelTabs ? (
                 <div
@@ -306,6 +313,25 @@ export default function DashboardPage() {
                 </div>
               ) : null
             }
+          />
+
+          <CurrencyListCard
+            i18n={i18n}
+            lang={dash.lang}
+            currencyCode={dash.currency}
+            rows={dash.panelCurrencyRows}
+            exchangeRates={dash.exchangeRates}
+            exchangeRatesLoading={dash.exchangeRatesLoading}
+            useConverted={dash.useConvertedEarnings}
+            loading={loading}
+            title={
+              dash.earningsPanelView === "netProfitFor"
+                ? i18n.companies || i18n.company
+                : dash.earningsPanelView === "earning"
+                  ? i18n.earnings
+                  : i18n.currencies
+            }
+            isCompanyBreakdown={dash.earningsPanelView === "netProfitFor"}
           />
             </>
           )}
