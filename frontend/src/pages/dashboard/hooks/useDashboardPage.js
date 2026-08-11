@@ -297,6 +297,29 @@ async function fetchCompanyCurrencySettingCodes(companyId, companyRow, viewGroup
   return [];
 }
 
+/**
+ * Account-linked currencies for one company (same source as independent single-company dashboard).
+ * Does not use bare Currency Setting rows.
+ */
+async function fetchCompanyAccountCurrencyCodes(companyId) {
+  const cid = parseInt(companyId, 10);
+  if (!Number.isFinite(cid) || cid <= 0) return [];
+  try {
+    const q = new URLSearchParams({ company_id: String(cid) });
+    const res = await fetch(
+      buildApiUrl(`api/transactions/get_scope_account_currencies_api.php?${q.toString()}`),
+      { credentials: "include" }
+    );
+    const json = await res.json();
+    if (res.ok && json.success && Array.isArray(json.data)) {
+      return json.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
 /** Union currencies for Company "All" (single group or Group "All" + Company "All"). */
 async function fetchGroupAllMergeCurrencyCodes(
   companies,
@@ -307,16 +330,27 @@ async function fetchGroupAllMergeCurrencyCodes(
   if (!ids.length) return [];
 
   const groupKey = selectedGroup ? String(selectedGroup).trim().toUpperCase() : null;
+  // Independents Company All: same rule as picking MS1 alone — only account-linked codes,
+  // not Currency Setting leftovers that never appear on a single independent company.
+  const independentAll = !groupsAllMode && !groupKey;
 
   const results = await Promise.all(
     ids.map(async (cid) => {
-      const cached = cacheRef?.get?.(cid);
-      if (cached?.length) return cached;
+      // IndepAll: never trust cache (warm/settings may have seeded MYR that single-company scope never uses).
+      if (!independentAll) {
+        const cached = cacheRef?.get?.(cid);
+        if (cached?.length) return cached;
+      }
 
       const row = companies.find((c) => parseInt(c.id, 10) === cid);
       const vg = groupsAllMode ? resolveViewGroupForCompany(row, selectedGroup) : groupKey;
-      const rowCodes = await fetchCompanyCurrencySettingCodes(cid, row, vg, groupIds);
-      if (rowCodes.length && cacheRef) cacheRef.set(cid, rowCodes);
+      const rowCodes = independentAll
+        ? await fetchCompanyAccountCurrencyCodes(cid)
+        : await fetchCompanyCurrencySettingCodes(cid, row, vg, groupIds);
+      if (cacheRef) {
+        if (independentAll) cacheRef.set(cid, rowCodes);
+        else if (rowCodes.length) cacheRef.set(cid, rowCodes);
+      }
       return rowCodes;
     })
   );
@@ -2832,17 +2866,17 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
             codes,
           });
 
-          if (codes.length) {
-            commitCurrencyList(codes);
-            if (codes.length > 1) {
-              // On a cold load, loadDashboard() may already have run and computed
-              // needsMultiCurrencyEarnings=false because this currency list wasn't
-              // ready yet — that skips the Currency card's fetch entirely for that
-              // pass, with no other trigger left to start it. Re-check now that the
-              // list is in. Deferred so `currencies` state has actually re-rendered
-              // before upgradeActiveScopeEarnings reads it.
-              deferActiveScopeEarningsUpgrade(200);
-            }
+          // Always settle (incl. []) so independents:all does not keep a phantom MYR pill
+          // from Currency Setting after single-company scope had empty account currencies.
+          commitCurrencyList(codes);
+          if (codes.length > 1) {
+            // On a cold load, loadDashboard() may already have run and computed
+            // needsMultiCurrencyEarnings=false because this currency list wasn't
+            // ready yet — that skips the Currency card's fetch entirely for that
+            // pass, with no other trigger left to start it. Re-check now that the
+            // list is in. Deferred so `currencies` state has actually re-rendered
+            // before upgradeActiveScopeEarnings reads it.
+            deferActiveScopeEarningsUpgrade(200);
           }
         } catch {
           /* Keep previous currency pills on transient errors. */
@@ -3503,7 +3537,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         const row = companies.find((c) => parseInt(c.id, 10) === activeId);
         const vg = groupsAllMode ? null : activeGroup;
         if (row && shouldPrefetchCompanyScope(activeId, vg)) {
-          const codes = await fetchCompanyCurrencySettingCodes(activeId, row, vg, groupIds);
+          // Independent company: warm from accounts only (match single-company loadCurrencies).
+          const codes =
+            vg || groupsAllMode
+              ? await fetchCompanyCurrencySettingCodes(activeId, row, vg, groupIds)
+              : await fetchCompanyAccountCurrencyCodes(activeId);
           if (!cancelled && codes?.length) {
             const savedOrder = resolvePreferredCurrencyDisplayOrder(activeId, {
               displayOrderByCompanyRef: currencyDisplayOrderByCompanyRef,
@@ -3603,7 +3641,10 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       if (!row || isVirtualGroupLinkCompanyRow(row)) return;
       const vg = viewGroup ? String(viewGroup).trim().toUpperCase() : "";
       if (vg && companyRowIsGroupEntity(row, vg)) return;
-      const codes = await fetchCompanyCurrencySettingCodes(id, row, vg || null, groupIds);
+      // Independent companies: account-linked codes only (same as dashboard single-company scope).
+      const codes = vg
+        ? await fetchCompanyCurrencySettingCodes(id, row, vg || null, groupIds)
+        : await fetchCompanyAccountCurrencyCodes(id);
       if (!cancelled && codes?.length) {
         const savedOrder = resolvePreferredCurrencyDisplayOrder(id, {
           displayOrderByCompanyRef: currencyDisplayOrderByCompanyRef,
