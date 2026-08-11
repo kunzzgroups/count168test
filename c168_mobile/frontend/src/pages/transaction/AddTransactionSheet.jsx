@@ -553,50 +553,52 @@ export default function AddTransactionSheet({
           )}
 
           {isRate ? (
-            <>
+            <div className="m-tx-rate-fields">
+              {/* Desktop-parity rows: Account → Currency(5) → Account → Middle-Man */}
               <div className="m-tx-form-section">
                 <p className="m-tx-form-label">{m.account}</p>
-                <AccountPicker
-                  label=""
-                  placeholder={m.selectToAccount}
-                  options={accountOptions}
-                  value={rateToAccount}
-                  onChange={setRateToAccount}
-                  disabled={mutationsBlocked}
-                />
-                <AccountPicker
-                  label=""
-                  placeholder={m.selectFromAccount}
-                  options={accountOptions}
-                  value={rateFromAccount}
-                  onChange={setRateFromAccount}
-                  disabled={mutationsBlocked}
-                />
-                <button
-                  type="button"
-                  disabled={mutationsBlocked}
-                  title={m.reverseAccounts}
-                  aria-label={m.reverseAccounts}
-                  onClick={() => {
-                    // Desktop: swap primary To/From + currency amounts / gross slots together.
-                    setRateToAccount(rateFromAccount);
-                    setRateFromAccount(rateToAccount);
-                    const tmpAmt = rateCurrencyFromAmount;
-                    setRateCurrencyFromAmount(rateCurrencyToAmount);
-                    setRateCurrencyToAmount(tmpAmt);
-                    const tmpGrossTo = rateToAmountGrossStr;
-                    setRateToAmountGrossStr(rateFromAmountGrossStr);
-                    setRateFromAmountGrossStr(tmpGrossTo);
-                  }}
-                  className="m-tx-form-btn m-tx-form-btn--outline tap-scale"
-                >
-                  {m.reverse}
-                </button>
+                <div className="m-tx-rate-account-row">
+                  <AccountPicker
+                    label=""
+                    placeholder={m.selectToAccount}
+                    options={accountOptions}
+                    value={rateToAccount}
+                    onChange={setRateToAccount}
+                    disabled={mutationsBlocked}
+                  />
+                  <AccountPicker
+                    label=""
+                    placeholder={m.selectFromAccount}
+                    options={accountOptions}
+                    value={rateFromAccount}
+                    onChange={setRateFromAccount}
+                    disabled={mutationsBlocked}
+                  />
+                  <button
+                    type="button"
+                    disabled={mutationsBlocked}
+                    title={m.reverseAccounts}
+                    aria-label={m.reverseAccounts}
+                    onClick={() => {
+                      setRateToAccount(rateFromAccount);
+                      setRateFromAccount(rateToAccount);
+                      const tmpAmt = rateCurrencyFromAmount;
+                      setRateCurrencyFromAmount(rateCurrencyToAmount);
+                      setRateCurrencyToAmount(tmpAmt);
+                      const tmpGrossTo = rateToAmountGrossStr;
+                      setRateToAmountGrossStr(rateFromAmountGrossStr);
+                      setRateFromAmountGrossStr(tmpGrossTo);
+                    }}
+                    className="m-tx-form-btn m-tx-form-btn--reverse tap-scale"
+                  >
+                    {m.reverse}
+                  </button>
+                </div>
               </div>
 
               <div className="m-tx-form-section">
                 <p className="m-tx-form-label">{m.currency}</p>
-                <div className="m-tx-form-grid-2">
+                <div className="m-tx-rate-currency-row" role="group" aria-label={m.currency}>
                   <select
                     value={rateCurrencyFrom}
                     disabled={mutationsBlocked}
@@ -621,18 +623,20 @@ export default function AddTransactionSheet({
                     className="m-tx-form-input"
                     aria-label={m.fromAccount}
                   />
-                </div>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={rateExchangeRateRaw}
-                  disabled={mutationsBlocked}
-                  onChange={(e) => setRateExchangeRateRaw(e.target.value)}
-                  placeholder={m.rate}
-                  className="m-tx-form-input"
-                  aria-label={m.rate}
-                />
-                <div className="m-tx-form-grid-2">
+                  {/* text inputMode so `/3.15` division rates work on mobile keyboards */}
+                  <input
+                    type="text"
+                    inputMode="text"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={rateExchangeRateRaw}
+                    disabled={mutationsBlocked}
+                    onChange={(e) => setRateExchangeRateRaw(e.target.value)}
+                    placeholder={m.rate}
+                    className="m-tx-form-input m-tx-rate-rate-input"
+                    aria-label={m.rate}
+                  />
                   <select
                     value={rateCurrencyTo}
                     disabled={mutationsBlocked}
@@ -662,58 +666,63 @@ export default function AddTransactionSheet({
 
               <div className="m-tx-form-section">
                 <p className="m-tx-form-label">{m.account}</p>
-                <AccountPicker
-                  label=""
-                  placeholder={m.selectToAccount}
-                  options={accountOptions}
-                  value={rateTransferToAccount}
-                  onChange={setRateTransferToAccount}
-                  disabled={mutationsBlocked}
-                />
-                <AccountPicker
-                  label=""
-                  placeholder={m.selectFromAccount}
-                  options={accountOptions}
-                  value={rateTransferFromAccount}
-                  onChange={setRateTransferFromAccount}
-                  disabled={mutationsBlocked}
-                />
-                <button
-                  type="button"
-                  disabled={mutationsBlocked}
-                  title={m.reverseAccounts}
-                  aria-label={m.reverseAccounts}
-                  onClick={() => {
-                    setRateTransferToAccount(rateTransferFromAccount);
-                    setRateTransferFromAccount(rateTransferToAccount);
-                  }}
-                  className="m-tx-form-btn m-tx-form-btn--outline tap-scale"
-                >
-                  {m.reverse}
-                </button>
+                <div className="m-tx-rate-account-row">
+                  <AccountPicker
+                    label=""
+                    placeholder={m.selectToAccount}
+                    options={accountOptions}
+                    value={rateTransferToAccount}
+                    onChange={setRateTransferToAccount}
+                    disabled={mutationsBlocked}
+                  />
+                  <AccountPicker
+                    label=""
+                    placeholder={m.selectFromAccount}
+                    options={accountOptions}
+                    value={rateTransferFromAccount}
+                    onChange={setRateTransferFromAccount}
+                    disabled={mutationsBlocked}
+                  />
+                  <button
+                    type="button"
+                    disabled={mutationsBlocked}
+                    title={m.reverseAccounts}
+                    aria-label={m.reverseAccounts}
+                    onClick={() => {
+                      setRateTransferToAccount(rateTransferFromAccount);
+                      setRateTransferFromAccount(rateTransferToAccount);
+                    }}
+                    className="m-tx-form-btn m-tx-form-btn--reverse tap-scale"
+                  >
+                    {m.reverse}
+                  </button>
+                </div>
               </div>
 
               <div className="m-tx-form-section">
                 <p className="m-tx-form-label">{m.middleMan}</p>
-                <AccountPicker
-                  label=""
-                  placeholder={m.selectMiddleManAccount}
-                  options={accountOptions}
-                  value={rateMiddlemanAccount}
-                  onChange={setRateMiddlemanAccount}
-                  disabled={mutationsBlocked}
-                />
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={rateMiddlemanRate}
-                  disabled={mutationsBlocked}
-                  onChange={(e) => setRateMiddlemanRate(e.target.value)}
-                  placeholder={m.rateMultiplier}
-                  className="m-tx-form-input"
-                  aria-label={m.rateMultiplier}
-                />
-                <div className="m-tx-form-grid-2">
+                <div className="m-tx-rate-mm-row" role="group" aria-label={m.middleMan}>
+                  <AccountPicker
+                    label=""
+                    placeholder={m.selectMiddleManAccount}
+                    options={accountOptions}
+                    value={rateMiddlemanAccount}
+                    onChange={setRateMiddlemanAccount}
+                    disabled={mutationsBlocked}
+                  />
+                  <input
+                    type="text"
+                    inputMode="text"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={rateMiddlemanRate}
+                    disabled={mutationsBlocked}
+                    onChange={(e) => setRateMiddlemanRate(e.target.value)}
+                    placeholder={m.rateMultiplier}
+                    className="m-tx-form-input m-tx-rate-rate-input"
+                    aria-label={m.rateMultiplier}
+                  />
                   <input
                     type="text"
                     inputMode="decimal"
@@ -737,19 +746,19 @@ export default function AddTransactionSheet({
                     className="m-tx-form-input"
                     aria-label={m.platformFee}
                   />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={rateMiddlemanAmount}
+                    readOnly
+                    disabled={mutationsBlocked}
+                    placeholder={m.amount}
+                    className="m-tx-form-input m-tx-form-input--readonly"
+                    aria-label={m.middleMan}
+                  />
                 </div>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={rateMiddlemanAmount}
-                  readOnly
-                  disabled={mutationsBlocked}
-                  placeholder={m.amount}
-                  className="m-tx-form-input m-tx-form-input--readonly"
-                  aria-label={m.middleMan}
-                />
               </div>
-            </>
+            </div>
           ) : null}
 
           {!isRate ? (
