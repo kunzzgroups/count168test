@@ -1,6 +1,9 @@
 /** Mirrors desktop sidebarPermissions.js for mobile routes only. */
 
+import { canAccessC168DomainPages } from "../lib/c168DomainAccess.js";
 import { isGroupLogin } from "../lib/loginScope.js";
+
+export { canAccessC168DomainPages };
 
 export function normRole(role) {
   return String(role || "").trim().toLowerCase();

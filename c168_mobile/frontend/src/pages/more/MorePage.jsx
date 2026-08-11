@@ -5,6 +5,7 @@ import { fetchJson } from "../../lib/fetchJson.js";
 import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { MORE_I18N } from "../../translateFile/moreTranslate.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
+import { canAccessC168DomainPages } from "../../lib/c168DomainAccess.js";
 import { canAccessAdmin, canAccessMaintenance, canShowReportEntry } from "../../utils/mobilePermissions.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import "./more.css";
@@ -75,6 +76,14 @@ export default function MorePage() {
       icon: "fa-chart-column",
       title: i18n.report,
       description: i18n.reportDescription,
+    });
+  }
+  if (canAccessC168DomainPages(me)) {
+    tools.push({
+      to: "/more/domain",
+      icon: "fa-globe",
+      title: i18n.domain,
+      description: i18n.domainDescription,
     });
   }
 
