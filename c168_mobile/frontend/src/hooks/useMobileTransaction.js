@@ -101,9 +101,9 @@ export function useMobileTransaction({ listPaused = false } = {}) {
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupsAllMode, setGroupsAllMode] = useState(false);
   const [groupAllMode, setGroupAllMode] = useState(false);
-  const [currency, setCurrency] = useState("ALL");
-  /** Empty = All currencies (desktop showAllCurrencies). */
-  const [selectedCurrencies, setSelectedCurrencies] = useState([]);
+  const [currency, setCurrency] = useState("MYR");
+  /** At least one currency required — never "ALL currencies". */
+  const [selectedCurrencies, setSelectedCurrencies] = useState(["MYR"]);
   const [currencies, setCurrencies] = useState(["MYR"]);
   const [currenciesReady, setCurrenciesReady] = useState(false);
   const filtersBeforeTypeSearchRef = useRef(null);
@@ -202,19 +202,19 @@ export function useMobileTransaction({ listPaused = false } = {}) {
   const dateRangeText = useMemo(() => formatRangeLabel(dateFrom, dateTo), [dateFrom, dateTo]);
 
   const currencyCodesForSearch = useMemo(() => {
-    const all = currencies.filter((c) => c && c !== "ALL");
-    if (!selectedCurrencies.length) return all;
+    const available = currencies.filter((c) => c && c !== "ALL");
+    const fallback = available[0] || "MYR";
     const picked = selectedCurrencies
       .map((c) => String(c || "").toUpperCase().trim())
-      .filter((c) => c && c !== "ALL");
-    return picked.length ? picked : all;
+      .filter((c) => c && c !== "ALL" && (!available.length || available.includes(c)));
+    return picked.length ? picked : [fallback];
   }, [selectedCurrencies, currencies]);
 
   const currencyFilterLabel = useMemo(() => {
-    if (!selectedCurrencies.length) return "ALL";
-    if (selectedCurrencies.length === 1) return selectedCurrencies[0];
-    return `${selectedCurrencies.length}`;
-  }, [selectedCurrencies]);
+    const codes = currencyCodesForSearch;
+    if (codes.length === 1) return codes[0];
+    return `${codes.length}`;
+  }, [currencyCodesForSearch]);
 
   const runSearch = useCallback(
     async (signal) => {
@@ -452,11 +452,15 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           setGroupsAllMode(Boolean(snap.groupsAllMode));
           setGroupAllMode(Boolean(snap.groupAllMode));
           if (Array.isArray(snap.selectedCurrencies)) {
-            setSelectedCurrencies(
-              snap.selectedCurrencies.map((c) => String(c || "").toUpperCase()).filter(Boolean),
-            );
+            const restored = snap.selectedCurrencies
+              .map((c) => String(c || "").toUpperCase())
+              .filter((c) => c && c !== "ALL");
+            if (restored.length) setSelectedCurrencies(restored);
           }
-          if (snap.currency) setCurrency(String(snap.currency));
+          if (snap.currency) {
+            const code = String(snap.currency).toUpperCase();
+            if (code && code !== "ALL") setCurrency(code);
+          }
           if (snap.dateFrom) setDateFrom(String(snap.dateFrom));
           if (snap.dateTo) setDateTo(String(snap.dateTo));
           if (snap.activePreset != null) setActivePreset(String(snap.activePreset));
@@ -517,15 +521,15 @@ export function useMobileTransaction({ listPaused = false } = {}) {
         });
         if (ac.signal.aborted) return;
         const next = codes.length ? codes : ["MYR"];
+        const fallback = next[0] || "MYR";
         setCurrencies(next);
         setSelectedCurrencies((prev) => {
-          if (!prev.length) return prev;
-          const kept = prev.filter((c) => next.includes(c));
-          return kept;
+          const kept = (prev || []).filter((c) => next.includes(c) && c !== "ALL");
+          return kept.length ? kept : [fallback];
         });
         setCurrency((prev) => {
-          if (prev === "ALL") return "ALL";
-          return next.includes(prev) ? prev : "ALL";
+          if (prev && prev !== "ALL" && next.includes(prev)) return prev;
+          return fallback;
         });
       } catch {
         if (!ac.signal.aborted) setCurrencies(["MYR"]);
@@ -676,13 +680,16 @@ export function useMobileTransaction({ listPaused = false } = {}) {
         const next = draft.selectedCurrencies
           .map((c) => String(c || "").toUpperCase().trim())
           .filter((c) => c && c !== "ALL");
-        setSelectedCurrencies(next);
-        setCurrency(next.length === 1 ? next[0] : "ALL");
+        const fallback = currencies.filter((c) => c && c !== "ALL")[0] || "MYR";
+        const resolved = next.length ? next : [fallback];
+        setSelectedCurrencies(resolved);
+        setCurrency(resolved[0]);
       } else if (draft.currency) {
         const code = String(draft.currency).toUpperCase();
-        if (code === "ALL") {
-          setSelectedCurrencies([]);
-          setCurrency("ALL");
+        const fallback = currencies.filter((c) => c && c !== "ALL")[0] || "MYR";
+        if (!code || code === "ALL") {
+          setSelectedCurrencies([fallback]);
+          setCurrency(fallback);
         } else {
           setSelectedCurrencies([code]);
           setCurrency(code);
@@ -751,7 +758,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
         setReloadNonce((n) => n + 1);
       }
     },
-    [companies, companyId, me],
+    [companies, companyId, me, currencies],
   );
 
   const canUseGroupOnlyForGroup = useCallback(
@@ -777,6 +784,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
 
   const resetFilters = useCallback(() => {
     const d = defaultDashboardDateRange();
+    const fallback = currencies.filter((c) => c && c !== "ALL")[0] || "MYR";
     setDateFrom(d.dateFrom);
     setDateTo(d.dateTo);
     setActivePreset("thisYear");
@@ -784,14 +792,14 @@ export function useMobileTransaction({ listPaused = false } = {}) {
     setShowCaptureOnly(false);
     setShowPaymentOnly(false);
     setShowZeroBalance(false);
-    setSelectedCurrencies([]);
-    setCurrency("ALL");
+    setSelectedCurrencies([fallback]);
+    setCurrency(fallback);
     setSelectedCategories([]);
     setTypeSearchActive(false);
     setTypeSearchFormType("");
     filtersBeforeTypeSearchRef.current = null;
     setReloadNonce((n) => n + 1);
-  }, []);
+  }, [currencies]);
 
   const refreshContraInboxBadge = useCallback(
     async (api = scopeApi) => {
@@ -906,12 +914,13 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           };
         }
         const today = todayYmd();
+        const fallback = currencies.filter((c) => c && c !== "ALL")[0] || "MYR";
         setDateFrom(today);
         setDateTo(today);
         setActivePreset("today");
         setSelectedCategories([]);
-        setSelectedCurrencies([]);
-        setCurrency("ALL");
+        setSelectedCurrencies([fallback]);
+        setCurrency(fallback);
         setShowName(false);
         setShowPaymentOnly(false);
         setShowCaptureOnly(false);
@@ -938,6 +947,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
       selectedCategories,
       selectedCurrencies,
       currency,
+      currencies,
       dateFrom,
       dateTo,
       activePreset,
@@ -956,8 +966,18 @@ export function useMobileTransaction({ listPaused = false } = {}) {
     setTypeSearchFormType("");
     if (snap) {
       setSelectedCategories(Array.isArray(snap.selectedCategories) ? snap.selectedCategories : []);
-      setSelectedCurrencies(Array.isArray(snap.selectedCurrencies) ? snap.selectedCurrencies : []);
-      setCurrency(snap.currency || "ALL");
+      {
+        const fallback = currencies.filter((c) => c && c !== "ALL")[0] || "MYR";
+        const restored = Array.isArray(snap.selectedCurrencies)
+          ? snap.selectedCurrencies
+              .map((c) => String(c || "").toUpperCase())
+              .filter((c) => c && c !== "ALL")
+          : [];
+        const next = restored.length ? restored : [fallback];
+        setSelectedCurrencies(next);
+        const snapCur = String(snap.currency || "").toUpperCase();
+        setCurrency(snapCur && snapCur !== "ALL" ? snapCur : next[0]);
+      }
       if (snap.dateFrom) setDateFrom(snap.dateFrom);
       if (snap.dateTo) setDateTo(snap.dateTo);
       setActivePreset(snap.activePreset || "");
@@ -967,7 +987,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
       setShowZeroBalance(Boolean(snap.showZeroBalance));
     }
     setReloadNonce((n) => n + 1);
-  }, []);
+  }, [currencies]);
 
   const onApproveContra = useCallback(
     async (transactionId) => {

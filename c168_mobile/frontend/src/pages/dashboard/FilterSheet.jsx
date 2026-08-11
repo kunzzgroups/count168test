@@ -97,11 +97,15 @@ function inRangeYmd(day, from, to) {
 }
 
 function resolveDraftCurrencies(dash) {
-  if (Array.isArray(dash.selectedCurrencies)) {
-    return dash.selectedCurrencies.map((c) => String(c || "").toUpperCase()).filter(Boolean);
+  const fallback = String(dash.currencies?.[0] || "MYR").toUpperCase();
+  if (Array.isArray(dash.selectedCurrencies) && dash.selectedCurrencies.length) {
+    const picked = dash.selectedCurrencies
+      .map((c) => String(c || "").toUpperCase())
+      .filter((c) => c && c !== "ALL");
+    if (picked.length) return picked;
   }
   const code = String(dash.currency || "").toUpperCase();
-  if (!code || code === "ALL") return [];
+  if (!code || code === "ALL") return [fallback];
   return [code];
 }
 
@@ -133,8 +137,10 @@ function buildDefaultDraft(dash) {
     groupAllMode: false,
     companyId: fallback?.id ?? null,
     currency: dash.currencies?.[0] || dash.currency || "MYR",
-    // Transaction: empty = All currencies. Dashboard keeps single currency.
-    selectedCurrencies: txMode ? [] : [],
+    // Transaction: at least one currency (never ALL). Dashboard uses single `currency`.
+    selectedCurrencies: txMode
+      ? [String(dash.currencies?.[0] || dash.currency || "MYR").toUpperCase()]
+      : [],
     selectedCategories: [],
   };
 }
@@ -538,18 +544,6 @@ export default function FilterSheet({ open, onClose, dash }) {
               <div className="m-filter-pill-scroll">
                 {Array.isArray(dash.categories) ? (
                   <>
-                    <Pill
-                      active={draft.selectedCurrencies.length === 0}
-                      onClick={() =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          selectedCurrencies: [],
-                          currency: "ALL",
-                        }))
-                      }
-                    >
-                      {i18n.all}
-                    </Pill>
                     {dash.currencies.map((code) => {
                       const active = draft.selectedCurrencies.includes(code);
                       return (
@@ -559,13 +553,17 @@ export default function FilterSheet({ open, onClose, dash }) {
                           onClick={() =>
                             setDraft((prev) => {
                               const set = new Set(prev.selectedCurrencies);
-                              if (set.has(code)) set.delete(code);
-                              else set.add(code);
+                              if (set.has(code)) {
+                                if (set.size <= 1) return prev; // keep ≥1 currency
+                                set.delete(code);
+                              } else {
+                                set.add(code);
+                              }
                               const next = [...set];
                               return {
                                 ...prev,
                                 selectedCurrencies: next,
-                                currency: next.length === 1 ? next[0] : "ALL",
+                                currency: next[0] || code,
                               };
                             })
                           }
