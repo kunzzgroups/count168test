@@ -2,11 +2,57 @@ import { buildApiUrl } from "../core/apiUrl.js";
 import { notifyCompanySessionUpdated } from "./companySessionEvents.js";
 import { rememberCompanySessionFlags } from "./companySessionFlagsCache.js";
 import {
+  findOwnerCompanyById,
   notifyDashboardGroupFilterChanged,
   persistDashboardFilterState,
   persistDashboardGroupFilter,
   readDashboardSelectedCompanyId,
 } from "./sharedCompanyFilter.js";
+
+/**
+ * Resolve the C168 company PK that Domain / Announcement / Auto Renew APIs need.
+ * Prefers sessionStorage selection when that row is C168 (UI can lead PHP session).
+ * @param {object|null|undefined} me
+ * @returns {number|null}
+ */
+export function resolveC168DomainSessionTargetId(me) {
+  const persistedId = readDashboardSelectedCompanyId();
+  if (persistedId != null) {
+    const row = findOwnerCompanyById(persistedId);
+    if (String(row?.company_id || "").trim().toUpperCase() === "C168") {
+      return Number(persistedId);
+    }
+  }
+  if (!me) return null;
+  const code = String(me.company_code || "").trim().toUpperCase();
+  const id = Number(me.company_id);
+  if ((code === "C168" || Boolean(me.is_current_company_c168)) && Number.isFinite(id) && id > 0) {
+    return id;
+  }
+  return null;
+}
+
+/**
+ * Align PHP session to C168 before Domain-family APIs.
+ * Frontend gates may trust sessionStorage while `$_SESSION` still holds the previous company.
+ * @param {object|null|undefined} me
+ * @returns {Promise<boolean>}
+ */
+export async function ensureC168DomainApiSession(me) {
+  const targetId = resolveC168DomainSessionTargetId(me);
+  if (targetId == null) return false;
+
+  const sessionId =
+    me?.company_id != null && me.company_id !== "" ? Number(me.company_id) : null;
+  if (sessionId === targetId) return true;
+
+  const json = await syncCompanySessionApi(targetId);
+  if (json?.success) {
+    notifyCompanySessionUpdated(json.data ?? null);
+    return true;
+  }
+  return false;
+}
 
 /** @type {Map<string, Promise<object>>} */
 const sessionSyncInflight = new Map();

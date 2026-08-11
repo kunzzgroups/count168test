@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useNavigate } from "react-router-dom";
 import { useAuthSession } from "../../context/AuthSessionContext.jsx";
 import { canAccessC168AutoRenew } from "../../utils/company/loginScope.js";
+import { ensureC168DomainApiSession } from "../../utils/company/companySessionSync.js";
 import { spaPath } from "../../utils/routing/pageRoutes.js";
 import {
   AUTO_RENEW_PENDING_CHANGED_EVENT,
@@ -352,6 +353,13 @@ export default function AutoRenewPage() {
       }
 
       try {
+        // Same race as Domain: UI may trust sessionStorage C168 before PHP session catches up.
+        const synced = await ensureC168DomainApiSession(me);
+        if (!synced) {
+          if (!cancelled) navigate(spaPath("dashboard"), { replace: true });
+          return;
+        }
+        if (cancelled) return;
         const cached = consumeAutoRenewPrefetch(statusFilter, { dateFrom, dateTo, entityType: entityTab });
         const data =
           cached ||

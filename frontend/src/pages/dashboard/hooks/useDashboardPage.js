@@ -2406,13 +2406,15 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           cached = currenciesByGroupRef.current.get(groupKey) ?? null;
         }
         if (!cached?.length && gaMode && companies?.length) {
+          // Independent Company "All" (no group tab): merge ungrouped picker companies.
+          const gaMergeList = gAll
+            ? resolveGroupsAllMergeCompanyList(companies, ledgerGroupIds)
+            : groupKey
+              ? resolveGroupAllMergeCompanyList(companies, groupKey, groupIds)
+              : resolveIndependentAllMergeCompanyList(companies, groupIds);
           const mergeRows = filterCompaniesForDashboardApiAccess(
             meRef.current,
-            gAll
-              ? resolveGroupsAllMergeCompanyList(companies, ledgerGroupIds)
-              : groupKey
-                ? resolveGroupAllMergeCompanyList(companies, groupKey, groupIds)
-                : [],
+            gaMergeList,
             companies,
             gAll ? null : groupKey
           );

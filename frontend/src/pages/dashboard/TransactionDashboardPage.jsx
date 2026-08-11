@@ -133,13 +133,11 @@ export default function TransactionDashboardPage() {
     if (packageReady) setSurfaceReady(true);
   }, [surfaceReady, packageReady, sticky?.currencies, sticky?.companiesForPicker, sticky?.groupIds]);
 
+  // Unlock as soon as GC bootstrap finishes — sticky is filter freeze only, not a blank-page gate.
+  // (Previous 900ms fail-open left independent-company Admin↔Home remounts on an empty main pane.)
   useLayoutEffect(() => {
-    if (surfaceReady || !page.gcBootstrapReady) return undefined;
-    const t = window.setTimeout(() => {
-      if (stickyRef.current?.currencies?.length) setSurfaceReady(true);
-      else setSurfaceReady(true);
-    }, 900);
-    return () => window.clearTimeout(t);
+    if (surfaceReady || !page.gcBootstrapReady) return;
+    setSurfaceReady(true);
   }, [surfaceReady, page.gcBootstrapReady]);
 
   // Freeze filter chrome while KPI/chart catch up — selection + pills stay put (dead board).

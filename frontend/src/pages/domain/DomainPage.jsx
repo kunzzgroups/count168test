@@ -25,6 +25,7 @@ import DomainFormModal from "./components/DomainFormModal.jsx";
 import { getDomainText } from "../../translateFile/pages/domainTranslate.js";
 import { useAuthSession } from "../../context/AuthSessionContext.jsx";
 import { canAccessC168DomainPages } from "../../utils/company/loginScope.js";
+import { ensureC168DomainApiSession } from "../../utils/company/companySessionSync.js";
 import { fetchOwnerCompaniesAll, readPersistedDashboardGcFilter } from "../../utils/company/sharedCompanyFilter.js";
 import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
 import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
@@ -105,6 +106,12 @@ export default function DomainPage() {
 
   const loadDomains = useCallback(async ({ silent = false } = {}) => {
     try {
+      // UI may already show C168 via sessionStorage while PHP session lags.
+      const synced = await ensureC168DomainApiSession(me);
+      if (!synced) {
+        if (!silent) setLoadError(getDomainText(lang, "failedToLoadDomainData"));
+        return;
+      }
       const r2 = await fetch(buildApiUrl("api/domain/domain_api.php"), {
         method: "POST",
         credentials: "include",
@@ -116,12 +123,13 @@ export default function DomainPage() {
         if (!silent) setLoadError(j2?.message || getDomainText(lang, "failedToLoadDomainData"));
         return;
       }
+      if (!silent) setLoadError("");
       setDomains(Array.isArray(j2?.data?.domains) ? j2.data.domains : []);
       refreshFeeSummary();
     } catch {
       if (!silent) setLoadError(getDomainText(lang, "failedToLoadDomainData"));
     }
-  }, [lang]);
+  }, [lang, me]);
 
   // ── Initial data load (session from AuthenticatedLayout) ─────────────────────
   useEffect(() => {

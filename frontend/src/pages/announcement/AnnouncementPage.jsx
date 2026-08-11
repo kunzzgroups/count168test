@@ -13,6 +13,7 @@ import { AnnouncementPanel, MaintenancePanel } from "./components/AnnouncementPa
 import PagePillTabSwitch from "../../components/PagePillTabSwitch.jsx";
 import { useAuthSession } from "../../context/AuthSessionContext.jsx";
 import { canAccessC168DomainPages } from "../../utils/company/loginScope.js";
+import { ensureC168DomainApiSession } from "../../utils/company/companySessionSync.js";
 import {
   isRichTextEffectivelyEmpty,
   normalizeRichTextInput,
@@ -220,6 +221,13 @@ export default function AnnouncementPage() {
           navigate(spaPath("dashboard"), { replace: true });
           return;
         }
+        // Same race as Domain: UI may trust sessionStorage C168 before PHP session catches up.
+        const synced = await ensureC168DomainApiSession(me);
+        if (!synced) {
+          if (!cancelled) navigate(spaPath("dashboard"), { replace: true });
+          return;
+        }
+        if (cancelled) return;
         await Promise.all([loadAnnouncements(), loadMaintenance(), loadMaintenanceMode()]);
       } catch {
         if (!cancelled) navigate(spaPath("login"), { replace: true });
