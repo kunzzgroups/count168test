@@ -125,13 +125,15 @@ function buildDraftFromDash(dash) {
 }
 
 function buildDefaultDraft(dash) {
-  const range = periodPresetRange("thisYear") || defaultDashboardDateRange();
-  const fallback = pickCompany(dash.companies, dash.me?.company_id);
   const txMode = Array.isArray(dash.categories);
+  // Transaction Capture Date → today; Dashboard keeps This Year default.
+  const preset = txMode ? "today" : "thisYear";
+  const range = periodPresetRange(preset) || defaultDashboardDateRange();
+  const fallback = pickCompany(dash.companies, dash.me?.company_id);
   return {
     dateFrom: range.dateFrom,
     dateTo: range.dateTo,
-    activePreset: "thisYear",
+    activePreset: preset,
     selectedGroup: null,
     groupsAllMode: false,
     groupAllMode: false,

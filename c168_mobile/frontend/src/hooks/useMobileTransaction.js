@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchMobileCurrencyCodes } from "../lib/dashboardCurrencies.js";
 import {
-  defaultDashboardDateRange,
   formatRangeLabel,
   periodPresetRange,
   todayYmd,
@@ -77,7 +76,6 @@ function mergeDisplayRows(rawSearchData) {
 
 export function useMobileTransaction({ listPaused = false } = {}) {
   const navigate = useNavigate();
-  const defaults = defaultDashboardDateRange();
   const [lang, setLangState] = useState(() => localStorage.getItem("login_lang") || "en");
   const t = useMemo(() => getTransactionText.bind(null, lang), [lang]);
   const m = useMemo(() => TRANSACTION_I18N[lang] || TRANSACTION_I18N.en, [lang]);
@@ -107,9 +105,10 @@ export function useMobileTransaction({ listPaused = false } = {}) {
   const [currencies, setCurrencies] = useState(["MYR"]);
   const [currenciesReady, setCurrenciesReady] = useState(false);
   const filtersBeforeTypeSearchRef = useRef(null);
-  const [dateFrom, setDateFrom] = useState(defaults.dateFrom);
-  const [dateTo, setDateTo] = useState(defaults.dateTo);
-  const [activePreset, setActivePreset] = useState("thisYear");
+  /** Desktop TX parity: Capture Date defaults to today (not This Year / This Month). */
+  const [dateFrom, setDateFrom] = useState(() => todayYmd());
+  const [dateTo, setDateTo] = useState(() => todayYmd());
+  const [activePreset, setActivePreset] = useState("today");
 
   const [showName, setShowName] = useState(false);
   const [showCaptureOnly, setShowCaptureOnly] = useState(false);
@@ -783,11 +782,11 @@ export function useMobileTransaction({ listPaused = false } = {}) {
   }, []);
 
   const resetFilters = useCallback(() => {
-    const d = defaultDashboardDateRange();
+    const today = todayYmd();
     const fallback = currencies.filter((c) => c && c !== "ALL")[0] || "MYR";
-    setDateFrom(d.dateFrom);
-    setDateTo(d.dateTo);
-    setActivePreset("thisYear");
+    setDateFrom(today);
+    setDateTo(today);
+    setActivePreset("today");
     setShowName(false);
     setShowCaptureOnly(false);
     setShowPaymentOnly(false);
