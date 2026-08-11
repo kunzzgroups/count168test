@@ -14,6 +14,7 @@ export const REPORT_I18N = {
     apply: "Apply",
     applyFilter: "Apply",
     group: "Group",
+    allGroups: "All Groups",
 
     domainTitle: "Domain Report",
     domainDesc: "Turnover / Win / Lose by process.",
@@ -58,6 +59,7 @@ export const REPORT_I18N = {
     apply: "应用",
     applyFilter: "应用",
     group: "组别",
+    allGroups: "全部组别",
 
     domainTitle: "域名报表",
     domainDesc: "按流程汇总 Turnover / Win / Lose。",

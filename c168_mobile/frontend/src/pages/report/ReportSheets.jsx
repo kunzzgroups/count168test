@@ -29,6 +29,7 @@ function buildDraft({
   dateTo,
   activePreset,
   groupMode,
+  groupsAllMode = false,
   selectedGroup,
   companyId,
   processId = "",
@@ -41,9 +42,10 @@ function buildDraft({
     dateFrom,
     dateTo,
     activePreset: activePreset || "",
-    groupMode: Boolean(groupMode),
-    groupId: selectedGroup || null,
-    companyId: companyId ?? null,
+    groupMode: Boolean(groupMode) && !groupsAllMode,
+    groupsAllMode: Boolean(groupsAllMode),
+    groupId: groupsAllMode ? null : selectedGroup || null,
+    companyId: groupsAllMode ? null : companyId ?? null,
     processId: processId ?? "",
     accountId: accountId ?? "",
     showAll: Boolean(showAll),
@@ -52,7 +54,15 @@ function buildDraft({
   };
 }
 
-function draftScope(draft) {
+function draftScope(draft, allowedGroupIds = []) {
+  if (draft.groupsAllMode) {
+    return {
+      mode: "groupsAll",
+      companyId: null,
+      groupId: null,
+      groupIds: [...allowedGroupIds],
+    };
+  }
   if (draft.groupMode && draft.groupId) {
     return { mode: "group", companyId: null, groupId: draft.groupId };
   }
@@ -76,6 +86,7 @@ export function ReportFilterSheet({
   dateTo,
   activePreset = "",
   groupMode = false,
+  groupsAllMode = false,
   selectedGroup = null,
   companyId = null,
   companies = [],
@@ -96,6 +107,7 @@ export function ReportFilterSheet({
       dateTo,
       activePreset,
       groupMode,
+      groupsAllMode,
       selectedGroup,
       companyId,
       processId,
@@ -123,6 +135,7 @@ export function ReportFilterSheet({
         dateTo,
         activePreset,
         groupMode,
+        groupsAllMode,
         selectedGroup,
         companyId,
         processId,
@@ -136,8 +149,11 @@ export function ReportFilterSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const scope = draftScope(draft);
-  const scopeKey = `${scope.mode}:${scope.companyId ?? ""}:${scope.groupId ?? ""}`;
+  const scope = draftScope(draft, allowedGroupIds);
+  const scopeKey =
+    scope.mode === "groupsAll"
+      ? `groupsAll:${(scope.groupIds || []).join(",")}`
+      : `${scope.mode}:${scope.companyId ?? ""}:${scope.groupId ?? ""}`;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -165,7 +181,7 @@ export function ReportFilterSheet({
                 : Number(
                     companiesForPicker(companies, {
                       selectedGroup: scope.groupId,
-                      groupsAllMode: false,
+                      groupsAllMode: scope.mode === "groupsAll",
                     })?.[0]?.id,
                   ) || 0;
             const ordered = await orderCurrencyCodesForCompany(codes, orderCid, ac.signal);
@@ -202,17 +218,32 @@ export function ReportFilterSheet({
 
   const pickable = companiesForPicker(companies, {
     selectedGroup: draft.groupId,
-    groupsAllMode: false,
+    groupsAllMode: draft.groupsAllMode,
     preferredCompanyId: draft.companyId,
   });
+  const showGroupsAllPill = allowedGroupIds.length > 1;
+
+  const pickDraftGroupsAll = () => {
+    setDraft((prev) => ({
+      ...prev,
+      groupsAllMode: true,
+      groupMode: false,
+      groupId: null,
+      companyId: null,
+      processId: "",
+      accountId: "",
+    }));
+  };
 
   const pickDraftGroup = (gid) => {
     setDraft((prev) => {
       if (allowedGroupIds.includes(gid)) {
         return {
           ...prev,
+          groupsAllMode: false,
           groupMode: true,
           groupId: gid,
+          companyId: null,
           processId: "",
           accountId: "",
         };
@@ -220,6 +251,7 @@ export function ReportFilterSheet({
       const pick = resolveCompanyPickForGroup(companies, gid, prev.companyId);
       return {
         ...prev,
+        groupsAllMode: false,
         groupMode: false,
         groupId: gid,
         companyId: pick?.id ?? prev.companyId,
@@ -302,7 +334,7 @@ export function ReportFilterSheet({
       dateFrom: draft.dateFrom,
       dateTo: draft.dateTo,
       activePreset: draft.activePreset,
-      scope: draftScope(draft),
+      scope: draftScope(draft, allowedGroupIds),
       processId: draft.processId,
       accountId: draft.accountId,
       showAll: draft.showAll,
@@ -393,17 +425,27 @@ export function ReportFilterSheet({
           {groupIds.length > 0 && (
             <Section title={i18n.groupId}>
               <div className="m-filter-pill-wrap">
+                {showGroupsAllPill ? (
+                  <Pill tone="violet" active={draft.groupsAllMode} onClick={pickDraftGroupsAll}>
+                    {i18n.all}
+                  </Pill>
+                ) : null}
                 {groupIds.map((gid) => (
                   <Pill
                     key={gid}
                     tone="violet"
-                    active={draft.groupId === gid}
+                    active={!draft.groupsAllMode && draft.groupId === gid}
                     onClick={() => pickDraftGroup(gid)}
                   >
                     {gid}
                   </Pill>
                 ))}
               </div>
+              {showGroupsAllPill ? (
+                <p className="m-filter-hint">
+                  {i18n.groupHint || "Tap a group for group-only · All merges allowed groups"}
+                </p>
+              ) : null}
             </Section>
           )}
 
@@ -414,6 +456,7 @@ export function ReportFilterSheet({
                 const draftRow = companies.find((row) => Number(row.id) === Number(draft.companyId));
                 const draftCode = String(draftRow?.company_id || "").trim().toUpperCase();
                 const active =
+                  !draft.groupsAllMode &&
                   !draft.groupMode &&
                   (Number(draft.companyId) === Number(c.id) || (draftCode && draftCode === label));
                 return (
@@ -423,6 +466,7 @@ export function ReportFilterSheet({
                     onClick={() =>
                       setDraft((prev) => ({
                         ...prev,
+                        groupsAllMode: false,
                         groupMode: false,
                         companyId: c.id,
                         groupId: c.group_id ? String(c.group_id).trim().toUpperCase() : null,

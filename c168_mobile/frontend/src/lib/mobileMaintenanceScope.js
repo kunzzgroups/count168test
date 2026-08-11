@@ -3,10 +3,23 @@
 import { normalizeGroupId } from "./dashboardScope.js";
 
 /**
- * Resolve a simple maintenance scope.
- * @returns {{mode:'company'|'group', companyId:number|null, groupId:string|null}|null}
+ * Resolve a simple maintenance / report scope.
+ * @returns {{mode:'company'|'group'|'groupsAll', companyId:number|null, groupId:string|null, groupIds?:string[]}|null}
  */
-export function resolveMaintenanceScope({ companyId, selectedGroup, groupMode }) {
+export function resolveMaintenanceScope({
+  companyId,
+  selectedGroup,
+  groupMode,
+  groupsAllMode = false,
+  aggregateGroupIds = [],
+}) {
+  if (groupsAllMode) {
+    const ids = (Array.isArray(aggregateGroupIds) ? aggregateGroupIds : [])
+      .map((g) => normalizeGroupId(g))
+      .filter(Boolean);
+    if (!ids.length) return null;
+    return { mode: "groupsAll", companyId: null, groupId: null, groupIds: ids };
+  }
   const group = selectedGroup ? normalizeGroupId(selectedGroup) : null;
   const cid = Number(companyId);
   if (groupMode && group) {
@@ -23,6 +36,9 @@ export function resolveMaintenanceScope({ companyId, selectedGroup, groupMode })
 
 export function maintenanceScopeIsReady(scope) {
   if (!scope) return false;
+  if (scope.mode === "groupsAll") {
+    return Array.isArray(scope.groupIds) && scope.groupIds.length > 0;
+  }
   if (scope.mode === "group") return Boolean(scope.groupId);
   return Number(scope.companyId) > 0;
 }
@@ -30,6 +46,9 @@ export function maintenanceScopeIsReady(scope) {
 /** Stable cache key for list re-fetch effects. */
 export function maintenanceScopeKey(scope) {
   if (!scope) return "";
+  if (scope.mode === "groupsAll") {
+    return `groupsAll:${(scope.groupIds || []).join(",")}`;
+  }
   return `${scope.mode}:${scope.companyId ?? ""}:${scope.groupId ?? ""}`;
 }
 

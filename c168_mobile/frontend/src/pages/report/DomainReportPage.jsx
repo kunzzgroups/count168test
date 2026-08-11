@@ -72,7 +72,7 @@ export default function DomainReportPage() {
   const seqRef = useRef(0);
   const scopeReady = maintenanceScopeIsReady(scope);
   const scopeCacheKey = maintenanceScopeKey(scope);
-  const isGroupScope = scope?.mode === "group";
+  const isGroupScope = scope?.mode === "group" || scope?.mode === "groupsAll";
 
   const loadList = useCallback(
     async (signal, { soft = false } = {}) => {
@@ -132,16 +132,19 @@ export default function DomainReportPage() {
     });
   }, [rows, query]);
 
-  const scopeLabel = s.groupMode
-    ? s.selectedGroup || i18n.group
-    : String(s.selectedCompany?.company_id || "").toUpperCase() || i18n.company;
+  const scopeLabel = s.groupsAllMode
+    ? i18n.allGroups || `${i18n.all} Groups`
+    : s.groupMode
+      ? s.selectedGroup || i18n.group
+      : String(s.selectedCompany?.company_id || "").toUpperCase() || i18n.company;
 
   const applyWithBankGuard = useCallback(
     async (next) => {
       const scopeChanged =
         next.scope.mode !== scope?.mode ||
         String(next.scope.groupId ?? "") !== String(scope?.groupId ?? "") ||
-        Number(next.scope.companyId ?? 0) !== Number(scope?.companyId ?? 0);
+        Number(next.scope.companyId ?? 0) !== Number(scope?.companyId ?? 0) ||
+        Boolean(next.scope.mode === "groupsAll") !== Boolean(scope?.mode === "groupsAll");
 
       if (scopeChanged && next.scope.mode === "company" && next.scope.companyId) {
         const row = s.companies.find((c) => Number(c.id) === Number(next.scope.companyId));
@@ -153,11 +156,11 @@ export default function DomainReportPage() {
       }
 
       if (scopeChanged) {
-        const ok = await s.applyScope(
-          next.scope.mode === "group"
-            ? { mode: "group", groupId: next.scope.groupId }
-            : { mode: "company", companyId: next.scope.companyId },
-        );
+        let draft;
+        if (next.scope.mode === "groupsAll") draft = { mode: "groupsAll" };
+        else if (next.scope.mode === "group") draft = { mode: "group", groupId: next.scope.groupId };
+        else draft = { mode: "company", companyId: next.scope.companyId, groupId: next.scope.groupId };
+        const ok = await s.applyScope(draft);
         if (!ok) return;
       }
       setDateFrom(next.dateFrom);
@@ -169,7 +172,7 @@ export default function DomainReportPage() {
   );
 
   useEffect(() => {
-    if (!s.me || s.loading || s.groupMode || !s.selectedCompany) return undefined;
+    if (!s.me || s.loading || s.groupMode || s.groupsAllMode || !s.selectedCompany) return undefined;
     const code = String(s.selectedCompany.company_id || "").trim();
     if (!code) return undefined;
     let cancelled = false;
@@ -210,6 +213,7 @@ export default function DomainReportPage() {
         dateFrom={dateFrom}
         dateTo={dateTo}
         groupMode={s.groupMode}
+        groupsAllMode={s.groupsAllMode}
         selectedGroup={s.selectedGroup}
         selectedCompany={s.selectedCompany}
         onOpen={() => setFilterOpen(true)}
@@ -242,6 +246,7 @@ export default function DomainReportPage() {
           dateTo={dateTo}
           activePreset={activePreset}
           groupMode={s.groupMode}
+          groupsAllMode={s.groupsAllMode}
           selectedGroup={s.selectedGroup}
           companyId={s.companyId}
           companies={s.companies}

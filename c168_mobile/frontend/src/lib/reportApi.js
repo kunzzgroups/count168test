@@ -115,7 +115,144 @@ export function mapDomainGroupProcesses(apiList) {
   return mapped.length > 0 ? mapped : rows;
 }
 
-export async function fetchDomainProcesses(scope, { signal } = {}) {
+function groupsAllChildScopes(scope) {
+  if (scope?.mode !== "groupsAll") return null;
+  const ids = Array.isArray(scope.groupIds) ? scope.groupIds : [];
+  return ids
+    .map((gid) => String(gid || "").trim().toUpperCase())
+    .filter(Boolean)
+    .map((groupId) => ({ mode: "group", companyId: null, groupId }));
+}
+
+async function mapGroupsAll(scope, mapper, { signal } = {}) {
+  const children = groupsAllChildScopes(scope);
+  if (!children?.length) return null;
+  const settled = await Promise.all(
+    children.map(async (child) => {
+      try {
+        return await mapper(child);
+      } catch (e) {
+        if (e?.name === "AbortError") throw e;
+        return null;
+      }
+    }),
+  );
+  return settled.filter(Boolean);
+}
+
+function domainRowKey(row) {
+  const id = Number(row?.id ?? row?.process_id);
+  if (Number.isFinite(id) && id > 0) return `id:${id}`;
+  const code = normalizeProcessCode(row?.process ?? row?.display_text ?? row?.description);
+  return code ? `code:${code}` : "";
+}
+
+function mergeDomainReportPayloads(payloads) {
+  const byKey = new Map();
+  let totals = null;
+  for (const json of payloads) {
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    for (const row of rows) {
+      const key = domainRowKey(row);
+      if (!key) continue;
+      const prev = byKey.get(key);
+      if (!prev) {
+        byKey.set(key, { ...row });
+        continue;
+      }
+      byKey.set(key, {
+        ...prev,
+        ...row,
+        turnover: reportAmountAdd(prev.turnover, row.turnover),
+        win: reportAmountAdd(prev.win, row.win),
+        lose: reportAmountAdd(prev.lose, row.lose),
+        win_lose: reportAmountAdd(prev.win_lose, row.win_lose),
+      });
+    }
+    const t = json?.totals;
+    if (!t) continue;
+    totals = totals
+      ? {
+          turnover: reportAmountAdd(totals.turnover, t.turnover),
+          win: reportAmountAdd(totals.win, t.win),
+          lose: reportAmountAdd(totals.lose, t.lose),
+          win_lose: reportAmountAdd(totals.win_lose, t.win_lose),
+        }
+      : { ...t };
+  }
+  return { success: true, data: [...byKey.values()], totals };
+}
+
+function customerRowKey(row) {
+  const acc = String(row?.account_id || row?.id || "").trim().toUpperCase();
+  const cur = String(row?.currency || "").trim().toUpperCase();
+  return acc ? `${acc}|${cur}` : "";
+}
+
+function mergeCustomerReportPayloads(payloads) {
+  const byKey = new Map();
+  let totalWin = "0";
+  let totalLose = "0";
+  let hasTotals = false;
+  for (const json of payloads) {
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    for (const row of rows) {
+      const key = customerRowKey(row);
+      if (!key) continue;
+      const prev = byKey.get(key);
+      if (!prev) {
+        byKey.set(key, { ...row });
+        continue;
+      }
+      byKey.set(key, {
+        ...prev,
+        ...row,
+        win: reportAmountAdd(prev.win, row.win),
+        lose: reportAmountAdd(prev.lose, row.lose),
+      });
+    }
+    if (json?.total_win != null || json?.total_lose != null) {
+      hasTotals = true;
+      totalWin = reportAmountAdd(totalWin, json.total_win);
+      totalLose = reportAmountAdd(totalLose, json.total_lose);
+    }
+  }
+  const out = { success: true, data: [...byKey.values()] };
+  if (hasTotals) {
+    out.total_win = totalWin;
+    out.total_lose = totalLose;
+  }
+  return out;
+}
+
+function mergeUniqueById(lists) {
+  const byId = new Map();
+  for (const list of lists) {
+    for (const row of list || []) {
+      const id = Number(row?.id);
+      const key = Number.isFinite(id) && id > 0 ? `id:${id}` : domainRowKey(row) || customerRowKey(row);
+      if (!key || byId.has(key)) continue;
+      byId.set(key, row);
+    }
+  }
+  return [...byId.values()];
+}
+
+function mergeCurrencyRows(lists) {
+  const byCode = new Map();
+  for (const list of lists) {
+    for (const row of list || []) {
+      const code = String(row?.code || row?.currency || row)
+        .trim()
+        .toUpperCase();
+      if (!/^[A-Z]{3}$/.test(code) || byCode.has(code)) continue;
+      byCode.set(code, typeof row === "object" && row ? { ...row, code } : { code });
+    }
+  }
+  return [...byCode.values()];
+}
+
+async function fetchDomainProcessesOnce(scope, { signal } = {}) {
   const params = new URLSearchParams();
   params.set("action", "processes");
   appendReportScopeParams(params, scope);
@@ -129,10 +266,17 @@ export async function fetchDomainProcesses(scope, { signal } = {}) {
   return list;
 }
 
-export async function fetchDomainReport(
-  { scope, dateFrom, dateTo, processId },
-  { signal } = {},
-) {
+export async function fetchDomainProcesses(scope, { signal } = {}) {
+  const merged = await mapGroupsAll(
+    scope,
+    (child) => fetchDomainProcessesOnce(child, { signal }),
+    { signal },
+  );
+  if (merged !== null) return mapDomainGroupProcesses(mergeUniqueById(merged));
+  return fetchDomainProcessesOnce(scope, { signal });
+}
+
+async function fetchDomainReportOnce({ scope, dateFrom, dateTo, processId }, { signal } = {}) {
   const params = new URLSearchParams();
   params.set("date_from", dateFrom);
   params.set("date_to", dateTo);
@@ -146,7 +290,23 @@ export async function fetchDomainReport(
   return json;
 }
 
-export async function fetchCustomerAccounts(scope, { signal } = {}) {
+export async function fetchDomainReport(
+  { scope, dateFrom, dateTo, processId },
+  { signal } = {},
+) {
+  const merged = await mapGroupsAll(
+    scope,
+    (child) => fetchDomainReportOnce({ scope: child, dateFrom, dateTo, processId }, { signal }),
+    { signal },
+  );
+  if (merged !== null) {
+    if (!merged.length) throw new Error("Failed to load report");
+    return mergeDomainReportPayloads(merged);
+  }
+  return fetchDomainReportOnce({ scope, dateFrom, dateTo, processId }, { signal });
+}
+
+async function fetchCustomerAccountsOnce(scope, { signal } = {}) {
   const params = new URLSearchParams();
   appendReportScopeParams(params, scope);
   const { res, json } = await fetchJson(
@@ -157,7 +317,17 @@ export async function fetchCustomerAccounts(scope, { signal } = {}) {
   return Array.isArray(json.data) ? json.data : [];
 }
 
-export async function fetchReportCurrencies(scope, { signal } = {}) {
+export async function fetchCustomerAccounts(scope, { signal } = {}) {
+  const merged = await mapGroupsAll(
+    scope,
+    (child) => fetchCustomerAccountsOnce(child, { signal }),
+    { signal },
+  );
+  if (merged !== null) return mergeUniqueById(merged);
+  return fetchCustomerAccountsOnce(scope, { signal });
+}
+
+async function fetchReportCurrenciesOnce(scope, { signal } = {}) {
   const params = new URLSearchParams();
   appendReportScopeParams(params, scope);
   const { res, json } = await fetchJson(
@@ -168,7 +338,17 @@ export async function fetchReportCurrencies(scope, { signal } = {}) {
   return Array.isArray(json.data) ? json.data : [];
 }
 
-export async function fetchCustomerReport(
+export async function fetchReportCurrencies(scope, { signal } = {}) {
+  const merged = await mapGroupsAll(
+    scope,
+    (child) => fetchReportCurrenciesOnce(child, { signal }),
+    { signal },
+  );
+  if (merged !== null) return mergeCurrencyRows(merged);
+  return fetchReportCurrenciesOnce(scope, { signal });
+}
+
+async function fetchCustomerReportOnce(
   {
     scope,
     dateFrom,
@@ -195,4 +375,36 @@ export async function fetchCustomerReport(
   );
   assertApiOk(res, json, "Failed to load report");
   return json;
+}
+
+export async function fetchCustomerReport(
+  {
+    scope,
+    dateFrom,
+    dateTo,
+    accountId,
+    showAll,
+    selectedCurrencies,
+    showAllCurrencies,
+  },
+  { signal } = {},
+) {
+  const args = {
+    dateFrom,
+    dateTo,
+    accountId,
+    showAll,
+    selectedCurrencies,
+    showAllCurrencies,
+  };
+  const merged = await mapGroupsAll(
+    scope,
+    (child) => fetchCustomerReportOnce({ ...args, scope: child }, { signal }),
+    { signal },
+  );
+  if (merged !== null) {
+    if (!merged.length) throw new Error("Failed to load report");
+    return mergeCustomerReportPayloads(merged);
+  }
+  return fetchCustomerReportOnce({ ...args, scope }, { signal });
 }

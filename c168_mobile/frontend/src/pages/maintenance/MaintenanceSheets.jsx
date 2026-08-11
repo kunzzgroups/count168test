@@ -30,18 +30,20 @@ export function MaintenanceFilterBar({
   dateFrom,
   dateTo,
   groupMode,
+  groupsAllMode = false,
   selectedGroup,
   selectedCompany,
   onOpen,
 }) {
   const groupId = String(
-    (groupMode ? selectedGroup : selectedCompany?.group_id) || "",
+    (groupsAllMode ? "" : groupMode ? selectedGroup : selectedCompany?.group_id) || "",
   )
     .trim()
     .toUpperCase();
-  const companyCode = groupMode
-    ? ""
-    : String(selectedCompany?.company_id || "").trim().toUpperCase();
+  const companyCode =
+    groupsAllMode || groupMode
+      ? ""
+      : String(selectedCompany?.company_id || "").trim().toUpperCase();
 
   return (
     <button type="button" onClick={onOpen} className="m-filter-bar tap-scale" aria-label={i18n.filter}>
@@ -58,7 +60,8 @@ export function MaintenanceFilterBar({
             i18n={i18n}
             groupId={groupId}
             companyCode={companyCode}
-            groupOnlyMode={groupMode}
+            groupsAllMode={groupsAllMode}
+            groupOnlyMode={groupMode && !groupsAllMode}
           />
         </div>
         <span className="m-filter-bar-switch">{i18n.switchCompany || "Switch"}</span>

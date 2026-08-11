@@ -34,6 +34,7 @@ export function useMaintenanceSession({ canAccess }) {
   const [companyId, setCompanyId] = useState(null);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupMode, setGroupMode] = useState(false);
+  const [groupsAllMode, setGroupsAllMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState(false);
   const [error, setError] = useState("");
@@ -86,6 +87,7 @@ export function useMaintenanceSession({ canAccess }) {
         setCompanyId(initial.companyId);
         setSelectedGroup(initial.selectedGroup);
         setGroupMode(!initial.companyId && Boolean(initial.selectedGroup));
+        setGroupsAllMode(false);
       } catch (e) {
         if (e?.name !== "AbortError") setError(e?.message || "Failed to load");
       } finally {
@@ -96,17 +98,25 @@ export function useMaintenanceSession({ canAccess }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
-  const scope = useMemo(
-    () => resolveMaintenanceScope({ companyId, selectedGroup, groupMode }),
-    [companyId, selectedGroup, groupMode],
-  );
-
   const groupIds = useMemo(() => resolveMobileGroupIds(companies, me), [companies, me]);
   /** Group ledger scope only for users the backend will accept (same gate as dashboard/transaction). */
   const allowedGroupIds = useMemo(
     () => groupIds.filter((g) => canUseGroupOnlyMode(me, g, companies)),
     [groupIds, me, companies],
   );
+
+  const scope = useMemo(
+    () =>
+      resolveMaintenanceScope({
+        companyId,
+        selectedGroup,
+        groupMode,
+        groupsAllMode,
+        aggregateGroupIds: allowedGroupIds,
+      }),
+    [companyId, selectedGroup, groupMode, groupsAllMode, allowedGroupIds],
+  );
+
   const selectedCompany = useMemo(
     () => companies.find((row) => Number(row.id) === Number(companyId)) || null,
     [companies, companyId],
@@ -117,12 +127,22 @@ export function useMaintenanceSession({ canAccess }) {
       let next = draft;
       const gid = next?.groupId ? String(next.groupId).trim().toUpperCase() : null;
 
+      if (next?.mode === "groupsAll") {
+        if (!allowedGroupIds.length) return false;
+        setGroupsAllMode(true);
+        setGroupMode(false);
+        setSelectedGroup(null);
+        setCompanyId(null);
+        return true;
+      }
+
       if (next?.mode === "group" && gid) {
         if (!canUseGroupOnlyMode(me, gid, companies)) {
           const pick = resolveCompanyPickForGroup(companies, gid, companyId);
           if (!pick?.id) return false;
           next = { mode: "company", companyId: Number(pick.id), groupId: gid };
         } else {
+          setGroupsAllMode(false);
           setGroupMode(true);
           setSelectedGroup(gid);
           setCompanyId(null);
@@ -142,12 +162,13 @@ export function useMaintenanceSession({ canAccess }) {
       }
       const row = companies.find((c) => Number(c.id) === nextId) || null;
       const group = gid || (row ? resolveViewGroupForCompany(row, null) : null);
+      setGroupsAllMode(false);
       setGroupMode(false);
       setSelectedGroup(group);
       setCompanyId(nextId);
       return true;
     },
-    [companies, companyId, me, notify],
+    [allowedGroupIds, companies, companyId, me, notify],
   );
 
   const logout = useCallback(async () => {
@@ -165,11 +186,11 @@ export function useMaintenanceSession({ canAccess }) {
       buildMobileRealtimeScopeFromGc({
         companyId,
         selectedGroup,
-        groupsAllMode: false,
+        groupsAllMode,
         groupAllMode: false,
       }),
     );
-  }, [me, companyId, selectedGroup, groupMode]);
+  }, [me, companyId, selectedGroup, groupMode, groupsAllMode]);
 
   return {
     lang,
@@ -180,6 +201,7 @@ export function useMaintenanceSession({ canAccess }) {
     companyId,
     selectedGroup,
     groupMode,
+    groupsAllMode,
     scope,
     groupIds,
     allowedGroupIds,
