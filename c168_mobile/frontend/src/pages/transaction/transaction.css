@@ -490,6 +490,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: -0.04em;
 }
