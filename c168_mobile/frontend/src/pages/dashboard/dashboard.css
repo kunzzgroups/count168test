@@ -356,7 +356,7 @@
   font-size: clamp(28px, 9vw, 40px);
   font-weight: 700;
   line-height: 1;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -625,12 +625,13 @@
 
 .m-dash-card-badge {
   flex-shrink: 0;
-  border-radius: 0.5rem;
-  background: #f8fafc;
-  padding: 0.25rem 0.625rem;
-  font-size: var(--m-text-secondary);
+  border-radius: 999px;
+  background: rgba(118, 118, 128, 0.12);
+  padding: 0.2rem 0.55rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  color: var(--m-color-muted);
+  letter-spacing: -0.01em;
+  color: #636366;
 }
 
 .m-dash-card-empty {
@@ -820,54 +821,102 @@
   padding: 0.875rem 1.25rem;
 }
 
-.m-dash-card--with-tabs {
+/* Grouped earnings panel — one card, pie + list */
+.m-dash-earnings-panel {
+  overflow: hidden;
+}
+
+.m-dash-earnings-panel-top {
+  padding: 1rem 1.15rem 1.1rem;
+}
+
+.m-dash-earnings-panel--segmented .m-dash-earnings-panel-top {
   padding-top: 0.85rem;
 }
 
-.m-dash-earnings-tabs {
+.m-dash-earnings-panel-footer {
+  border-top: 1px solid rgba(60, 60, 67, 0.08);
+  background: rgba(242, 242, 247, 0.45);
+}
+
+.m-dash-currency-list--embedded .m-dash-currency-rows > li + li {
+  border-top-color: rgba(60, 60, 67, 0.08);
+}
+
+.m-dash-currency-list--embedded .m-dash-currency-row {
+  padding: 0.8rem 1.15rem;
+}
+
+/* iOS segmented control */
+.m-dash-segment {
+  --seg-count: 2;
+  --seg-index: 0;
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.2rem;
-  margin: 0 0 0.85rem;
-  padding: 0.2rem;
-  border-radius: 0.75rem;
-  background: var(--m-color-surface-muted, #f1f5f9);
+  grid-template-columns: repeat(var(--seg-count), minmax(0, 1fr));
+  align-items: stretch;
+  margin: 0 0 0.9rem;
+  padding: 2px;
+  height: 2rem;
+  border-radius: 9px;
+  background: rgba(118, 118, 128, 0.12);
+  box-shadow: inset 0 0.5px 0 rgba(0, 0, 0, 0.04);
 }
 
-.m-dash-earnings-tabs--count-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.m-dash-earnings-tab {
-  min-width: 0;
-  border: 0;
-  border-radius: 0.55rem;
-  padding: 0.5rem 0.35rem;
-  font-size: clamp(1.2rem, 0.15vw + 1.0rem, 1.3rem);
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  color: var(--m-color-muted, #64748b);
-  background: transparent;
-  transition:
-    background-color 140ms ease-out,
-    color 140ms ease-out,
-    box-shadow 140ms ease-out,
-    transform 100ms ease-out;
-}
-
-.m-dash-earnings-tab:active {
-  transform: scale(0.97);
-}
-
-.m-dash-earnings-tab.is-active {
-  color: var(--m-color-primary, #2f6bf6);
+.m-dash-segment-thumb {
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / var(--seg-count));
+  border-radius: 7px;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 10px -6px rgba(47, 107, 246, 0.35);
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.04),
+    0 1px 3px rgba(0, 0, 0, 0.1);
+  transform: translate3d(calc(var(--seg-index) * 100%), 0, 0);
+  transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
 }
 
-.m-dash-earnings-tab.is-active:active {
-  transform: scale(0.98);
+.m-dash-segment-btn {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0 0.2rem;
+  background: transparent;
+  color: #3a3a3c;
+  font-size: 1.2rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  transition: color 160ms ease-out, opacity 100ms ease-out;
+}
+
+.m-dash-segment-btn.is-active {
+  color: #1c1c1e;
+  font-weight: 600;
+}
+
+.m-dash-segment-btn.is-pressed {
+  opacity: 0.55;
+}
+
+.m-dash-segment-label {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m-dash-segment-thumb {
+    transition: none;
+  }
 }
 
 .m-dash-currency-flag {
@@ -975,6 +1024,8 @@
   font-size: 1.375rem;
   font-weight: 700;
   line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
   color: var(--m-color-text);
 }
 

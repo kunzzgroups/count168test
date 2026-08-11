@@ -18,6 +18,8 @@ const CurrencyListCard = memo(function CurrencyListCard({
   loading,
   title,
   isCompanyBreakdown = false,
+  embedded = false,
+  hideTitle = false,
 }) {
   const sorted = [...rows].sort((a, b) => {
     const av = Math.abs(Number(a.earningsConverted ?? a.earnings) || 0);
@@ -27,26 +29,32 @@ const CurrencyListCard = memo(function CurrencyListCard({
   const displayRows = sorted.length ? sorted : [];
   const headTitle = title || (isCompanyBreakdown ? i18n.companies : i18n.currencies);
   const showRate = !isCompanyBreakdown && useConverted;
+  const Root = embedded ? "div" : "section";
+  const rootClass = embedded
+    ? "m-dash-currency-list m-dash-currency-list--embedded"
+    : "m-dash-card m-dash-currency-list";
 
   if (!rows?.length && !loading) {
     return (
-      <section className="m-dash-card m-dash-card--padded">
-        <h2 className="m-dash-card-title">{headTitle}</h2>
-        <p className="m-dash-card-empty" style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>
+      <Root className={embedded ? "m-dash-currency-list m-dash-currency-list--embedded" : "m-dash-card m-dash-card--padded"}>
+        {!hideTitle ? <h2 className="m-dash-card-title">{headTitle}</h2> : null}
+        <p className="m-dash-card-empty" style={{ marginTop: embedded ? "0.75rem" : "1.5rem", marginBottom: "0.5rem" }}>
           {i18n.noData}
         </p>
-      </section>
+      </Root>
     );
   }
 
   return (
-    <section className="m-dash-card m-dash-currency-list">
-      <div className="m-dash-currency-list-head">
-        <h2 className="m-dash-card-title">{headTitle}</h2>
-        {!loading && displayRows.length > 0 ? (
-          <span className="m-dash-currency-list-count">{displayRows.length}</span>
-        ) : null}
-      </div>
+    <Root className={rootClass}>
+      {!hideTitle ? (
+        <div className="m-dash-currency-list-head">
+          <h2 className="m-dash-card-title">{headTitle}</h2>
+          {!loading && displayRows.length > 0 ? (
+            <span className="m-dash-currency-list-count">{displayRows.length}</span>
+          ) : null}
+        </div>
+      ) : null}
 
       <ul className="m-dash-currency-rows">
         {displayRows.map((row, index) => {
@@ -110,7 +118,7 @@ const CurrencyListCard = memo(function CurrencyListCard({
           );
         })}
       </ul>
-    </section>
+    </Root>
   );
 });
 
