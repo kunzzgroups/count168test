@@ -37,6 +37,17 @@ function sanitizeAmountInput(value) {
   return hasLeadingMinus ? `-${unsigned}` : unsigned;
 }
 
+/** Desktop Fee: digits only, no minus. */
+function sanitizePositiveAmountInput(value) {
+  return sanitizeAmountInput(value).replace(/-/g, "");
+}
+
+/** Desktop PT-Fee: always show leading minus while typing (absolute subtract). */
+function sanitizePlatformFeeInput(value) {
+  const digits = sanitizePositiveAmountInput(value);
+  return digits ? `-${digits}` : "";
+}
+
 /**
  * iOS-safe date control: visible formatted row stays fixed height;
  * native picker is an opacity-0 overlay (avoids type=date blowing the sheet).
@@ -132,6 +143,8 @@ export default function AddTransactionSheet({
   const [rateExchangeRateRaw, setRateExchangeRateRaw] = useState("");
   const [rateCurrencyToAmount, setRateCurrencyToAmount] = useState("");
   const [rateToAmountGrossStr, setRateToAmountGrossStr] = useState("");
+  /** Paired with desktop `rateFromAmountGrossStr` for primary Reverse. */
+  const [rateFromAmountGrossStr, setRateFromAmountGrossStr] = useState("");
   const [rateMiddlemanAccount, setRateMiddlemanAccount] = useState(null);
   const [rateMiddlemanRate, setRateMiddlemanRate] = useState("");
   const [rateMiddlemanAmount, setRateMiddlemanAmount] = useState("");
@@ -165,6 +178,7 @@ export default function AddTransactionSheet({
     setRateExchangeRateRaw("");
     setRateCurrencyToAmount("");
     setRateToAmountGrossStr("");
+    setRateFromAmountGrossStr("");
     setRateMiddlemanAccount(null);
     setRateMiddlemanRate("");
     setRateMiddlemanAmount("");
@@ -481,7 +495,7 @@ export default function AddTransactionSheet({
           {isSearchMode ? null : (
             <>
           <DateTapRow
-            label={m.transactionDate}
+            label={isRate ? m.date || m.rateTransactionDate : m.transactionDate}
             value={txDateYmd}
             disabled={mutationsBlocked}
             onChange={setTxDateYmd}
@@ -564,12 +578,15 @@ export default function AddTransactionSheet({
                   title={m.reverseAccounts}
                   aria-label={m.reverseAccounts}
                   onClick={() => {
+                    // Desktop: swap primary To/From + currency amounts / gross slots together.
                     setRateToAccount(rateFromAccount);
                     setRateFromAccount(rateToAccount);
                     const tmpAmt = rateCurrencyFromAmount;
                     setRateCurrencyFromAmount(rateCurrencyToAmount);
                     setRateCurrencyToAmount(tmpAmt);
-                    setRateToAmountGrossStr(tmpAmt ? String(tmpAmt).replace(/,/g, "") : "");
+                    const tmpGrossTo = rateToAmountGrossStr;
+                    setRateToAmountGrossStr(rateFromAmountGrossStr);
+                    setRateFromAmountGrossStr(tmpGrossTo);
                   }}
                   className="m-tx-form-btn m-tx-form-btn--outline tap-scale"
                 >
@@ -641,27 +658,10 @@ export default function AddTransactionSheet({
                     aria-label={m.toAccount}
                   />
                 </div>
-                <button
-                  type="button"
-                  disabled={mutationsBlocked || !rateCurrencyToAmount}
-                  title={m.reverseAccounts}
-                  aria-label={m.reverseAccounts}
-                  onClick={() => {
-                    const tmpAmt = rateCurrencyFromAmount;
-                    setRateCurrencyFromAmount(rateCurrencyToAmount);
-                    setRateCurrencyToAmount(tmpAmt);
-                    setRateToAmountGrossStr(tmpAmt ? String(tmpAmt).replace(/,/g, "") : "");
-                  }}
-                  className="m-tx-form-btn m-tx-form-btn--outline tap-scale"
-                >
-                  {m.reverse}
-                </button>
               </div>
 
               <div className="m-tx-form-section">
-                <p className="m-tx-form-label m-tx-form-label--optional">
-                  {m.account} <span>({m.optional})</span>
-                </p>
+                <p className="m-tx-form-label">{m.account}</p>
                 <AccountPicker
                   label=""
                   placeholder={m.selectToAccount}
@@ -719,7 +719,10 @@ export default function AddTransactionSheet({
                     inputMode="decimal"
                     value={rateMiddlemanInputAmount}
                     disabled={mutationsBlocked}
-                    onChange={(e) => setRateMiddlemanInputAmount(sanitizeAmountInput(e.target.value))}
+                    onChange={(e) => setRateMiddlemanInputAmount(sanitizePositiveAmountInput(e.target.value))}
+                    onKeyDown={(e) => {
+                      if (e.key === "-" || e.key === "Subtract") e.preventDefault();
+                    }}
                     placeholder={m.fee}
                     className="m-tx-form-input"
                     aria-label={m.fee}
@@ -729,7 +732,7 @@ export default function AddTransactionSheet({
                     inputMode="decimal"
                     value={rateMiddlemanPlatformFee}
                     disabled={mutationsBlocked}
-                    onChange={(e) => setRateMiddlemanPlatformFee(sanitizeAmountInput(e.target.value))}
+                    onChange={(e) => setRateMiddlemanPlatformFee(sanitizePlatformFeeInput(e.target.value))}
                     placeholder={m.platformFee}
                     className="m-tx-form-input"
                     aria-label={m.platformFee}
