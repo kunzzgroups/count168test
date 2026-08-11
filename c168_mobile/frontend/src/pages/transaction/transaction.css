@@ -295,16 +295,16 @@
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
-  /* Dense ledger: caption→micro so Acc/B/F/W/L/CR/DR/Bal fit without ellipsis */
-  font-size: clamp(0.5625rem, 2.4vw, 0.6875rem);
+  /* iPhone-narrow: keep ~8–9px so 1,345,849.56 fits without … */
+  font-size: clamp(0.5rem, 1.85vw, 0.5625rem);
 }
 
 .m-tx-dense-col--acc {
-  width: 22%;
+  width: 17%;
 }
 
 .m-tx-dense-col--num {
-  width: 19.5%;
+  width: 20.75%;
 }
 
 .m-tx-dense-th,
@@ -356,7 +356,7 @@
 
 .m-tx-dense-th--acc,
 .m-tx-dense-td--acc {
-  width: 22%;
+  width: 17%;
   min-width: 0;
   text-align: left;
 }
@@ -367,10 +367,10 @@
 }
 
 .m-tx-dense-th--num {
-  width: 19.5%;
+  width: 20.75%;
   min-width: 0;
   text-align: right;
-  padding-right: 0.25rem;
+  padding-right: 0.15rem;
 }
 
 /* Side Total summary card (above Acc table) */
@@ -486,12 +486,12 @@
 .m-tx-dense-td--num {
   min-width: 0;
   text-align: right;
-  padding-right: 0.25rem;
+  padding-right: 0.15rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
 }
 
 .m-tx-dense-td--empty {
