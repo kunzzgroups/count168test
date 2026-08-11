@@ -8,6 +8,7 @@ import {
   resolveMobileGroupIds,
 } from "../lib/dashboardScope.js";
 import { fetchJson, assertApiOk } from "../lib/fetchJson.js";
+import { readLoginLang, writeLoginLang } from "../lib/loginLang.js";
 import { canUseGroupOnlyMode, filterCompaniesForUserScope } from "../lib/loginScope.js";
 import { accountScopeIsGroupOnly, resolveAccountScopeDraft } from "../lib/mobileAccountScope.js";
 import { isPartnershipAuditReadOnlyLocked } from "../lib/partnershipAuditReadOnly.js";
@@ -68,7 +69,7 @@ async function postUserlist(body, signal) {
 
 export function useMobileAdminUsers() {
   const navigate = useNavigate();
-  const [lang, setLangState] = useState(() => localStorage.getItem("login_lang") || "en");
+  const [lang, setLangState] = useState(() => readLoginLang());
   const i18n = useMemo(() => adminText(lang), [lang]);
   const [me, setMe] = useState(null);
   const [companies, setCompanies] = useState([]);
@@ -159,9 +160,7 @@ export function useMobileAdminUsers() {
   }, []);
 
   const setLang = useCallback((next) => {
-    const normalized = next === "zh" ? "zh" : "en";
-    localStorage.setItem("login_lang", normalized);
-    setLangState(normalized);
+    setLangState(writeLoginLang(next));
   }, []);
 
   useEffect(() => {

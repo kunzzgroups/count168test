@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SECONDARY_VERIFY_I18N, localizeAuthApiMessage } from "../../translateFile/authTranslate.js";
+import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
 import { resolveMobileLandingPath } from "../../utils/mobilePermissions.js";
 import { useAuthBackground } from "./useAuthBackground.js";
@@ -27,7 +28,7 @@ export default function SecondaryPasswordPage({ variant }) {
   const config = VARIANT_CONFIG[variant];
   const navigate = useNavigate();
   const inputRef = useRef(null);
-  const [lang, setLang] = useState(() => localStorage.getItem("login_lang") || "en");
+  const [lang, setLang] = useState(() => readLoginLang());
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -38,7 +39,7 @@ export default function SecondaryPasswordPage({ variant }) {
   useAuthBackground();
 
   useEffect(() => {
-    localStorage.setItem("login_lang", lang);
+    writeLoginLang(lang);
   }, [lang]);
 
   useEffect(() => {

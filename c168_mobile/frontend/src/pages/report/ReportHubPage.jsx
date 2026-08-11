@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import { fetchJson } from "../../lib/fetchJson.js";
+import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { reportText } from "../../translateFile/reportTranslate.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
 import { canAccessReport, resolveMobileLandingPath } from "../../utils/mobilePermissions.js";
@@ -11,13 +12,11 @@ export default function ReportHubPage() {
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [lang, setLangState] = useState(() => localStorage.getItem("login_lang") || "en");
+  const [lang, setLangState] = useState(() => readLoginLang());
   const i18n = useMemo(() => reportText(lang), [lang]);
 
   const setLang = useCallback((next) => {
-    const normalized = next === "zh" ? "zh" : "en";
-    localStorage.setItem("login_lang", normalized);
-    setLangState(normalized);
+    setLangState(writeLoginLang(next));
   }, []);
 
   useEffect(() => {

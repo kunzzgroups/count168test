@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { LOGIN_I18N, localizeAuthApiMessage } from "../../translateFile/authTranslate.js";
+import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
 import { resolveMobileLandingPath } from "../../utils/mobilePermissions.js";
 import { useAuthBackground } from "./useAuthBackground.js";
@@ -138,7 +139,7 @@ export default function LoginPage() {
   const [maintenanceList, setMaintenanceList] = useState([]);
   const [modal, setModal] = useState({ open: false, title: "Notice", message: "" });
   const [submitting, setSubmitting] = useState(false);
-  const [lang, setLang] = useState(() => localStorage.getItem("login_lang") || "en");
+  const [lang, setLang] = useState(() => readLoginLang());
 
   const verifyTimeoutRef = useRef(null);
   const langThumbRef = useRef(null);
@@ -164,7 +165,7 @@ export default function LoginPage() {
   }, [roleFromUrl]);
 
   useEffect(() => {
-    localStorage.setItem("login_lang", lang);
+    writeLoginLang(lang);
   }, [lang]);
 
   useEffect(() => {

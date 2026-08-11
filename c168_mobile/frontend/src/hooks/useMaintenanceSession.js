@@ -9,6 +9,7 @@ import {
   resolveMobileGroupIds,
   resolveViewGroupForCompany,
 } from "../lib/dashboardScope.js";
+import { readLoginLang, writeLoginLang } from "../lib/loginLang.js";
 import { canUseGroupOnlyMode, filterCompaniesForUserScope } from "../lib/loginScope.js";
 import { resolveMaintenanceScope } from "../lib/mobileMaintenanceScope.js";
 import { maintenanceText } from "../translateFile/maintenanceTranslate.js";
@@ -21,7 +22,7 @@ import { resolveMobileLandingPath } from "../utils/mobilePermissions.js";
  */
 export function useMaintenanceSession({ canAccess }) {
   const navigate = useNavigate();
-  const [lang, setLangState] = useState(() => localStorage.getItem("login_lang") || "en");
+  const [lang, setLangState] = useState(() => readLoginLang());
   const i18n = useMemo(() => maintenanceText(lang), [lang]);
 
   const [me, setMe] = useState(null);
@@ -36,9 +37,7 @@ export function useMaintenanceSession({ canAccess }) {
   const toastTimer = useRef(null);
 
   const setLang = useCallback((next) => {
-    const normalized = next === "zh" ? "zh" : "en";
-    localStorage.setItem("login_lang", normalized);
-    setLangState(normalized);
+    setLangState(writeLoginLang(next));
   }, []);
 
   const notify = useCallback((message, tone = "success") => {

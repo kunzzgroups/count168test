@@ -4,17 +4,16 @@ import MobileShell from "../components/layout/MobileShell.jsx";
 import { DASHBOARD_I18N } from "../translateFile/dashboardTranslate.js";
 import { buildApiUrl } from "../utils/apiUrl.js";
 import { fetchJson } from "../lib/fetchJson.js";
+import { readLoginLang, writeLoginLang } from "../lib/loginLang.js";
 import "./stub.css";
 
 export default function StubPage({ title, backTo = "/dashboard" }) {
   const [me, setMe] = useState(null);
-  const [lang, setLangState] = useState(() => localStorage.getItem("login_lang") || "en");
+  const [lang, setLangState] = useState(() => readLoginLang());
   const i18n = useMemo(() => DASHBOARD_I18N[lang] || DASHBOARD_I18N.en, [lang]);
 
   const setLang = useCallback((next) => {
-    const normalized = next === "zh" ? "zh" : "en";
-    localStorage.setItem("login_lang", normalized);
-    setLangState(normalized);
+    setLangState(writeLoginLang(next));
   }, []);
 
   useEffect(() => {
