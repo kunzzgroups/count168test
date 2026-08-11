@@ -50,6 +50,10 @@ function DenseAccountTable({ side, rows, showName, m, totals, onOpenHistory, onP
   return (
     <div className="m-tx-dense-wrap">
       <table className="m-tx-dense-table">
+        <colgroup>
+          <col className="m-tx-dense-col--acc" />
+          <col className="m-tx-dense-col--num" span={4} />
+        </colgroup>
         <thead>
           <tr>
             <th scope="col" className="m-tx-dense-th m-tx-dense-th--acc">
