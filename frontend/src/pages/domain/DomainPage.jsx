@@ -104,10 +104,13 @@ export default function DomainPage() {
       .catch(() => {});
   }
 
+  const meRef = useRef(me);
+  meRef.current = me;
+
   const loadDomains = useCallback(async ({ silent = false } = {}) => {
     try {
       // UI may already show C168 via sessionStorage while PHP session lags.
-      const synced = await ensureC168DomainApiSession(me);
+      const synced = await ensureC168DomainApiSession(meRef.current);
       if (!synced) {
         if (!silent) setLoadError(getDomainText(lang, "failedToLoadDomainData"));
         return;
@@ -129,9 +132,10 @@ export default function DomainPage() {
     } catch {
       if (!silent) setLoadError(getDomainText(lang, "failedToLoadDomainData"));
     }
-  }, [lang, me]);
+  }, [lang]);
 
   // ── Initial data load (session from AuthenticatedLayout) ─────────────────────
+  const bootCompanyId = me?.company_id ?? null;
   useEffect(() => {
     if (!sessionReady || !me) return;
 
@@ -158,7 +162,10 @@ export default function DomainPage() {
     return () => {
       cancelled = true;
     };
-  }, [sessionReady, me, navigate, loadDomains, lang]);
+    // Do not depend on full `me` object identity — session patches used to retrigger
+    // this effect in a loop. Re-boot when sessionReady / active company id changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- me read from render with bootCompanyId
+  }, [sessionReady, bootCompanyId, navigate, loadDomains, lang]);
 
   useRealtimeDomain(REALTIME_DOMAINS.DOMAIN, () => {
     void loadDomains({ silent: true });
