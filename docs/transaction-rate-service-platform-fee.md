@@ -3,7 +3,7 @@
 > 范围：Transaction Payment（桌面 `/transaction` + mobile 同 API）在 **Type = RATE** 时，**Service Fee** 与 **Platform Fee** 的计算、提交、落库、Payment History 展示。
 >
 > 日期：2026-08-01  
-> 状态：桌面 Rate-Mul 只接受 `/newDivisor`（除法模式）或纯正数（乘法模式，FX 乘法写法时代表新汇率、自动做差）两种写法，纯负数无效（入库 6 位）；Fee / PT-Fee 桌面均只允许正数入力，PT-Fee 恒代表减法（无加法算法）；Mobile 暂未同步本次改动，仍用旧的正负号约定。
+> 状态：桌面与 Mobile Rate-Mul 均只接受 `/newDivisor`（除法模式）或纯正数（乘法模式，FX 乘法写法时代表新汇率、自动做差）两种写法，纯负数无效（入库 6 位）；Fee / PT-Fee 均只允许正数入力，PT-Fee 恒代表减法（无加法算法）。Mobile 已与桌面共用同一套 `transactionSubmitHelpers` 逻辑。
 >
 > 完整 RATE 手册仍见 `docs/transaction-rate-manual-logic.md`；其中 §18「Platform Fee 仅 UI」**已过时**，以本文为准。
 
@@ -24,13 +24,13 @@
 
 | 项目 | 规则 |
 |------|------|
-| **Service Fee** | 只允许**正数**入力（无负数算法）。**桌面**：From RATE 扣 Fee（如 310→300）；**不**在 From 写 `RATE_FEE`；To = gross（已含 Fee 口径）。发 `rate_skip_from_service_fee=1`。**Mobile**：仍 sms Remark。 |
-| **Platform Fee（PT-Fee）** | 只允许**正数**入力，恒代表**减法**（无加法算法）：From RATE 不动；Select From 另写 **正数** `RATE_PLATFORM_FEE`（+PT）；Middle = `Fee − PT`；无 Middle Remark。**Mobile**：暂未同步，仍走旧的正负号约定（Remark-only）。 |
+| **Service Fee** | 只允许**正数**入力（无负数算法）。桌面 + Mobile：From RATE 扣 Fee（如 310→300）；**不**在 From 写 `RATE_FEE`；To = gross（已含 Fee 口径）。发 `rate_skip_from_service_fee=1`。 |
+| **Platform Fee（PT-Fee）** | 只允许**正数**入力，恒代表**减法**（无加法算法）：From RATE 不动；Select From 另写 **正数** `RATE_PLATFORM_FEE`（+PT）；Middle = `Fee − PT`；无 Middle Remark。桌面 + Mobile 同路径。 |
 | **Rate-Mul（桌面）** | 只接受两种写法：**`/newDivisor`**（跟 FX Rate 同款除法写法，仅在 FX Rate 本身也是 `/divisor` 时生效，直接当新除数）或**纯正数**（FX Rate 是 `/divisor` 时当点数直接用 `×1000`；FX Rate 是乘法写法时当「新汇率」，带符号跟原汇率做差再 `×fromAmount`，Rate-Mul 比原汇率大时结果为负）。**纯负数无效**。详见 §3.1。 |
 | **前提** | 第二组账户（Transfer To / From）都选了，才会写 transfer 腿、Middle-Man（及 PT-Fee 的 Remark / fallback）。 |
 
 **为何桌面拆出 `RATE_FEE`：**  
-把 Service Fee 与正常 RATE 兑换行分开展示；From 腿先扣掉 Fee 再写 `RATE_FEE`，净额不变、不双计。Mobile 仍走旧 Remark 路径（尚未同步）。
+把 Service Fee 与正常 RATE 兑换行分开展示；From 腿先扣掉 Fee 再写 `RATE_FEE`，净额不变、不双计。桌面 + Mobile 同路径。
 
 > 旧说明「为何去掉 RATE_FEE」已由桌面新路径取代；存量仅-sms Remark 的单仍可展示。
 
@@ -55,7 +55,7 @@
 
 **文件：** `frontend/src/pages/transaction/hooks/useTransactionForm.js`  
 **助手：** `frontend/src/pages/transaction/lib/transactionSubmitHelpers.js`  
-（mobile：`c168_mobile/frontend/src/lib/transactionSubmitHelpers.js` **暂未同步** Rate-Mul 负数 / 禁 `/expr`）
+（mobile：`c168_mobile/frontend/src/lib/transactionSubmitHelpers.js`，已与桌面同步）
 
 ### 3.1 Rate-Mul 佣金
 
@@ -114,7 +114,7 @@ transfer From 侧金额 = gross − rateMul − Service Fee
 ```
 
 - From RATE 不因 PT-Fee 变动；PT-Fee 只在 Select From 上多写一笔正数 `RATE_PLATFORM_FEE`；Middle = `Fee − PT`。
-- **Mobile**：暂未同步，仍走旧的正负号约定（负数=折扣）。
+- 桌面 + Mobile：同路径（正数 PT，`rate_platform_fee_from_credit=1`）。
 
 ---
 
@@ -275,14 +275,14 @@ Payment History
 3. **Service Fee 仅 Remark**：主单 `sms` → 第二币种 From 腿 Remark。  
 4. **旧 `RATE_FEE` 行**：历史/搜索仍识别，仅兼容存量数据。  
 5. **正 PT-Fee**：From RATE 扣 PT；Middle=`Fee+PT`；不写 `RATE_PLATFORM_FEE`。  
-6. **负 PT-Fee（桌面）**：From 独立正数 Fee 行；Middle=`Fee−|PT|`；无 Remark。Mobile 仍 Remark。  
-7. **桌面 Service Fee**：独立 `RATE_FEE` + From 腿扣 Fee；To = gross。Mobile 暂未同步。
+6. **正 PT-Fee（桌面 + Mobile）**：From 独立正数 `RATE_PLATFORM_FEE` 行；Middle=`Fee−PT`；无 Remark。  
+7. **Service Fee（桌面 + Mobile）**：`rate_skip_from_service_fee=1` + From 腿扣 Fee；To = gross。
 
 ### 2026-08-01 追加变更
 
 8. **Fee 去掉负数算法**：Fee 只允许正数入力，移除所有"负数 Fee 反向调整 gross"的代码分支（`buildRatePayload` / `useTransactionForm.js` 各一处）。
 9. **PT-Fee 去掉加法算法，统一为减法**：`computeRateMiddlemanProfit` 不再区分正负号，恒为 `Fee − PT`；移除"正 PT 额外扣 From/表单预览"的加法路径及其专用函数 `positivePlatformFeeDeduction`；未使用的 `negativePlatformFeeCredit` 一并删除。PT-Fee 现在直接输入正数（如 `1.5`）即代表减法，无需再输入 `-1.5`。
-10. **后端同步**：`submit_api.php` 里 `RATE_PLATFORM_FEE` / Middle-Man 必填校验的判断从 `money_cmp(...) < 0` 改为 `> 0`，与前端新约定对齐。**Mobile 暂未跟进**，仍按旧的"负数=折扣"约定发请求，因此 Mobile 提交的 Platform Fee 在后端会被忽略，需之后单独同步。
+10. **后端同步**：`submit_api.php` 里 `RATE_PLATFORM_FEE` / Middle-Man 必填校验按 `> 0`；桌面与 Mobile 前端均按正数 PT / `rate_skip_from_service_fee=1` 发请求。
 11. **UI**：Fee 输入框加 `min="0"` 且屏蔽 `-` 键；Platform Fee 输入框改为自动加负号（输完数字自动变成 `-1.5`），不让用户手输 `-`，但底层解析改用绝对值，减法算法本身不变。
 12. **Rate-Mul 算法大改（第一版，已被 13 取代部分细节）**：正数 mul 改为「乘法」模式（点数 = mul×1000）；负数 mul 改为「除法」模式，`effectiveDivisor = divisor + |mul|`。旧版「互补价差」（ε/edge/拿完/对调）与 `isRateMulAdjustedDivisorValid` 上限校验整个移除。
 13. **Rate-Mul 输入方式再改**：

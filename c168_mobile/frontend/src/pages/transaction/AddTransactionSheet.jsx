@@ -11,7 +11,13 @@ import {
   RATE_STORE_MAX_DECIMALS,
   TX_STORE_MAX_DECIMALS,
 } from "../../lib/transactionFormat.js";
-import { buildRatePayload, toNumberLike, computeRateMiddlemanProfit, positivePlatformFeeDeduction } from "../../lib/transactionSubmitHelpers.js";
+import {
+  buildRatePayload,
+  toNumberLike,
+  computeRateMiddlemanProfit,
+  parseMiddlemanRateInput,
+  parsePositiveAmt,
+} from "../../lib/transactionSubmitHelpers.js";
 import { formatYmd, parseYmd, formatDisplayDate } from "../../lib/dashboardDateUtils.js";
 import "./add-transaction-sheet.css";
 
@@ -226,13 +232,6 @@ export default function AddTransactionSheet({
   useEffect(() => {
     if (!isRate) return;
     const clean = (v) => String(v ?? "").replace(/,/g, "").trim();
-    let inputAmtDec = MoneyDecimal.toDecimal("0", 0);
-    try {
-      const inputStr = clean(rateMiddlemanInputAmount);
-      if (inputStr) inputAmtDec = MoneyDecimal.toDecimal(inputStr, 0);
-    } catch {
-      /* ignore */
-    }
     const parsed = parseRateExpression(rateExchangeRateRaw);
     let rateDec = MoneyDecimal.toDecimal("0", 0);
     if (parsed.valid) {
@@ -242,11 +241,14 @@ export default function AddTransactionSheet({
         /* ignore */
       }
     }
+
+    // Desktop parity: MM profit = Rate-Mul commission + (Fee − PT); Fee/PT face values ≥ 0.
     const finalFeeDec = computeRateMiddlemanProfit({
       fromAmount: rateCurrencyFromAmount,
       middlemanRate: rateMiddlemanRate,
       feeAmount: rateMiddlemanInputAmount,
       platformFeeAmount: rateMiddlemanPlatformFee,
+      exchangeRateRaw: rateExchangeRateRaw,
     });
     let middleStr = "";
     if (!finalFeeDec.isZero()) middleStr = formatRateAmount(finalFeeDec.toString());
@@ -258,14 +260,8 @@ export default function AddTransactionSheet({
     }
     setRateMiddlemanAmount(middleStr);
 
-    // Rate-Mul + Service Fee, then positive PT-Fee (From realtime). Negative PT does not change amount.
-    const toAmountDeductionDec = computeRateMiddlemanProfit({
-      fromAmount: rateCurrencyFromAmount,
-      middlemanRate: rateMiddlemanRate,
-      feeAmount: rateMiddlemanInputAmount,
-      platformFeeAmount: "0",
-    });
-    const positivePtDec = positivePlatformFeeDeduction(rateMiddlemanPlatformFee);
+    // Desktop: customer preview = gross − Service Fee only (Rate-Mul / PT do not change form amount).
+    const toAmountDeductionDec = parsePositiveAmt(rateMiddlemanInputAmount);
 
     try {
       const fromDec = MoneyDecimal.toDecimal(clean(rateCurrencyFromAmount) || "0", 0);
@@ -275,13 +271,9 @@ export default function AddTransactionSheet({
         return;
       }
       const baseGross = fromDec.times(rateDec);
-      let finalGrossForBackend = baseGross;
-      if (inputAmtDec.lt(0)) finalGrossForBackend = baseGross.plus(inputAmtDec);
-      const grossDisplayStr = formatRateAmount(finalGrossForBackend.toString());
-      setRateToAmountGrossStr(grossDisplayStr);
-      let displayVal = finalGrossForBackend;
+      setRateToAmountGrossStr(formatRateAmount(baseGross.toString()));
+      let displayVal = baseGross;
       if (!toAmountDeductionDec.isZero()) displayVal = displayVal.minus(toAmountDeductionDec);
-      if (positivePtDec.gt(0)) displayVal = displayVal.minus(positivePtDec);
       setRateCurrencyToAmount(formatRateAmount(displayVal.toString()));
     } catch {
       setRateCurrencyToAmount("");
@@ -326,7 +318,7 @@ export default function AddTransactionSheet({
       if (middleId && !hasMiddleRate && !hasMiddleFee) {
         return pushToast(m.pleaseEnterMiddleManRateOrFee, "error");
       }
-      if (hasMiddleRate && !parseRateExpression(mmrNorm).valid) {
+      if (hasMiddleRate && !parseMiddlemanRateInput(mmrNorm).valid) {
         return pushToast(m.pleaseEnterMiddleManRate, "error");
       }
       if (countRateDecimalPlaces(String(rateCurrencyFromAmount ?? "").replace(/,/g, "").trim()) > RATE_STORE_MAX_DECIMALS) {

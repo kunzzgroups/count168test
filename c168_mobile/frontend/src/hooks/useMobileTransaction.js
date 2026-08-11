@@ -29,9 +29,13 @@ import {
   buildTransactionSearchQueryFilters,
   calculateTotals,
   mergeSearchApiDataList,
+  notifyTransactionListInvalidated,
   orderCurrencyRows,
   sanitizeSearchApiData,
   sortByRole,
+  TX_DATA_CHANGED_EVENT,
+  TX_LIST_INVALIDATE_HANDLED_KEY,
+  TX_LIST_INVALIDATE_LS_KEY,
 } from "../lib/transactionPaymentLogic.js";
 import {
   approveContra,
@@ -713,6 +717,73 @@ export function useMobileTransaction({ listPaused = false } = {}) {
     return undefined;
   }, [scopeReady, currenciesReady, reloadNonce, refreshContraInboxBadge]);
 
+  // Desktop parity: refresh list when maintenance (or other tabs) invalidates TX data.
+  useEffect(() => {
+    if (!scopeReady || listPaused) return undefined;
+
+    const readHandled = () => {
+      try {
+        return parseInt(sessionStorage.getItem(TX_LIST_INVALIDATE_HANDLED_KEY) || "0", 10) || 0;
+      } catch {
+        return 0;
+      }
+    };
+    const markHandled = (ts) => {
+      try {
+        sessionStorage.setItem(TX_LIST_INVALIDATE_HANDLED_KEY, String(ts));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    let refreshInFlight = false;
+    let pendingRefresh = false;
+
+    const refreshFromInvalidate = () => {
+      const invalidateTs = parseInt(localStorage.getItem(TX_LIST_INVALIDATE_LS_KEY) || "0", 10) || 0;
+      const handledTs = readHandled();
+      if (!invalidateTs || invalidateTs <= handledTs) return;
+      if (refreshInFlight) {
+        pendingRefresh = true;
+        return;
+      }
+      refreshInFlight = true;
+      pendingRefresh = false;
+      setReloadNonce((n) => n + 1);
+      markHandled(invalidateTs);
+      refreshInFlight = false;
+      if (pendingRefresh) {
+        pendingRefresh = false;
+        refreshFromInvalidate();
+      }
+    };
+
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      refreshFromInvalidate();
+    };
+    const onStorage = (e) => {
+      if (!e || e.key !== TX_LIST_INVALIDATE_LS_KEY) return;
+      refreshFromInvalidate();
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(TX_DATA_CHANGED_EVENT, refreshFromInvalidate);
+    refreshFromInvalidate();
+    const poll = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      refreshFromInvalidate();
+    }, 1000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(TX_DATA_CHANGED_EVENT, refreshFromInvalidate);
+      clearInterval(poll);
+    };
+  }, [scopeReady, listPaused]);
+
   const runTypeSearch = useCallback(
     (txType) => {
       const tType = String(txType || "").toUpperCase().trim();
@@ -841,6 +912,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
             }
           }
 
+          notifyTransactionListInvalidated("mobile_tx_submit");
           setReloadNonce((n) => n + 1);
           void refreshContraInboxBadge();
           return res;
