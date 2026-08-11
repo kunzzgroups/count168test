@@ -180,10 +180,10 @@ export function useMobileDomain() {
     setSelectMode(false);
   }, []);
 
-  const deleteSelected = useCallback(async () => {
+  const prepareBulkDelete = useCallback(() => {
     if (checkedIds.size === 0) {
       notify(t("selectOwnersToDeleteFirst"), "error");
-      return false;
+      return null;
     }
     const selected = domains.filter((d) => checkedIds.has(d.id));
     const withCompanies = selected.filter((d) => {
@@ -197,36 +197,45 @@ export function useMobileDomain() {
 
     if (withCompanies.length > 0 && valid.length === 0) {
       notify(t("cannotDeleteOwnersWithCompanies"), "error");
-      return false;
+      return null;
     }
     if (withCompanies.length > 0 && valid.length > 0) {
       notify(t("ownersWithCompaniesSkippedWillDelete", { count: valid.length }), "error");
     }
+    if (valid.length === 0) return null;
 
     const names = valid.map((d) => d.name).join(", ");
-    if (!window.confirm(t("confirmDeleteOwners", { count: valid.length, names }))) {
-      return false;
-    }
+    return {
+      valid,
+      message: t("confirmDeleteOwners", { count: valid.length, names }),
+    };
+  }, [checkedIds, domains, notify, t]);
 
-    try {
-      const results = await Promise.all(
-        valid.map((d) => domainApi({ action: "delete", id: d.id }).then(({ json }) => json)),
-      );
-      const ok = results.filter((r) => r?.success).length;
-      const fail = results.length - ok;
-      if (fail === 0) notify(t("deletedOwnersSuccess", { ok }));
-      else notify(t("deletionCompleted", { ok, fail }), "error");
-      const deletedIds = new Set(valid.filter((_, i) => results[i]?.success).map((d) => d.id));
-      if (deletedIds.size > 0) {
-        setDomains((prev) => prev.filter((d) => !deletedIds.has(d.id)));
+  const executeBulkDelete = useCallback(
+    async (validOwners) => {
+      const valid = Array.isArray(validOwners) ? validOwners : [];
+      if (valid.length === 0) return false;
+      try {
+        const results = await Promise.all(
+          valid.map((d) => domainApi({ action: "delete", id: d.id }).then(({ json }) => json)),
+        );
+        const ok = results.filter((r) => r?.success).length;
+        const fail = results.length - ok;
+        if (fail === 0) notify(t("deletedOwnersSuccess", { ok }));
+        else notify(t("deletionCompleted", { ok, fail }), "error");
+        const deletedIds = new Set(valid.filter((_, i) => results[i]?.success).map((d) => d.id));
+        if (deletedIds.size > 0) {
+          setDomains((prev) => prev.filter((d) => !deletedIds.has(d.id)));
+        }
+        clearSelection();
+        return true;
+      } catch {
+        notify(t("batchDeleteError"), "error");
+        return false;
       }
-      clearSelection();
-      return true;
-    } catch {
-      notify(t("batchDeleteError"), "error");
-      return false;
-    }
-  }, [checkedIds, clearSelection, domains, notify, t]);
+    },
+    [clearSelection, notify, t],
+  );
 
   const handleDomainSaved = useCallback(
     (data) => {
@@ -267,7 +276,8 @@ export function useMobileDomain() {
     checkedIds,
     toggleChecked,
     clearSelection,
-    deleteSelected,
+    prepareBulkDelete,
+    executeBulkDelete,
     loading,
     refreshing,
     refresh,

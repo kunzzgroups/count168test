@@ -254,7 +254,16 @@ export default function DomainPage() {
             type="button"
             className="m-account-chip m-domain-chip-danger tap-scale"
             disabled={domain.checkedIds.size === 0}
-            onClick={() => void domain.deleteSelected()}
+            onClick={() => {
+              const prep = domain.prepareBulkDelete();
+              if (!prep) return;
+              setConfirm({
+                message: prep.message,
+                onConfirm: () => {
+                  void domain.executeBulkDelete(prep.valid);
+                },
+              });
+            }}
           >
             {domain.checkedIds.size > 0
               ? t("deleteWithCount", { count: domain.checkedIds.size })

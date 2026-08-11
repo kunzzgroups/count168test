@@ -24,9 +24,10 @@ import {
   normalizeDomainFeeSettingsFromApi,
   normalizeDomainStartDateYmd,
   normalizeFeeShareFromServer,
+  computeShareTotals,
+  formatShareRowAmount2,
   pruneEmptyShareRows,
   resolveDomainFeePriceForPeriod,
-  sumFeeShareRolePercentages,
   tempGroupCode,
 } from "../../lib/domainHelpers.js";
 import { sanitizeEmailInput, validateEmail } from "../../lib/emailValidation.js";
@@ -347,7 +348,11 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
   });
   const [roles, setRoles] = useState([]);
   const [companyId, setCompanyId] = useState(0);
+  const [currencies, setCurrencies] = useState([]);
+  const [selectedCurrencyIds, setSelectedCurrencyIds] = useState([]);
+  const [currencyInput, setCurrencyInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [creatingCurrency, setCreatingCurrency] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -358,6 +363,8 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
       password: "",
       remark: "",
     });
+    setSelectedCurrencyIds([]);
+    setCurrencyInput("");
     (async () => {
       try {
         const [rolesRes, compRes] = await Promise.all([
@@ -370,12 +377,82 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
         const hit = comps.find(
           (c) => String(c.company_id || c.company_code || "").toUpperCase() === String(companyCode || "").toUpperCase(),
         );
-        setCompanyId(Number(hit?.id) || 0);
+        const numericId = Number(hit?.id) || 0;
+        setCompanyId(numericId);
+
+        const curRes = await fetchJson(
+          buildApiUrl(
+            `api/accounts/account_currency_api.php?action=get_available_currencies${
+              numericId ? `&company_id=${numericId}` : ""
+            }`,
+          ),
+        );
+        const curList = Array.isArray(curRes.json?.data)
+          ? curRes.json.data.map((c) => ({ id: c.id, code: c.code, is_linked: !!c.is_linked }))
+          : [];
+        setCurrencies(curList);
       } catch {
         /* ignore */
       }
     })();
   }, [open, preferredRole, companyCode]);
+
+  const createCurrency = async () => {
+    const code = currencyInput.trim().toUpperCase();
+    if (!code) {
+      notify(t("pleaseEnterCurrencyCode"), "error");
+      return;
+    }
+    const existing = currencies.find((c) => String(c.code || "").trim().toUpperCase() === code);
+    if (existing) {
+      const existingId = Number(existing.id);
+      setSelectedCurrencyIds((prev) =>
+        prev.map(Number).includes(existingId) ? prev : [...prev, existingId],
+      );
+      setCurrencyInput("");
+      notify(t("currencyExists", { code }), "error");
+      return;
+    }
+    setCreatingCurrency(true);
+    try {
+      const { json } = await fetchJson(buildApiUrl("api/accounts/create_currency_api.php"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, company_id: companyId || undefined }),
+      });
+      if (!json?.success) {
+        notify(json?.message || json?.error || t("createCurrencyFailed"), "error");
+        return;
+      }
+      let newId = Number(json.data?.id);
+      if (!Number.isFinite(newId) || newId <= 0) {
+        const metaRes = await fetchJson(
+          buildApiUrl(
+            `api/accounts/account_currency_api.php?action=get_available_currencies${
+              companyId ? `&company_id=${companyId}` : ""
+            }`,
+          ),
+        );
+        const rows = Array.isArray(metaRes.json?.data)
+          ? metaRes.json.data.map((c) => ({ id: c.id, code: c.code, is_linked: !!c.is_linked }))
+          : [];
+        setCurrencies(rows);
+        const matched = rows.find((c) => String(c.code || "").trim().toUpperCase() === code);
+        newId = matched ? Number(matched.id) : 0;
+      } else {
+        setCurrencies((prev) => [...prev, { id: newId, code: json.data.code || code, is_linked: false }]);
+      }
+      if (newId > 0) {
+        setSelectedCurrencyIds((prev) => (prev.map(Number).includes(newId) ? prev : [...prev, newId]));
+      }
+      setCurrencyInput("");
+      notify(t("currencyCreatedSuccess", { code }));
+    } catch {
+      notify(t("createCurrencyFailed"), "error");
+    } finally {
+      setCreatingCurrency(false);
+    }
+  };
 
   const save = async () => {
     if (!form.account_id.trim() || !form.name.trim() || !form.role || !form.password) {
@@ -395,6 +472,9 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
         fd.set("company_id", String(companyId));
         fd.set("company_ids", JSON.stringify([companyId]));
       }
+      if (selectedCurrencyIds.length) {
+        fd.set("currency_ids", JSON.stringify(selectedCurrencyIds.map(Number)));
+      }
       const { res, json } = await fetchJson(buildApiUrl("api/accounts/addaccountapi.php"), {
         method: "POST",
         body: fd,
@@ -403,8 +483,20 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
         notify(json?.error || json?.message || t("saveFailed"), "error");
         return;
       }
+      const newId = json.data?.id ? parseInt(json.data.id, 10) : 0;
+      if (newId && selectedCurrencyIds.length) {
+        await Promise.all(
+          selectedCurrencyIds.map((cid) =>
+            fetchJson(buildApiUrl("api/accounts/account_currency_api.php?action=add_currency"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ account_id: newId, currency_id: Number(cid) }),
+            }).catch(() => null),
+          ),
+        );
+      }
       notify(t("addAccountSuccess"));
-      onSuccess?.(json.data?.id);
+      onSuccess?.(newId || json.data?.id);
       onClose();
     } catch {
       notify(t("saveFailed"), "error");
@@ -419,6 +511,7 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
       title={t("addAccountTitle")}
       onClose={onClose}
       tall
+      elevate
       footer={
         <button type="button" className="m-account-primary-btn tap-scale" disabled={saving} onClick={save}>
           {saving ? t("loading") : t("save")}
@@ -463,6 +556,48 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
             autoComplete="new-password"
           />
         </Field>
+      </div>
+      <div className="m-domain-section">
+        <div className="m-domain-section-title">{t("currencies")}</div>
+        {currencies.length === 0 ? (
+          <p className="m-domain-hint">{t("noCurrenciesAvailable")}</p>
+        ) : (
+          <div className="m-domain-pill-row">
+            {currencies.map((currency) => {
+              const id = Number(currency.id);
+              const active = selectedCurrencyIds.map(Number).includes(id);
+              return (
+                <Pill
+                  key={id}
+                  active={active}
+                  onClick={() =>
+                    setSelectedCurrencyIds((ids) =>
+                      active ? ids.filter((x) => Number(x) !== id) : [...ids, id],
+                    )
+                  }
+                >
+                  {String(currency.code || "").toUpperCase()}
+                </Pill>
+              );
+            })}
+          </div>
+        )}
+        <div className="m-domain-add-row">
+          <input
+            className="m-tx-form-input m-tx-form-input--muted"
+            value={currencyInput}
+            placeholder={t("newCurrencyPlaceholder")}
+            onChange={(e) => setCurrencyInput(e.target.value.toUpperCase())}
+          />
+          <button
+            type="button"
+            className="m-tx-form-btn m-tx-form-btn--outline m-domain-add-action tap-scale"
+            disabled={creatingCurrency}
+            onClick={() => void createCurrency()}
+          >
+            {t("createCurrency")}
+          </button>
+        </div>
       </div>
     </Sheet>
   );
@@ -586,6 +721,25 @@ function DomainSettingsSheet({
     const feeKind = isGroup ? "group" : "company";
     return resolveDomainFeePriceForPeriod(domainPeriodPrices, period || "6months", feeKind);
   }, [domainPeriodPrices, isGroup, period]);
+
+  const shareTotals = useMemo(
+    () => computeShareTotals(fsa, Number(pricePreview) || 0),
+    [fsa, pricePreview],
+  );
+
+  const roleTotals = {
+    profit: shareTotals.profitPool,
+    sales: shareTotals.salesSum,
+    cs: shareTotals.csSum,
+    it: shareTotals.itSum,
+  };
+
+  const rowAmounts = {
+    profit: shareTotals.profitRowAmounts,
+    sales: shareTotals.salesRowAmounts,
+    cs: shareTotals.csRowAmounts,
+    it: shareTotals.itRowAmounts,
+  };
 
   const updateShareRow = (role, index, patch) => {
     setFsa((prev) => {
@@ -757,6 +911,7 @@ function DomainSettingsSheet({
         title={isGroup ? t("groupSettings") : t("companyInformation")}
         onClose={onClose}
         tall
+        elevate
         footer={
           <button type="button" className="m-account-primary-btn tap-scale" disabled={saving} onClick={save}>
             {saving ? t("loading") : t("confirm")}
@@ -819,13 +974,20 @@ function DomainSettingsSheet({
         <div className="m-domain-section">
           <div className="m-domain-section-title">{t("sharePercent")}</div>
           {SHARE_ROLES.map((role) => {
+            const isProfit = role === "profit";
             const rows = fsa?.[role] || [];
-            const accounts = role === "profit" ? shareAccountsProfit : shareAccounts;
+            const accounts = isProfit ? shareAccountsProfit : shareAccounts;
             const assignedCount = rows.filter((r) => Number(r.account_id) > 0).length;
-            const total = sumFeeShareRolePercentages(rows);
+            const total = roleTotals[role] || 0;
             const totalOver = total > 100;
+            const amounts = rowAmounts[role] || [];
             return (
-              <div key={role} className={`m-domain-share-card m-domain-share-card--${role}`}>
+              <div
+                key={role}
+                className={`m-domain-share-card m-domain-share-card--${role}${
+                  isProfit ? " m-domain-share-card--profit-pool" : ""
+                }`}
+              >
                 <div className="m-domain-share-head">
                   <div className="m-domain-share-head-main">
                     <span className={`m-domain-share-badge m-domain-share-badge--${role}`}>
@@ -863,60 +1025,81 @@ function DomainSettingsSheet({
                     {t("add")}
                   </button>
                 </div>
-                <div className="m-domain-share-col-labels">
+                <div
+                  className={`m-domain-share-col-labels${
+                    isProfit ? " m-domain-share-col-labels--profit" : ""
+                  }`}
+                >
                   <span>{t("account")}</span>
-                  <span>{t("sharePct")}</span>
+                  {!isProfit ? <span>{t("share")}</span> : null}
+                  <span>{t("total")}</span>
                   <span aria-hidden="true" />
                 </div>
                 <div className="m-domain-share-rows">
                   {rows.length === 0 ? (
                     <p className="m-domain-hint">{t("addAccountInline")}</p>
                   ) : (
-                    rows.map((row, index) => (
-                      <div key={`${role}-${index}`} className="m-domain-share-row">
-                        <label className="m-domain-share-select-wrap">
-                          <span className="m-domain-sr-only">{t("selectAccount")}</span>
-                          <select
-                            className="m-domain-share-select"
-                            value={Number(row.account_id) > 0 ? String(Number(row.account_id)) : ""}
-                            onChange={(e) =>
-                              updateShareRow(role, index, {
-                                account_id: parseInt(e.target.value, 10) || 0,
-                              })
-                            }
-                          >
-                            <option value="">{t("selectAccount")}</option>
-                            {accounts.map((acc) => (
-                              <option key={acc.id} value={String(acc.id)}>
-                                {accountOptionLabel(acc)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="m-domain-share-pct-wrap">
-                          <span className="m-domain-sr-only">{t("sharePct")}</span>
-                          <input
-                            className="m-domain-share-pct"
-                            inputMode="decimal"
-                            placeholder="0"
-                            value={row.percentage === 0 || row.percentage ? row.percentage : ""}
-                            onChange={(e) =>
-                              updateShareRow(role, index, { percentage: e.target.value })
-                            }
-                          />
-                          <span className="m-domain-share-pct-suffix">%</span>
-                        </label>
-                        <button
-                          type="button"
-                          className="m-domain-share-remove tap-scale"
-                          title={t("removeRow")}
-                          aria-label={t("removeRow")}
-                          onClick={() => removeShareRow(role, index)}
+                    rows.map((row, index) => {
+                      const amt = amounts[index] || { amount: 0, percentage: 0 };
+                      return (
+                        <div
+                          key={`${role}-${index}`}
+                          className={`m-domain-share-row${isProfit ? " m-domain-share-row--profit" : ""}`}
                         >
-                          ×
-                        </button>
-                      </div>
-                    ))
+                          <label className="m-domain-share-select-wrap">
+                            <span className="m-domain-sr-only">{t("selectAccount")}</span>
+                            <select
+                              className="m-domain-share-select"
+                              value={Number(row.account_id) > 0 ? String(Number(row.account_id)) : ""}
+                              onChange={(e) =>
+                                updateShareRow(role, index, {
+                                  account_id: parseInt(e.target.value, 10) || 0,
+                                })
+                              }
+                            >
+                              <option value="">{t("selectAccount")}</option>
+                              {accounts.map((acc) => (
+                                <option key={acc.id} value={String(acc.id)}>
+                                  {accountOptionLabel(acc)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {!isProfit ? (
+                            <label className="m-domain-share-pct-wrap">
+                              <span className="m-domain-sr-only">{t("share")}</span>
+                              <input
+                                className="m-domain-share-pct"
+                                inputMode="decimal"
+                                placeholder="0"
+                                value={row.percentage === 0 || row.percentage ? row.percentage : ""}
+                                onChange={(e) =>
+                                  updateShareRow(role, index, { percentage: e.target.value })
+                                }
+                              />
+                              <span className="m-domain-share-pct-suffix">%</span>
+                            </label>
+                          ) : null}
+                          <input
+                            className="m-domain-share-amount"
+                            type="text"
+                            readOnly
+                            tabIndex={-1}
+                            value={formatShareRowAmount2(amt.amount)}
+                            aria-label={t("total")}
+                          />
+                          <button
+                            type="button"
+                            className="m-domain-share-remove tap-scale"
+                            title={t("removeRow")}
+                            aria-label={t("removeRow")}
+                            onClick={() => removeShareRow(role, index)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1155,6 +1338,27 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
     return filtered.sort((a, b) => a.company_id.localeCompare(b.company_id));
   }, [tempCompanies, selectedGroupId, isMultipleChoiceMode]);
 
+  const assignSelectAllChecked =
+    isMultipleChoiceMode &&
+    selectedGroupId &&
+    filteredCompanies.length > 0 &&
+    filteredCompanies.every((c) => c.group_id === selectedGroupId);
+
+  const toggleAssignSelectAll = () => {
+    if (!selectedGroupId || filteredCompanies.length === 0) return;
+    const allIn = filteredCompanies.every((c) => c.group_id === selectedGroupId);
+    const idsInFilter = new Set(filteredCompanies.map((c) => c.company_id));
+    setTempCompanies((prev) =>
+      prev.map((c) => {
+        if (!idsInFilter.has(c.company_id)) return c;
+        if (allIn) {
+          return c.group_id === selectedGroupId ? { ...c, group_id: null } : c;
+        }
+        return { ...c, group_id: selectedGroupId };
+      }),
+    );
+  };
+
   const handleSubmit = async () => {
     const emailCheck = validateEmail(email);
     if (!emailCheck.ok) {
@@ -1378,6 +1582,16 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
           ) : null}
 
           <div className="m-domain-entity-list">
+            {isMultipleChoiceMode && selectedGroupId && filteredCompanies.length > 0 ? (
+              <label className="m-domain-select-all">
+                <input
+                  type="checkbox"
+                  checked={assignSelectAllChecked}
+                  onChange={toggleAssignSelectAll}
+                />
+                <span>{t("selectAll")}</span>
+              </label>
+            ) : null}
             {filteredCompanies.length === 0 ? (
               <p className="m-domain-hint">
                 {selectedGroupId
