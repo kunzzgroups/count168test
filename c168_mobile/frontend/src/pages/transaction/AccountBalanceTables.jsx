@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import { parseBalanceValue, formatTransactionGridMoneyHalfUp } from "../../lib/transactionFormat.js";
 import { moneyToneClass } from "../../lib/money/moneyToneClass.js";
-import { calculateTotals, getRoleClass } from "../../lib/transactionPaymentLogic.js";
+import {
+  applySummaryWinLossDisplayTolerance,
+  calculateTotals,
+  getRoleClass,
+} from "../../lib/transactionPaymentLogic.js";
 
 function MoneyText({ value }) {
   return (
@@ -180,10 +184,12 @@ export default function AccountBalanceTables({
   const [sideTab, setSideTab] = useState("left");
   const isLeft = sideTab === "left";
   const activeRows = isLeft ? left : right;
-  /**
-   * Totals for the active Balance+/− tab only — must match the dense TOTAL row below.
-   * (Grand left+right net looks like “1.97 vs 1.4M” when both blocks say TOTAL.)
-   */
+  /* Grand total = Balance+ and Balance− combined (desktop summary card). */
+  const grandTotals = useMemo(
+    () => applySummaryWinLossDisplayTolerance(calculateTotals(rows)),
+    [rows],
+  );
+  /* Per-tab total — same calculateTotals as desktop left/right footers. */
   const sideTotals = useMemo(() => calculateTotals(activeRows), [activeRows]);
 
   return (
@@ -220,7 +226,7 @@ export default function AccountBalanceTables({
         </button>
       </div>
 
-      <SideTotalsCard m={m} totals={sideTotals} />
+      <SideTotalsCard m={m} totals={grandTotals} />
 
       <DenseAccountTable
         side={isLeft ? "left" : "right"}
