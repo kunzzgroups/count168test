@@ -62,6 +62,12 @@ import { TRANSACTION_I18N, getTransactionText } from "../translateFile/transacti
 import { DASHBOARD_I18N } from "../translateFile/dashboardTranslate.js";
 import { canAccessTransaction, resolveMobileLandingPath } from "../utils/mobilePermissions.js";
 import { buildApiUrl } from "../utils/apiUrl.js";
+import {
+  buildMobileRealtimeScopeFromGc,
+  setMobileRealtimeScope,
+} from "../lib/realtime/mobileRealtimeScope.js";
+import { REALTIME_DOMAINS } from "../lib/realtime/realtimeEvents.js";
+import { useRealtimeDomain } from "../lib/realtime/useRealtimeDomain.js";
 
 const COMPANIES_API = "api/transactions/get_owner_companies_api.php";
 
@@ -966,7 +972,29 @@ export function useMobileTransaction({ listPaused = false } = {}) {
     };
   }, [scopeReady, listPaused]);
 
-  // Soft LEDGER refresh without SSE: focus / visibility + light poll (desktop uses AppRealtimeBridge).
+  // Publish GC scope for MobileRealtimeBridge SSE ticket.
+  useEffect(() => {
+    setMobileRealtimeScope(
+      buildMobileRealtimeScopeFromGc({
+        companyId,
+        selectedGroup,
+        groupsAllMode,
+        groupAllMode,
+      }),
+    );
+  }, [companyId, selectedGroup, groupsAllMode, groupAllMode]);
+
+  // SSE LEDGER → silent list / contra badge refresh (bridge also notifies TX_DATA_CHANGED).
+  useRealtimeDomain(
+    REALTIME_DOMAINS.LEDGER,
+    () => {
+      if (listPaused) return;
+      setReloadNonce((n) => n + 1);
+    },
+    { enabled: scopeReady && !listPaused },
+  );
+
+  // Fallback when SSE is down: focus / visibility + slow poll.
   useEffect(() => {
     if (!scopeReady || listPaused) return undefined;
     const softReload = () => {
@@ -978,7 +1006,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
     };
     window.addEventListener("focus", softReload);
     document.addEventListener("visibilitychange", onVisibility);
-    const timer = window.setInterval(softReload, 60_000);
+    const timer = window.setInterval(softReload, 180_000);
     return () => {
       window.removeEventListener("focus", softReload);
       document.removeEventListener("visibilitychange", onVisibility);

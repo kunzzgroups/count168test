@@ -28,6 +28,12 @@ import {
   isCompanyLogin,
   isGroupLogin,
 } from "../lib/loginScope.js";
+import {
+  buildMobileRealtimeScopeFromGc,
+  setMobileRealtimeScope,
+} from "../lib/realtime/mobileRealtimeScope.js";
+import { REALTIME_DOMAINS } from "../lib/realtime/realtimeEvents.js";
+import { useRealtimeDomain } from "../lib/realtime/useRealtimeDomain.js";
 import { fetchMobileCurrencyCodes } from "../lib/dashboardCurrencies.js";
 import { mapPanelCurrencyRows } from "../lib/dashboardEarnings.js";
 import { loadMobileDashboardData, resolveMobileKpiOwnershipOpts } from "../lib/dashboardLoad.js";
@@ -986,12 +992,36 @@ export function useMobileDashboard() {
     setSessionNonce((n) => n + 1);
   }, [companyId, selectedGroup, groupsAllMode, groupAllMode]);
 
-  // Soft LEDGER refresh: desktop uses SSE; mobile reloads on focus/visibility + light poll.
+  // Publish GC scope for MobileRealtimeBridge SSE ticket.
+  useEffect(() => {
+    setMobileRealtimeScope(
+      buildMobileRealtimeScopeFromGc({
+        companyId,
+        selectedGroup,
+        groupsAllMode,
+        groupAllMode,
+      }),
+    );
+  }, [companyId, selectedGroup, groupsAllMode, groupAllMode]);
+
+  const dashRealtimeEnabled =
+    Number.isFinite(Number(companyId)) && Number(companyId) > 0
+      ? true
+      : Boolean(selectedGroup || groupsAllMode || groupAllMode);
+
+  useRealtimeDomain(
+    REALTIME_DOMAINS.LEDGER,
+    () => {
+      setReloadNonce((n) => n + 1);
+    },
+    { enabled: dashRealtimeEnabled },
+  );
+
+  // Fallback when SSE is down: focus/visibility + slow poll (SSE covers live updates).
   useEffect(() => {
     const softReload = () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-      const hasCompany = Number.isFinite(Number(companyId)) && Number(companyId) > 0;
-      if (!(hasCompany || Boolean(selectedGroup) || groupsAllMode || groupAllMode)) return;
+      if (!dashRealtimeEnabled) return;
       setReloadNonce((n) => n + 1);
     };
     const onVisibility = () => {
@@ -999,13 +1029,13 @@ export function useMobileDashboard() {
     };
     window.addEventListener("focus", softReload);
     document.addEventListener("visibilitychange", onVisibility);
-    const timer = window.setInterval(softReload, 60_000);
+    const timer = window.setInterval(softReload, 180_000);
     return () => {
       window.removeEventListener("focus", softReload);
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearInterval(timer);
     };
-  }, [companyId, selectedGroup, groupsAllMode, groupAllMode]);
+  }, [dashRealtimeEnabled]);
 
   const summaryPanelLabel =
     earningsPanelView === "earning"

@@ -20,6 +20,7 @@ import ReportHubPage from "./pages/report/ReportHubPage.jsx";
 import DomainReportPage from "./pages/report/DomainReportPage.jsx";
 import CustomerReportPage from "./pages/report/CustomerReportPage.jsx";
 import MobileBottomNavHost from "./components/layout/MobileBottomNavHost.jsx";
+import MobileRealtimeBridge from "./lib/realtime/MobileRealtimeBridge.jsx";
 
 /** Drop list snapshot when leaving Transaction so bottom-nav re-entry stays default. */
 function ClearTxListSnapshotOutsideTransaction() {
@@ -36,6 +37,7 @@ export default function App() {
   return (
     <>
       <ClearTxListSnapshotOutsideTransaction />
+      <MobileRealtimeBridge />
       <MobileBottomNavHost />
       <Routes>
         <Route path="/login" element={<LoginPage />} />

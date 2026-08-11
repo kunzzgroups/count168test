@@ -37,6 +37,11 @@ export default defineConfig(({ mode }) => {
         "/reset-password": { target: phpTarget, changeOrigin: true },
         "/images": { target: phpTarget, changeOrigin: true },
         "/js": { target: phpTarget, changeOrigin: true },
+        // SSE hub (services/tx-realtime); same path nginx uses in production.
+        "/realtime": {
+          target: env.VITE_REALTIME_PROXY_TARGET || "http://127.0.0.1:3911",
+          changeOrigin: true,
+        },
       },
     },
     build: {

@@ -30,7 +30,9 @@ Transaction Payment 的 `ledger_changed` 仍兼容；新域使用 `domain_change
 | `announcements` | announcement CRUD | Announcement |
 | `domain` | domain_api writes | Domain |
 
-暂缓：Deleted Log、Auto Renew（无/弱 publish）；mobile 另线。
+暂缓：Deleted Log、Auto Renew（无/弱 publish）。
+
+Mobile：`c168_mobile/frontend/src/lib/realtime/MobileRealtimeBridge.jsx`（登录后壳层）+ `useRealtimeDomain(LEDGER)` on Dashboard / Transaction。
 
 ## 新人接新功能（checklist）
 
