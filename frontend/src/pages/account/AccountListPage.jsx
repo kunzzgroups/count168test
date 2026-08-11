@@ -115,6 +115,19 @@ function resolveAccountListCacheKey(scopeKey, searchTerm, showInactive, showAll,
   return `${scopeKey}|${String(searchTerm || "").trim()}|${showActive ? "1" : "0"}|${showInactive ? "1" : "0"}|${showAll ? "1" : "0"}`;
 }
 
+/** Intersection of account-id Sets (empty input → empty Set). */
+function intersectAccountIdSets(sets) {
+  let out = null;
+  for (const ids of sets) {
+    if (out === null) {
+      out = new Set(ids);
+      continue;
+    }
+    out = new Set([...out].filter((id) => ids.has(id)));
+  }
+  return out || new Set();
+}
+
 function accountRowVisibleAfterStatusChange(newStatus, { showActive = false, showInactive = false } = {}) {
   const status = String(newStatus || "").toLowerCase();
   if (showActive && showInactive) return status === "active" || status === "inactive";
@@ -266,13 +279,11 @@ export default function AccountListPage() {
     () => [...settingCurrencyIds].map(Number).filter((id) => id > 0).sort((a, b) => a - b).join(","),
     [settingCurrencyIds],
   );
-  const settingInitialAccountCount = useMemo(() => {
-    const union = new Set();
-    settingInitialByCurrency.forEach((ids) => {
-      ids.forEach((id) => union.add(id));
-    });
-    return union.size;
-  }, [settingInitialByCurrency]);
+  /** Full-match (intersection) baseline size — enables Save after unchecking all lit accounts. */
+  const settingInitialAccountCount = useMemo(
+    () => intersectAccountIdSets([...settingInitialByCurrency.values()]).size,
+    [settingInitialByCurrency],
+  );
 
   const toastTimerRef = useRef(null);
   const bootFetchedAccountsKeyRef = useRef(null);
@@ -2473,7 +2484,7 @@ export default function AccountListPage() {
     }
   };
 
-  /** When currency pills change, reload linked accounts (union) for checkbox回显. */
+  /** When currency pills change, reload linked accounts (intersection) for checkbox回显. */
   useEffect(() => {
     if (!currencySettingOpen) return undefined;
     const currencyIds = settingCurrencyIdsKey
@@ -2495,12 +2506,9 @@ export default function AccountListPage() {
         );
         if (cancelled) return;
         const nextInitial = new Map(entries);
-        const union = new Set();
-        nextInitial.forEach((ids) => {
-          ids.forEach((id) => union.add(id));
-        });
+        const intersection = intersectAccountIdSets([...nextInitial.values()]);
         setSettingInitialByCurrency(nextInitial);
-        setSettingLinked(union);
+        setSettingLinked(intersection);
       } catch {
         if (!cancelled) notify(t("loadLinksFailed"), "danger");
       }
@@ -2748,19 +2756,27 @@ export default function AccountListPage() {
       notify(t("pleaseSelectCurrencyFirst"), "danger");
       return;
     }
+    // Baseline = full match at load. Only toggled accounts change (partial untouched).
+    const baseline = intersectAccountIdSets(
+      currencyIds.map((currencyId) => settingInitialByCurrency.get(currencyId) || new Set()),
+    );
+    const toggledOn = [];
+    const toggledOff = [];
+    accounts.forEach((a) => {
+      const id = Number(a.id);
+      if (!(id > 0)) return;
+      const was = baseline.has(id);
+      const now = settingLinked.has(id);
+      if (now && !was) toggledOn.push(id);
+      if (!now && was) toggledOff.push(id);
+    });
     const updates = currencyIds.map((currencyId) => {
       const initial = settingInitialByCurrency.get(currencyId) || new Set();
-      const linked = [];
-      const unlinked = [];
-      accounts.forEach((a) => {
-        const id = Number(a.id);
-        if (!(id > 0)) return;
-        const was = initial.has(id);
-        const now = settingLinked.has(id);
-        if (now && !was) linked.push(id);
-        if (!now && was) unlinked.push(id);
-      });
-      return { currencyId, linked, unlinked };
+      return {
+        currencyId,
+        linked: toggledOn.filter((id) => !initial.has(id)),
+        unlinked: toggledOff.filter((id) => initial.has(id)),
+      };
     });
     const changed = updates.filter((u) => u.linked.length > 0 || u.unlinked.length > 0);
     if (!changed.length) {
