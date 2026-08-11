@@ -34,17 +34,15 @@ export function resolveC168DomainSessionTargetId(me) {
 
 /**
  * Align PHP session to C168 before Domain-family APIs.
- * Frontend gates may trust sessionStorage while `$_SESSION` still holds the previous company.
+ * Always await update_company_session — do not trust optimistic `me.company_id`
+ * (sidebar patches C168 before PHP finishes; short-circuit would still 403 list).
+ * Shares inflight with other `syncCompanySessionApi` callers when present.
  * @param {object|null|undefined} me
  * @returns {Promise<boolean>}
  */
 export async function ensureC168DomainApiSession(me) {
   const targetId = resolveC168DomainSessionTargetId(me);
   if (targetId == null) return false;
-
-  const sessionId =
-    me?.company_id != null && me.company_id !== "" ? Number(me.company_id) : null;
-  if (sessionId === targetId) return true;
 
   const json = await syncCompanySessionApi(targetId);
   if (json?.success) {

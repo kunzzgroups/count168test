@@ -105,4 +105,16 @@ describe("Domain Forbidden race — frontend vs PHP session", () => {
     };
     assert.equal(resolveC168DomainSessionTargetId(me), C168_PK);
   });
+
+  it("resolveC168DomainSessionTargetId still returns C168 when me is already optimistic C168", () => {
+    storage.setItem(DASHBOARD_SELECTED_COMPANY_KEY, String(C168_PK));
+    const me = {
+      role: "partnership",
+      company_id: C168_PK,
+      company_code: "C168",
+      is_current_company_c168: true,
+    };
+    // ensureC168DomainApiSession must still await sync — target id is C168 either way.
+    assert.equal(resolveC168DomainSessionTargetId(me), C168_PK);
+  });
 });
