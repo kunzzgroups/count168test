@@ -142,11 +142,14 @@ export function useMobileDashboard() {
   const [bootstrapping, setBootstrapping] = useState(false);
   const [error, setError] = useState("");
   const [blocked, setBlocked] = useState(false);
+  const [accessModal, setAccessModal] = useState({ open: false, message: "" });
   const [reloadNonce, setReloadNonce] = useState(0);
   const [sessionNonce, setSessionNonce] = useState(0);
   const bootstrapSeq = useRef(0);
   const scopeSeq = useRef(0);
   const scopeAbortRef = useRef(null);
+  /** Small in-memory bootstrap cache for snappier back-navigation (cap ~32). */
+  const bootstrapCacheRef = useRef(new Map());
 
   const groupIds = useMemo(() => resolveMobileGroupIds(companies, me), [companies, me]);
 
@@ -233,6 +236,10 @@ export function useMobileDashboard() {
     return () => ac.abort();
   }, [navigate, i18n.loadError, sessionNonce]);
 
+  useEffect(() => {
+    bootstrapCacheRef.current.clear();
+  }, [sessionNonce]);
+
   // Currencies before bootstrap — avoids first paint locked to MYR-only
   useEffect(() => {
     const hasCompany = Number.isFinite(Number(companyId)) && Number(companyId) > 0;
@@ -295,6 +302,13 @@ export function useMobileDashboard() {
     const requestScopeKey = scopeKey;
     const prevLoaded = loadedScopeKeyRef.current;
     const isScopeChange = Boolean(prevLoaded) && prevLoaded !== requestScopeKey;
+    const cached = bootstrapCacheRef.current.get(requestScopeKey);
+    if (cached) {
+      // Paint cached bootstrap immediately, then refresh in background.
+      loadedScopeKeyRef.current = requestScopeKey;
+      setLoadedScopeKey(requestScopeKey);
+      setBootstrap(cached);
+    }
     setBootstrapping(true);
     setError("");
     (async () => {
@@ -320,6 +334,12 @@ export function useMobileDashboard() {
           const { DEMO_BOOTSTRAP } = await import("../lib/demoDashboard.js");
           finalData = DEMO_BOOTSTRAP;
         }
+        const cache = bootstrapCacheRef.current;
+        cache.set(requestScopeKey, finalData);
+        while (cache.size > 32) {
+          const oldest = cache.keys().next().value;
+          cache.delete(oldest);
+        }
         loadedScopeKeyRef.current = requestScopeKey;
         setLoadedScopeKey(requestScopeKey);
         setBootstrap(finalData);
@@ -327,7 +347,7 @@ export function useMobileDashboard() {
         if (ac.signal.aborted || e?.name === "AbortError" || seq !== bootstrapSeq.current) return;
         setError(e?.message || i18n.loadError);
         // Soft refresh keeps last paint; scope change must not show another company's totals.
-        if (isScopeChange || !prevLoaded) {
+        if ((isScopeChange || !prevLoaded) && !cached) {
           loadedScopeKeyRef.current = "";
           setLoadedScopeKey("");
           setBootstrap(null);
@@ -615,15 +635,42 @@ export function useMobileDashboard() {
     setBootstrapping(true);
   }, []);
 
+  const closeAccessModal = useCallback(() => {
+    setAccessModal({ open: false, message: "" });
+  }, []);
+
   const syncCompanySession = useCallback(
     async (id, signal) => {
       const { res, json } = await fetchJson(
         buildApiUrl(`api/session/update_company_session_api.php?company_id=${id}`),
         { signal },
       );
-      assertApiOk(res, json, i18n.loadError);
+      if (!res.ok || !json?.success) {
+        const reason = String(json?.data?.reason || "").toLowerCase();
+        const msg = String(json?.message || json?.error || "");
+        const lower = msg.toLowerCase();
+        const shouldShowModal =
+          reason === "expired" ||
+          reason === "no_set" ||
+          lower.includes("company has expired") ||
+          lower.includes("group has expired") ||
+          lower.includes("company expiration date is not set") ||
+          lower.includes("date is not set");
+        if (shouldShowModal) {
+          const modalMessage =
+            reason === "expired"
+              ? i18n.companyAccessExpired
+              : reason === "no_set" || lower.includes("not set")
+                ? i18n.companyAccessNoSet
+                : i18n.companyAccessExpired;
+          setAccessModal({ open: true, message: modalMessage });
+          throw new Error(modalMessage);
+        }
+        throw new Error(msg || i18n.loadError);
+      }
+      return json;
     },
-    [i18n.loadError],
+    [i18n.loadError, i18n.companyAccessExpired, i18n.companyAccessNoSet],
   );
 
   // Reconcile illegal group-only scope (no ledger permission) — align with desktop.
@@ -1025,6 +1072,8 @@ export function useMobileDashboard() {
     refreshing,
     error,
     blocked,
+    accessModal,
+    closeAccessModal,
     logout,
     retry,
     hasData: dashboardDataIsUsable(bootstrap),

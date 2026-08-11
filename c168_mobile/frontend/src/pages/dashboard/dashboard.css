@@ -1083,3 +1083,65 @@
   font-weight: 600;
   color: var(--m-color-label);
 }
+
+.m-dash-hero-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.m-dash-access-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.m-dash-access-box {
+  width: min(100%, 22rem);
+  border-radius: 1.25rem;
+  background: #fff;
+  padding: 1.5rem 1.25rem 1.25rem;
+  box-shadow: 0 1.25rem 2.5rem rgba(15, 23, 42, 0.18);
+  text-align: center;
+}
+
+.m-dash-access-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #d97706;
+  font-size: 1.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.m-dash-access-title {
+  margin: 0;
+  font-size: clamp(1.6rem, 0.3125vw + 1.2rem, 1.8rem);
+  font-weight: 800;
+  color: var(--m-color-text, #0f172a);
+}
+
+.m-dash-access-message {
+  margin: 0.625rem 0 1.25rem;
+  font-size: clamp(1.4rem, 0.3125vw + 1.0rem, 1.6rem);
+  line-height: 1.45;
+  color: var(--m-color-text-secondary, #475569);
+}
+
+.m-dash-access-btn {
+  width: 100%;
+  border: 0;
+  border-radius: 0.875rem;
+  padding: 0.85rem 1rem;
+  font-size: clamp(1.4rem, 0.3125vw + 1.0rem, 1.6rem);
+  font-weight: 700;
+  color: #fff;
+  background: #2563eb;
+}

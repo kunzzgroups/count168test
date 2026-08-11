@@ -100,6 +100,11 @@ export const DASHBOARD_I18N = {
     chartTapMonthHint: "Tap a month for details",
     groupIdShort: "Group",
     allGroups: "All Groups",
+    notice: "Notice",
+    confirm: "Confirm",
+    companyAccessExpired:
+      "This company since login has expired. Please contact the Customer Service.",
+    companyAccessNoSet: "Please contact the Customer Service to set the expiration date.",
   },
   zh: {
     dashboard: "仪表盘",
@@ -202,6 +207,10 @@ export const DASHBOARD_I18N = {
     chartTapMonthHint: "点某个月查看明细",
     groupIdShort: "Group",
     allGroups: "全部 Group",
+    notice: "提示",
+    confirm: "确认",
+    companyAccessExpired: "该公司登录期限已过期，请联系客服。",
+    companyAccessNoSet: "请联系客服设置公司到期日。",
   },
 };
 

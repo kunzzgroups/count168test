@@ -179,13 +179,15 @@ export default function TransactionPage() {
         <ToggleChip active={tx.showZeroBalance} onClick={() => tx.setShowZeroBalance(!tx.showZeroBalance)}>
           {tx.m.showZeroBalance}
         </ToggleChip>
-        {tx.typeSearchActive ? (
+        {tx.typeSearchActive || tx.submitFocusActive ? (
           <ToggleChip active onClick={() => tx.exitTypeSearch()}>
-            {tx.typeSearchFormType || tx.m.search}
+            {tx.typeSearchFormType || tx.m.search || tx.m.exitTypeSearchAndRefresh}
           </ToggleChip>
         ) : null}
       </div>
-      {tx.typeSearchActive ? <p className="m-tx-type-hint">{tx.m.pullToExitTypeSearch}</p> : null}
+      {tx.typeSearchActive || tx.submitFocusActive ? (
+        <p className="m-tx-type-hint">{tx.m.pullToExitTypeSearch}</p>
+      ) : null}
     </div>
   );
 
@@ -236,7 +238,7 @@ export default function TransactionPage() {
               tx.runTypeSearch(t);
               setAddOpen(false);
             }}
-            typeSearchActive={tx.typeSearchActive}
+            typeSearchActive={tx.listFocusActive || tx.typeSearchActive}
             onExitTypeSearch={tx.exitTypeSearch}
             prefill={addPrefill}
             onPrefillConsumed={() => setAddPrefill(null)}

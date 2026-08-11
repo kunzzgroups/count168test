@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import { useMobileDashboard } from "../../hooks/useMobileDashboard.js";
+import CompanyAccessModal from "./CompanyAccessModal.jsx";
 import CurrencyDistributionCard from "./CurrencyDistributionCard.jsx";
 import CurrencyListCard from "./CurrencyListCard.jsx";
 import DashboardKpiCard from "./DashboardKpiCard.jsx";
@@ -150,6 +151,13 @@ export default function DashboardPage() {
       overlayOpen={filterOpen}
       overlay={<FilterSheet open={filterOpen} onClose={() => setFilterOpen(false)} dash={dash} />}
     >
+      <CompanyAccessModal
+        open={Boolean(dash.accessModal?.open)}
+        title={i18n.notice || "Notice"}
+        message={dash.accessModal?.message || ""}
+        confirmText={i18n.confirm || "Confirm"}
+        onClose={dash.closeAccessModal}
+      />
       <div className="m-dash-page">
         <div className="m-dash-glow" aria-hidden="true" />
 

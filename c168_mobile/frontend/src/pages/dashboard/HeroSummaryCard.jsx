@@ -1,5 +1,14 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
+import { useAnimatedNumber } from "../../hooks/useAnimatedNumber.js";
 import { formatCurrencyHero, formatPercentMagnitude, formatSignedChange } from "../../lib/dashboardFormat.js";
+
+function prefersReducedMotion() {
+  try {
+    return Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+  } catch {
+    return false;
+  }
+}
 
 const HeroSummaryCard = memo(function HeroSummaryCard({
   i18n,
@@ -15,6 +24,14 @@ const HeroSummaryCard = memo(function HeroSummaryCard({
   sparklineValues = [],
   accent = "net",
 }) {
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    setReduceMotion(prefersReducedMotion());
+  }, []);
+
+  const numericValue = Number.isFinite(Number(value)) ? Number(value) : 0;
+  const animate = !loading && !empty && !reduceMotion;
+  const animatedValue = useAnimatedNumber(numericValue, { active: animate, duration: 550 });
   const showCompare = !loading && !empty && compare && Number.isFinite(compare?.pct);
   const title = label || i18n.netProfit;
 
@@ -69,7 +86,7 @@ const HeroSummaryCard = memo(function HeroSummaryCard({
         ) : empty ? (
           <span className="m-dash-hero-empty-value">—</span>
         ) : (
-          formatCurrencyHero(value)
+          formatCurrencyHero(animate ? animatedValue : numericValue)
         )}
       </p>
 
