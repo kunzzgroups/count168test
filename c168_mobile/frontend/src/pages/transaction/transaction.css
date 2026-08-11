@@ -467,8 +467,23 @@
   background: #eef2ff;
 }
 
-.m-tx-dense-row--alert > .m-tx-dense-td--acc {
-  box-shadow: inset 3px 0 0 #f87171;
+/* Payment Alert — match desktop transaction-alert-row (red row, white text) */
+.m-tx-dense-table tbody .m-tx-dense-row--alert > .m-tx-dense-td {
+  background-color: #dc2626 !important;
+  color: #fff !important;
+  border-color: #b91c1c !important;
+}
+
+.m-tx-dense-table tbody .m-tx-dense-row--alert > .m-tx-dense-td--acc {
+  box-shadow: none;
+}
+
+.m-tx-dense-table tbody .m-tx-dense-row--alert .m-tx-dense-acc,
+.m-tx-dense-table tbody .m-tx-dense-row--alert .m-tx-dense-code,
+.m-tx-dense-table tbody .m-tx-dense-row--alert .m-tx-dense-name,
+.m-tx-dense-table tbody .m-tx-dense-row--alert .m-money {
+  color: #fff !important;
+  opacity: 1;
 }
 
 .m-tx-dense-td {
