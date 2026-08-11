@@ -356,7 +356,9 @@ async function fetchGroupAllMergeCurrencyCodes(
   );
 
   const merged = new Set(results.flat());
-  if (!merged.size && cacheRef) {
+  // Group/settings path only: refill from cache if network miss. Independents:all must keep
+  // account-linked emptiness (do not resurrect Currency Setting MYR seeded into company cache).
+  if (!merged.size && cacheRef && !independentAll) {
     for (const cid of ids) {
       const cc = cacheRef.get(cid);
       if (cc?.length) cc.forEach((c) => merged.add(c));
@@ -2781,7 +2783,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           });
           return;
         }
-        if (currenciesRef.current.length > 0) return;
+        // Independents with no merge rows: settle empty (do not keep previous MYR pills).
+        commitCurrencyList([]);
         return;
       }
 
@@ -2825,7 +2828,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           if (gen !== currencyLoadGenRef.current || scopeCurrencyKeyRef.current !== scopeKey) return;
 
           let codes = [...new Set(rawCodes)];
-          if (!codes.length) {
+          // Group tabs may fill from ledger caches; independents:all must not resurrect
+          // group / session currency leftovers (phantom MYR).
+          if (!codes.length && (groupsAllMode || groupKey)) {
             const cachedUnion = new Set();
             const persistedAll = readPersistedGroupsAllCurrencyCodes();
             if (persistedAll?.length) persistedAll.forEach((c) => cachedUnion.add(c));

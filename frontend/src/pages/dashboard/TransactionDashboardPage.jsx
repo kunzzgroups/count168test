@@ -86,16 +86,22 @@ export default function TransactionDashboardPage() {
   if (stickyRef.current?.ownerKey && ownerKey && stickyRef.current.ownerKey !== ownerKey) {
     stickyRef.current = null;
   }
-  if (
-    ownerKey &&
-    page.currencies?.length &&
-    ((page.companiesForPicker?.length || 0) > 0 || (page.groupIds?.length || 0) === 0)
-  ) {
+  const bootstrapped = Boolean(page.gcBootstrapReady);
+  const filterChromeReady =
+    (page.companiesForPicker?.length || 0) > 0 || (page.groupIds?.length || 0) === 0;
+  // After bootstrap, also write when currencies settle to [] so independents:all does not
+  // keep a phantom MYR sticky after the live scope cleared.
+  const canWriteSticky =
+    Boolean(ownerKey) &&
+    filterChromeReady &&
+    (page.currencies?.length ||
+      (bootstrapped && !page.loading && !page.scopeDataPending));
+  if (canWriteSticky) {
     const sameOwner = stickyRef.current?.ownerKey === ownerKey;
     const prev = sameOwner ? stickyRef.current : null;
     // After GC bootstrap, empty groupIds/companies are truth for this account — do not
     // fall back to an older sticky set (that is how T1 leaked onto DEMO).
-    const bootstrapped = Boolean(page.gcBootstrapReady);
+    const nextCurrencies = Array.isArray(page.currencies) ? page.currencies : [];
     stickyRef.current = {
       ownerKey,
       groupIds: page.groupIds?.length
@@ -108,21 +114,37 @@ export default function TransactionDashboardPage() {
         : bootstrapped
           ? page.companiesForPicker || []
           : prev?.companiesForPicker || [],
-      currencies: page.currencies,
-      currencyCode: page.currencyCode || prev?.currencyCode || "",
+      currencies: nextCurrencies,
+      currencyCode: nextCurrencies.length
+        ? page.currencyCode || prev?.currencyCode || ""
+        : "",
       selectedGroup: page.selectedGroup,
       groupsAllMode: page.groupsAllMode,
       groupAllMode: page.groupAllMode,
       companyId: page.companyId,
       dateText: effectiveDateRangeText || prev?.dateText || "",
     };
-    writeStickyPackage(stickyRef.current);
+    if (nextCurrencies.length) {
+      writeStickyPackage(stickyRef.current);
+    } else if (typeof sessionStorage !== "undefined") {
+      // Drop package so remount does not re-hydrate a stale Currency row.
+      try {
+        sessionStorage.removeItem(DASHBOARD_FILTER_PAINT_PACKAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      stickyRef.current = {
+        ...stickyRef.current,
+        currencies: [],
+        currencyCode: "",
+      };
+    }
   }
 
   const sticky = stickyRef.current;
   const packageReady = Boolean(
-    sticky?.currencies?.length &&
-      ((sticky.companiesForPicker?.length || 0) > 0 || (sticky.groupIds?.length || 0) === 0)
+    ((sticky?.currencies?.length || 0) > 0 || bootstrapped) &&
+      ((sticky?.companiesForPicker?.length || 0) > 0 || (sticky?.groupIds?.length || 0) === 0)
   );
 
   // One surface for filter + KPI/chart — never show one without the other.
@@ -160,9 +182,16 @@ export default function TransactionDashboardPage() {
   const filterCompanies = painted.companiesForPicker?.length
     ? painted.companiesForPicker
     : page.companiesForPicker || [];
-  const filterCurrencies = painted.currencies?.length ? painted.currencies : page.currencies || [];
-  const filterCurrencyCode =
-    (freezeFilter ? painted.currencyCode : page.currencyCode) || painted.currencyCode || "";
+  // Live currencies win once the scope is not mid-swap — sticky must not re-paint a
+  // phantom MYR after independents:all / empty-account settle.
+  const filterCurrencies = freezeFilter
+    ? painted.currencies?.length
+      ? painted.currencies
+      : page.currencies || []
+    : page.currencies || [];
+  const filterCurrencyCode = freezeFilter
+    ? painted.currencyCode || page.currencyCode || ""
+    : page.currencyCode || "";
   const filterSelectedGroup = freezeFilter ? painted.selectedGroup : page.selectedGroup;
   const filterGroupsAll = freezeFilter ? painted.groupsAllMode : page.groupsAllMode;
   const filterGroupAll = freezeFilter ? painted.groupAllMode : page.groupAllMode;
