@@ -295,9 +295,8 @@ export function useDataCapturePureReactGridInteraction(engineReady) {
     };
 
     /**
-     * Process without "Save Data Capture Table": toolbar "Delete Draft".
-     * Clears the whole grid (not a row selection). Draft session flush is a no-op when
-     * save-draft is off; when a draft somehow exists, empty table still removes it.
+     * Toolbar "Delete Draft" (only shown when process Save Data Capture Table is on).
+     * Clears the whole grid and flushes draft; empty table removes the server draft.
      */
     const deleteDraftClearTable = () => {
       const grid = getGrid();

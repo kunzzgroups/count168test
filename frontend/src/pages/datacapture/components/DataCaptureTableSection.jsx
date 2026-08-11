@@ -45,7 +45,7 @@ export default function DataCaptureTableSection({
   formatGridReady = false,
   hideCaptureTypeSelector = false,
   groupOnlyTable = false,
-  /** Process "Save Data Capture Table" off → Delete Draft clears whole table. */
+  /** Process "Save Data Capture Table" on → show Delete Draft (clear whole table). */
   saveDataCaptureTableEnabled = false,
   onCaptureTypeChange,
   submitDisabled = true,
@@ -54,10 +54,6 @@ export default function DataCaptureTableSection({
   onReset,
   engineReady = false,
 }) {
-  const deleteDraftMode = !saveDataCaptureTableEnabled;
-  const deleteBtnLabel = deleteDraftMode ? t("deleteDraft") : t("deleteRowData");
-  const deleteBtnTitle = deleteDraftMode ? t("deleteDraftTitle") : t("selectRowToDeleteData");
-  const deleteBtnRuntime = deleteDraftMode ? "deleteDraftClearTable" : "deleteSelectedRowData";
   const tableAreaRef = useRef(null);
   const [tableExpanded, setTableExpanded] = useState(false);
   useDataCaptureGridViewportFit(groupOnlyTable, engineReady, tableAreaRef);
@@ -159,17 +155,17 @@ export default function DataCaptureTableSection({
                 >
                   {t("reset")}
                 </button>
-                {/* 删除按钮暂时隐藏，需要重新评估其必要性 
-                <button
-                  type="button"
-                  className="btn btn-cancel dc-table-header-delete-btn"
-                  disabled={!engineReady}
-                  title={deleteBtnTitle}
-                  onClick={() => callDataCaptureRuntime(deleteBtnRuntime)}
-                >
-                  {deleteBtnLabel}
-                </button>
-                */}
+                {saveDataCaptureTableEnabled ? (
+                  <button
+                    type="button"
+                    className="btn btn-cancel dc-table-header-delete-btn"
+                    disabled={!engineReady}
+                    title={t("deleteDraftTitle")}
+                    onClick={() => callDataCaptureRuntime("deleteDraftClearTable")}
+                  >
+                    {t("deleteDraft")}
+                  </button>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -189,17 +185,17 @@ export default function DataCaptureTableSection({
               <button type="button" className="btn btn-cancel" onClick={() => onReset?.()}>
                 {t("reset")}
               </button>
-              {/* 删除按钮暂时隐藏，需要重新评估其必要性 
-              <button
-                type="button"
-                className="btn btn-cancel dc-table-header-delete-btn"
-                disabled={!engineReady}
-                title={deleteBtnTitle}
-                onClick={() => callDataCaptureRuntime(deleteBtnRuntime)}
-              >
-                {deleteBtnLabel}
-              </button>
-              */}
+              {saveDataCaptureTableEnabled ? (
+                <button
+                  type="button"
+                  className="btn btn-cancel dc-table-header-delete-btn"
+                  disabled={!engineReady}
+                  title={t("deleteDraftTitle")}
+                  onClick={() => callDataCaptureRuntime("deleteDraftClearTable")}
+                >
+                  {t("deleteDraft")}
+                </button>
+              ) : null}
             </div>
           ) : null}
           {hideCaptureTypeSelector ? (
