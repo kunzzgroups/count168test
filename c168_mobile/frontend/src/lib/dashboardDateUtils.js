@@ -153,7 +153,9 @@ export const PERIOD_PRESET_KEYS = [
   "today",
   "yesterday",
   "thisWeek",
+  "lastWeek",
   "thisMonth",
   "lastMonth",
   "thisYear",
+  "lastYear",
 ];

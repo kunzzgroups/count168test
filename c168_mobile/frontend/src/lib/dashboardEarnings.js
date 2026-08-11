@@ -13,8 +13,39 @@ export function getCurrencyColor(code, fallbackIndex = 0) {
   return DASHBOARD_CURRENCY_FALLBACK_PALETTE[fallbackIndex % DASHBOARD_CURRENCY_FALLBACK_PALETTE.length];
 }
 
-export function buildEarningsPieSlices(rows, { useConverted = false } = {}) {
-  return rows
+/** Dual-metric rows → pie/table shape for Currency (net profit) vs Earning tab. */
+export function mapPanelCurrencyRows(rows, view, { useConverted = false } = {}) {
+  const earningTab = view === "earning";
+  return (rows || []).map((row) => {
+    const native = earningTab ? row.earnings : row.netProfit;
+    const converted = earningTab ? row.earningsConverted : row.netProfitConverted;
+    const amount = useConverted && converted != null ? converted : native;
+    return {
+      ...row,
+      earnings: amount,
+      originalEarnings: native,
+      earningsConverted: converted,
+    };
+  });
+}
+
+export function buildEarningsPieSlices(rows, { useConverted = false, baseCode = "" } = {}) {
+  const base = String(baseCode || "").toUpperCase();
+  const sourceRows = (() => {
+    // Without FX conversion, native multi-currency amounts are not comparable —
+    // only the display-base slice belongs on the pie.
+    if (!useConverted && base) {
+      const codes = new Set(
+        (rows || []).map((row) => String(row.code || "").toUpperCase()).filter(Boolean),
+      );
+      if (codes.size > 1 && codes.has(base)) {
+        return (rows || []).filter((row) => String(row.code || "").toUpperCase() === base);
+      }
+    }
+    return rows || [];
+  })();
+
+  return sourceRows
     .filter((row) => row.earnings != null)
     .map((row, index) => {
       const earnings = useConverted

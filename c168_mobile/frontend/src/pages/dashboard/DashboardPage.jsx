@@ -242,24 +242,87 @@ export default function DashboardPage() {
             tapHint={i18n.chartTapHint}
           />
 
+          {dash.showSummaryPanelTabs ? (
+            <div className="m-dash-earnings-tabs" role="tablist" aria-label={i18n.statistics}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={dash.earningsPanelView === "currency"}
+                className={`m-dash-earnings-tab${
+                  dash.earningsPanelView === "currency" ? " is-active" : ""
+                }`}
+                onClick={() => dash.setEarningsPanelView("currency")}
+              >
+                {i18n.earningsChartTab}
+              </button>
+              {dash.showNetProfitForTab ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={dash.earningsPanelView === "netProfitFor"}
+                  className={`m-dash-earnings-tab${
+                    dash.earningsPanelView === "netProfitFor" ? " is-active" : ""
+                  }`}
+                  onClick={() => dash.setEarningsPanelView("netProfitFor")}
+                >
+                  {i18n.netProfitChartTab}
+                </button>
+              ) : null}
+              {dash.showEarningPanelTab ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={dash.earningsPanelView === "earning"}
+                  className={`m-dash-earnings-tab${
+                    dash.earningsPanelView === "earning" ? " is-active" : ""
+                  }`}
+                  onClick={() => dash.setEarningsPanelView("earning")}
+                >
+                  {i18n.earningChartTab}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           <CurrencyDistributionCard
             i18n={i18n}
             currencyCode={dash.currency}
-            rows={dash.earningsCurrencyRows}
+            rows={dash.panelCurrencyRows}
             useConverted={dash.useConvertedEarnings}
             loading={loading}
-            note={dash.useConvertedEarnings ? i18n.multiCurrencyNote : ""}
+            note={
+              dash.earningsPanelView !== "netProfitFor" && dash.useConvertedEarnings
+                ? i18n.multiCurrencyNote
+                : ""
+            }
+            title={
+              dash.showSummaryPanelTabs
+                ? dash.summaryPanelLabel || i18n.currencyDistribution
+                : i18n.currencyDistribution
+            }
+            badgeLabel={
+              dash.earningsPanelView === "netProfitFor" ? i18n.companies || i18n.company : i18n.currency
+            }
+            isCompanyBreakdown={dash.earningsPanelView === "netProfitFor"}
           />
 
           <CurrencyListCard
             i18n={i18n}
             lang={dash.lang}
             currencyCode={dash.currency}
-            rows={dash.earningsCurrencyRows}
+            rows={dash.panelCurrencyRows}
             exchangeRates={dash.exchangeRates}
             exchangeRatesLoading={dash.exchangeRatesLoading}
             useConverted={dash.useConvertedEarnings}
             loading={loading}
+            title={
+              dash.earningsPanelView === "netProfitFor"
+                ? i18n.companies || i18n.company
+                : dash.showSummaryPanelTabs
+                  ? dash.summaryPanelLabel || i18n.currencies
+                  : i18n.currencies
+            }
+            isCompanyBreakdown={dash.earningsPanelView === "netProfitFor"}
           />
             </>
           )}

@@ -820,6 +820,35 @@
   padding: 0.875rem 1.25rem;
 }
 
+.m-dash-earnings-tabs {
+  display: flex;
+  gap: 0.375rem;
+  padding: 0.25rem;
+  border-radius: 0.875rem;
+  background: #f1f5f9;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.m-dash-earnings-tab {
+  flex: 1 1 0;
+  min-width: max-content;
+  border: 0;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  font-size: clamp(1.2rem, 0.15vw + 1.0rem, 1.3rem);
+  font-weight: 700;
+  color: #64748b;
+  background: transparent;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.m-dash-earnings-tab.is-active {
+  color: #0f172a;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
 .m-dash-currency-flag {
   display: grid;
   width: 2.5rem;
@@ -830,6 +859,14 @@
   background: #f8fafc;
   font-size: 1.125rem;
   outline: 1px solid var(--m-color-ring-soft);
+}
+
+.m-dash-currency-flag--company {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  outline: none;
 }
 
 .m-dash-currency-main {

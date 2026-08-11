@@ -9,6 +9,7 @@ import {
   formatRangeLabel,
   periodPresetRange,
 } from "../lib/dashboardDateUtils.js";
+import { normalizeSubsidiaryEarningsByCompany } from "../lib/dashboardCompanyProfit.js";
 import { buildKpiCompare, computeKpiMetrics } from "../lib/dashboardKpi.js";
 import {
   companiesForPicker as resolveCompaniesForPicker,
@@ -22,6 +23,7 @@ import {
 } from "../lib/dashboardScope.js";
 import { canUseGroupOnlyMode, filterCompaniesForUserScope } from "../lib/loginScope.js";
 import { fetchMobileCurrencyCodes } from "../lib/dashboardCurrencies.js";
+import { mapPanelCurrencyRows } from "../lib/dashboardEarnings.js";
 import { loadMobileDashboardData, resolveMobileKpiOwnershipOpts } from "../lib/dashboardLoad.js";
 import {
   computeDisplayConvertedAmount,
@@ -61,9 +63,13 @@ function buildDashboardScopeKey({
   ].join("|");
 }
 
-function earningsRowsFromBootstrap(bootstrap, panelMetric, primaryCurrency, kpiOpts = {}) {
-  // Mobile hero/KPI are Net Profit — currency breakdown uses the same metric
-  // (avoid mixing primary-currency net with other-currency earnings).
+function earningsRowsFromBootstrap(
+  bootstrap,
+  { panelNetProfit = null, panelEarnings = null, primaryCurrency, kpiOpts = {} } = {},
+) {
+  // Dual metrics for Currency / Earning tabs (desktop parity).
+  // Pin primary currency to painted KPI so pie/list never disagree with hero cards.
+  const primary = String(primaryCurrency || "").toUpperCase();
   const entries = bootstrap?.earnings?.current;
   if (Array.isArray(entries) && entries.length) {
     return entries
@@ -71,12 +77,16 @@ function earningsRowsFromBootstrap(bootstrap, panelMetric, primaryCurrency, kpiO
         if (!payload) return null;
         const metrics = computeKpiMetrics(payload, kpiOpts);
         const normalized = String(code || "").trim().toUpperCase();
-        const fromMetrics = metrics?.netProfit ?? metrics?.earnings;
+        const isPrimary = normalized === primary;
+        const netProfit =
+          isPrimary && panelNetProfit != null
+            ? panelNetProfit
+            : (metrics?.netProfit ?? null);
         const earnings =
-          normalized === String(primaryCurrency || "").toUpperCase() && panelMetric != null
-            ? panelMetric
-            : fromMetrics;
-        return { code: normalized, earnings };
+          isPrimary && panelEarnings != null
+            ? panelEarnings
+            : (metrics?.earnings ?? metrics?.netProfit ?? null);
+        return { code: normalized, netProfit, earnings };
       })
       .filter((row) => row?.code);
   }
@@ -84,8 +94,10 @@ function earningsRowsFromBootstrap(bootstrap, panelMetric, primaryCurrency, kpiO
   const current = bootstrap?.current;
   const metrics = computeKpiMetrics(current, kpiOpts);
   const code = String(current?.currency || current?.settlement_currency || primaryCurrency || "MYR").toUpperCase();
-  const earnings = panelMetric ?? metrics?.netProfit ?? metrics?.earnings ?? null;
-  return earnings == null ? [] : [{ code, earnings }];
+  const netProfit = panelNetProfit ?? metrics?.netProfit ?? null;
+  const earnings = panelEarnings ?? metrics?.earnings ?? metrics?.netProfit ?? null;
+  if (netProfit == null && earnings == null) return [];
+  return [{ code, netProfit, earnings }];
 }
 
 export function useMobileDashboard() {
@@ -112,6 +124,7 @@ export function useMobileDashboard() {
   const [dateFrom, setDateFrom] = useState(defaults.dateFrom);
   const [dateTo, setDateTo] = useState(defaults.dateTo);
   const [activePreset, setActivePreset] = useState("thisMonth");
+  const [earningsPanelView, setEarningsPanelView] = useState("currency");
   const [bootstrap, setBootstrap] = useState(null);
   const [loadedScopeKey, setLoadedScopeKey] = useState("");
   const loadedScopeKeyRef = useRef("");
@@ -425,9 +438,11 @@ export function useMobileDashboard() {
       today: i18n.vsPreviousPeriod,
       yesterday: i18n.vsPreviousPeriod,
       thisWeek: i18n.vsPreviousPeriod,
+      lastWeek: i18n.vsLastWeek,
       thisMonth: i18n.vsLastMonth,
       lastMonth: i18n.vsPreviousPeriod,
       thisYear: i18n.vsPreviousPeriod,
+      lastYear: i18n.vsLastYear,
     };
     return map[activePreset] || i18n.vsPreviousPeriod;
   }, [activePreset, bootstrap, i18n]);
@@ -459,20 +474,78 @@ export function useMobileDashboard() {
   }, [chartRows.length, chartIsMonthly]);
 
   const panelMetric = kpi?.netProfit ?? null;
+  const panelEarningsMetric = kpi?.showEarnings ? (kpi?.earnings ?? null) : null;
 
   const earningsCurrencyRows = useMemo(() => {
-    const rows = earningsRowsFromBootstrap(bootstrap, panelMetric, currency, kpiOwnershipOpts);
+    const rows = earningsRowsFromBootstrap(bootstrap, {
+      panelNetProfit: panelMetric,
+      panelEarnings: panelEarningsMetric,
+      primaryCurrency: currency,
+      kpiOpts: kpiOwnershipOpts,
+    });
     if (!useConvertedEarnings) return rows;
     return rows.map((row) => {
-      if (String(row.code).toUpperCase() === String(currency).toUpperCase()) {
-        return { ...row, earningsConverted: row.earnings };
-      }
+      const isPrimary = String(row.code).toUpperCase() === String(currency).toUpperCase();
       return {
         ...row,
-        earningsConverted: computeDisplayConvertedAmount(row.earnings, row.code, currency, exchangeRates.rates),
+        netProfitConverted: isPrimary
+          ? row.netProfit
+          : computeDisplayConvertedAmount(row.netProfit, row.code, currency, exchangeRates.rates),
+        earningsConverted: isPrimary
+          ? row.earnings
+          : computeDisplayConvertedAmount(row.earnings, row.code, currency, exchangeRates.rates),
       };
     });
-  }, [bootstrap, panelMetric, currency, useConvertedEarnings, exchangeRates.rates, kpiOwnershipOpts]);
+  }, [
+    bootstrap,
+    panelMetric,
+    panelEarningsMetric,
+    currency,
+    useConvertedEarnings,
+    exchangeRates.rates,
+    kpiOwnershipOpts,
+  ]);
+
+  const groupOnlyMode = Boolean(
+    selectedGroup && !groupAllMode && !groupsAllMode && !(Number.isFinite(Number(companyId)) && Number(companyId) > 0),
+  );
+
+  const showEarningPanelTab = Boolean(kpi?.showEarnings);
+  const showNetProfitForTab = useMemo(
+    () =>
+      Boolean(groupOnlyMode) &&
+      normalizeSubsidiaryEarningsByCompany(bootstrap?.current?.subsidiary_earnings_by_company).length > 0,
+    [groupOnlyMode, bootstrap],
+  );
+  const showSummaryPanelTabs = showEarningPanelTab || showNetProfitForTab;
+
+  useEffect(() => {
+    if (!showEarningPanelTab && earningsPanelView === "earning") {
+      setEarningsPanelView("currency");
+    }
+    if (!showNetProfitForTab && earningsPanelView === "netProfitFor") {
+      setEarningsPanelView("currency");
+    }
+  }, [showEarningPanelTab, showNetProfitForTab, earningsPanelView]);
+
+  const panelCurrencyRows = useMemo(() => {
+    if (earningsPanelView === "netProfitFor") {
+      const companyRows = normalizeSubsidiaryEarningsByCompany(
+        bootstrap?.current?.subsidiary_earnings_by_company,
+      );
+      return companyRows.map((row) => ({
+        code: row.company_id,
+        group: row.group_id,
+        netProfit: row.net_profit,
+        earnings: row.net_profit,
+        netProfitConverted: null,
+        earningsConverted: null,
+      }));
+    }
+    return mapPanelCurrencyRows(earningsCurrencyRows, earningsPanelView, {
+      useConverted: useConvertedEarnings,
+    });
+  }, [earningsCurrencyRows, earningsPanelView, useConvertedEarnings, bootstrap]);
 
   // Hero must match KPI Net Profit (selected company/currency) — never sum FX rows.
   const summaryValue = panelMetric ?? 0;
@@ -483,11 +556,14 @@ export function useMobileDashboard() {
   const showMultiCurrencyNote = false;
 
   const ratesWarning = useMemo(() => {
+    if (earningsPanelView === "netProfitFor") return "";
     if (!useConvertedEarnings || exchangeRatesLoading) return "";
+    const metricKey = earningsPanelView === "earning" ? "earnings" : "netProfit";
+    const convertedKey = earningsPanelView === "earning" ? "earningsConverted" : "netProfitConverted";
     const missing = earningsCurrencyRows.some((row) => {
-      const raw = Number(row.earnings);
+      const raw = Number(row[metricKey]);
       if (!Number.isFinite(raw) || Math.abs(raw) < 0.005) return false;
-      return row.earningsConverted == null;
+      return row[convertedKey] == null;
     });
     // Surface when conversion is incomplete (failed FX fetch typically causes this).
     if (missing || (exchangeRatesError && useConvertedEarnings)) {
@@ -495,6 +571,7 @@ export function useMobileDashboard() {
     }
     return "";
   }, [
+    earningsPanelView,
     useConvertedEarnings,
     exchangeRatesLoading,
     exchangeRatesError,
@@ -807,9 +884,12 @@ export function useMobileDashboard() {
     setSessionNonce((n) => n + 1);
   }, [companyId, selectedGroup, groupsAllMode, groupAllMode]);
 
-  const groupOnlyMode = Boolean(
-    selectedGroup && !groupAllMode && !groupsAllMode && !(Number.isFinite(Number(companyId)) && Number(companyId) > 0),
-  );
+  const summaryPanelLabel =
+    earningsPanelView === "earning"
+      ? i18n.earnings
+      : earningsPanelView === "netProfitFor"
+        ? i18n.netProfitCompanyCaption
+        : i18n.netProfit;
 
   return {
     i18n,
@@ -857,6 +937,13 @@ export function useMobileDashboard() {
     chartIsMonthly,
     toggleChartSeries,
     earningsCurrencyRows,
+    panelCurrencyRows,
+    earningsPanelView,
+    setEarningsPanelView,
+    showEarningPanelTab,
+    showNetProfitForTab,
+    showSummaryPanelTabs,
+    summaryPanelLabel,
     summaryValue,
     loading: showLoading,
     refreshing,

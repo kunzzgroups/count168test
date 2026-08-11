@@ -7,10 +7,32 @@ import {
   getCurrencyColor,
 } from "../../lib/dashboardEarnings.js";
 
-const CurrencyDistributionCard = memo(function CurrencyDistributionCard({ i18n, currencyCode, rows, useConverted, loading, note = "" }) {
-  const slices = buildEarningsPieSlices(rows, { useConverted });
-  const shareByCode = buildEarningsShareByCode(rows, currencyCode, { useConverted });
-  const center = computePieCenterMetrics(rows, currencyCode, { useConverted });
+const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
+  i18n,
+  currencyCode,
+  rows,
+  useConverted,
+  loading,
+  note = "",
+  title,
+  badgeLabel,
+  isCompanyBreakdown = false,
+}) {
+  const pieUseConverted = !isCompanyBreakdown && useConverted;
+  const pieBaseCode = isCompanyBreakdown ? "" : currencyCode;
+  const slices = buildEarningsPieSlices(rows, {
+    useConverted: pieUseConverted,
+    baseCode: pieBaseCode,
+  });
+  const centerCode = isCompanyBreakdown
+    ? rows?.[0]?.code || currencyCode
+    : currencyCode;
+  const shareByCode = buildEarningsShareByCode(rows, centerCode, {
+    useConverted: pieUseConverted,
+  });
+  const center = computePieCenterMetrics(rows, centerCode, {
+    useConverted: pieUseConverted,
+  });
 
   const legend = rows
     .map((row, index) => ({
@@ -22,14 +44,16 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({ i18n, 
     .sort((a, b) => b.pct - a.pct);
 
   const empty = !loading && slices.length === 0;
+  const headTitle = title || i18n.currencyDistribution;
+  const headBadge = badgeLabel || i18n.currency;
 
   return (
     <section className="m-dash-card m-dash-card--padded">
       <div className="m-dash-card-head m-dash-card-head--spaced">
-        <h2 className="m-dash-card-title">{i18n.currencyDistribution}</h2>
+        <h2 className="m-dash-card-title">{headTitle}</h2>
         {legend.length > 0 && (
           <span className="m-dash-card-badge">
-            {legend.length} {i18n.currency}
+            {legend.length} {headBadge}
           </span>
         )}
       </div>
