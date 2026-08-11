@@ -54,6 +54,11 @@
   color: var(--m-color-muted);
 }
 
+.m-tx-hist-loading--more {
+  padding: 1.25rem 0 2rem;
+  font-weight: 500;
+}
+
 .m-tx-hist-error {
   border-radius: var(--m-radius-card-lg);
   background: #fff1f2;

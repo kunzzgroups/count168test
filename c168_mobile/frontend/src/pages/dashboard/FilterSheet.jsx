@@ -96,6 +96,15 @@ function inRangeYmd(day, from, to) {
   return cmpYmd(day, lo) >= 0 && cmpYmd(day, hi) <= 0;
 }
 
+function resolveDraftCurrencies(dash) {
+  if (Array.isArray(dash.selectedCurrencies)) {
+    return dash.selectedCurrencies.map((c) => String(c || "").toUpperCase()).filter(Boolean);
+  }
+  const code = String(dash.currency || "").toUpperCase();
+  if (!code || code === "ALL") return [];
+  return [code];
+}
+
 function buildDraftFromDash(dash) {
   return {
     dateFrom: dash.dateFrom,
@@ -106,6 +115,7 @@ function buildDraftFromDash(dash) {
     groupAllMode: dash.groupAllMode,
     companyId: dash.companyId,
     currency: dash.currency,
+    selectedCurrencies: resolveDraftCurrencies(dash),
     selectedCategories: Array.isArray(dash.selectedCategories) ? [...dash.selectedCategories] : [],
   };
 }
@@ -113,6 +123,7 @@ function buildDraftFromDash(dash) {
 function buildDefaultDraft(dash) {
   const range = periodPresetRange("thisYear") || defaultDashboardDateRange();
   const fallback = pickCompany(dash.companies, dash.me?.company_id);
+  const txMode = Array.isArray(dash.categories);
   return {
     dateFrom: range.dateFrom,
     dateTo: range.dateTo,
@@ -122,6 +133,8 @@ function buildDefaultDraft(dash) {
     groupAllMode: false,
     companyId: fallback?.id ?? null,
     currency: dash.currencies?.[0] || dash.currency || "MYR",
+    // Transaction: empty = All currencies. Dashboard keeps single currency.
+    selectedCurrencies: txMode ? [] : [],
     selectedCategories: [],
   };
 }
@@ -523,15 +536,100 @@ export default function FilterSheet({ open, onClose, dash }) {
           {dash.currencies.length > 0 && (
             <Section title={i18n.currency}>
               <div className="m-filter-pill-scroll">
-                {dash.currencies.map((code) => (
-                  <Pill
-                    key={code}
-                    active={draft.currency === code}
-                    onClick={() => setDraft((prev) => ({ ...prev, currency: code }))}
-                  >
-                    {code}
-                  </Pill>
-                ))}
+                {Array.isArray(dash.categories) ? (
+                  <>
+                    <Pill
+                      active={draft.selectedCurrencies.length === 0}
+                      onClick={() =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          selectedCurrencies: [],
+                          currency: "ALL",
+                        }))
+                      }
+                    >
+                      {i18n.all}
+                    </Pill>
+                    {dash.currencies.map((code) => {
+                      const active = draft.selectedCurrencies.includes(code);
+                      return (
+                        <Pill
+                          key={code}
+                          active={active}
+                          onClick={() =>
+                            setDraft((prev) => {
+                              const set = new Set(prev.selectedCurrencies);
+                              if (set.has(code)) set.delete(code);
+                              else set.add(code);
+                              const next = [...set];
+                              return {
+                                ...prev,
+                                selectedCurrencies: next,
+                                currency: next.length === 1 ? next[0] : "ALL",
+                              };
+                            })
+                          }
+                        >
+                          {code}
+                        </Pill>
+                      );
+                    })}
+                  </>
+                ) : (
+                  dash.currencies.map((code) => (
+                    <Pill
+                      key={code}
+                      active={draft.currency === code}
+                      onClick={() => setDraft((prev) => ({ ...prev, currency: code }))}
+                    >
+                      {code}
+                    </Pill>
+                  ))
+                )}
+              </div>
+            </Section>
+          )}
+
+          {Array.isArray(dash.categories) && dash.categories.length > 0 && (
+            <Section title={dash.m?.category || i18n.category || "Category"}>
+              <div className="m-filter-pill-wrap">
+                <Pill
+                  active={draft.selectedCategories.length === 0}
+                  onClick={() => setDraft((prev) => ({ ...prev, selectedCategories: [] }))}
+                >
+                  {i18n.all}
+                </Pill>
+                {dash.categories.map((cat) => {
+                  const value =
+                    typeof cat === "string"
+                      ? cat.trim()
+                      : String(cat?.value ?? cat?.id ?? cat?.name ?? "").trim();
+                  const label =
+                    typeof cat === "string"
+                      ? value
+                      : String(cat?.label ?? cat?.name ?? value).trim() || value;
+                  if (!value) return null;
+                  const active = draft.selectedCategories.includes(value);
+                  return (
+                    <Pill
+                      key={value}
+                      active={active}
+                      onClick={() =>
+                        setDraft((prev) => {
+                          const has = prev.selectedCategories.includes(value);
+                          return {
+                            ...prev,
+                            selectedCategories: has
+                              ? prev.selectedCategories.filter((x) => x !== value)
+                              : [...prev.selectedCategories, value],
+                          };
+                        })
+                      }
+                    >
+                      {label}
+                    </Pill>
+                  );
+                })}
               </div>
             </Section>
           )}

@@ -5,6 +5,7 @@ import {
   defaultDashboardDateRange,
   formatRangeLabel,
   periodPresetRange,
+  todayYmd,
 } from "../lib/dashboardDateUtils.js";
 import {
   companiesForPicker as resolveCompaniesForPicker,
@@ -48,6 +49,7 @@ import {
   searchTransactions,
   submitTransaction,
   fetchTypeAccountSearch,
+  fetchTypeTransactionSearch,
 } from "../lib/transactionApi.js";
 import {
   buildOptimisticSubmitDeltas,
@@ -99,9 +101,12 @@ export function useMobileTransaction({ listPaused = false } = {}) {
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupsAllMode, setGroupsAllMode] = useState(false);
   const [groupAllMode, setGroupAllMode] = useState(false);
-  const [currency, setCurrency] = useState("MYR");
+  const [currency, setCurrency] = useState("ALL");
+  /** Empty = All currencies (desktop showAllCurrencies). */
+  const [selectedCurrencies, setSelectedCurrencies] = useState([]);
   const [currencies, setCurrencies] = useState(["MYR"]);
   const [currenciesReady, setCurrenciesReady] = useState(false);
+  const filtersBeforeTypeSearchRef = useRef(null);
   const [dateFrom, setDateFrom] = useState(defaults.dateFrom);
   const [dateTo, setDateTo] = useState(defaults.dateTo);
   const [activePreset, setActivePreset] = useState("thisYear");
@@ -197,9 +202,19 @@ export function useMobileTransaction({ listPaused = false } = {}) {
   const dateRangeText = useMemo(() => formatRangeLabel(dateFrom, dateTo), [dateFrom, dateTo]);
 
   const currencyCodesForSearch = useMemo(() => {
-    if (!currency || currency === "ALL") return currencies.filter((c) => c !== "ALL");
-    return [currency];
-  }, [currency, currencies]);
+    const all = currencies.filter((c) => c && c !== "ALL");
+    if (!selectedCurrencies.length) return all;
+    const picked = selectedCurrencies
+      .map((c) => String(c || "").toUpperCase().trim())
+      .filter((c) => c && c !== "ALL");
+    return picked.length ? picked : all;
+  }, [selectedCurrencies, currencies]);
+
+  const currencyFilterLabel = useMemo(() => {
+    if (!selectedCurrencies.length) return "ALL";
+    if (selectedCurrencies.length === 1) return selectedCurrencies[0];
+    return `${selectedCurrencies.length}`;
+  }, [selectedCurrencies]);
 
   const runSearch = useCallback(
     async (signal) => {
@@ -227,53 +242,105 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           typeSearchFormType: typeSearchActive ? typeSearchFormType : undefined,
         };
 
-        if (typeSearchActive && typeSearchFormType) {
-          try {
-            const ids = await fetchTypeAccountSearch({
-              ...scopeApi,
-              // Same as desktop: Capture Date × all pure manual types (ignore form Type).
-              transactionType: "ALL",
-              signal,
-            });
-            if (signal?.aborted) return;
-            paramsBase.typeAccountIds = ids;
-            paramsBase.typeSearchFormType = "ALL";
-          } catch {
-            /* still run search without ids */
-          }
-        }
+        const PERIOD_TYPE_SEARCH_TYPES = new Set([
+          "CONTRA",
+          "PAYMENT",
+          "CLAIM",
+          "CLEAR",
+          "RATE",
+          "ADJUSTMENT",
+          "PROFIT",
+          "ALL",
+        ]);
+        const normalizedType = String(typeSearchFormType || "ALL").toUpperCase().trim();
+        const usePeriodTypeSearch =
+          typeSearchActive && PERIOD_TYPE_SEARCH_TYPES.has(normalizedType || "ALL");
+        const useTxnTypeSearch =
+          typeSearchActive && normalizedType && !PERIOD_TYPE_SEARCH_TYPES.has(normalizedType);
 
         let currentData = null;
-        if (transactionScope?.mode === "aggregate" && transactionScope.mergeCompanyIds?.length) {
-          const results = await Promise.all(
-            transactionScope.mergeCompanyIds.map((cid) =>
-              searchTransactions({
-                ...paramsBase,
-                companyId: cid,
-                viewGroup: scopeApi.viewGroup || undefined,
-                groupId: undefined,
-                signal,
-              }),
-            ),
-          );
+
+        if (useTxnTypeSearch) {
+          currentData = await fetchTypeTransactionSearch({
+            ...scopeApi,
+            transactionType: normalizedType,
+            currencyCodes: currencyCodesForSearch,
+            signal,
+          });
           if (seq !== searchSeq.current || signal?.aborted) return;
-          const payloads = results.filter((r) => r?.success && r?.data).map((r) => r.data);
-          if (!payloads.length) {
-            setRawSearchData({ left_table: [], right_table: [], totals: null });
+          if (!currentData) {
+            setSearchError(m.searchFailed);
             return;
           }
-          currentData = mergeSearchApiDataList(payloads);
         } else {
-          const result = await searchTransactions({ ...paramsBase, signal });
-          if (seq !== searchSeq.current || signal?.aborted) return;
-          if (!result?.success || !result?.data) {
-            setSearchError(result?.message || result?.error || m.searchFailed);
-            return;
+          if (usePeriodTypeSearch) {
+            try {
+              const ids = await fetchTypeAccountSearch({
+                ...scopeApi,
+                // Same as desktop: Capture Date × all pure manual types (ignore form Type).
+                transactionType: "ALL",
+                signal,
+              });
+              if (signal?.aborted) return;
+              paramsBase.typeAccountIds = ids;
+              paramsBase.typeSearchFormType = "ALL";
+            } catch {
+              /* still run search without ids */
+            }
           }
-          currentData = result.data;
+
+          if (transactionScope?.mode === "aggregate" && transactionScope.mergeCompanyIds?.length) {
+            const results = await Promise.all(
+              transactionScope.mergeCompanyIds.map((cid) =>
+                searchTransactions({
+                  ...paramsBase,
+                  companyId: cid,
+                  viewGroup: scopeApi.viewGroup || undefined,
+                  groupId: undefined,
+                  signal,
+                }),
+              ),
+            );
+            if (seq !== searchSeq.current || signal?.aborted) return;
+            const payloads = results.filter((r) => r?.success && r?.data).map((r) => r.data);
+            if (!payloads.length) {
+              setRawSearchData({ left_table: [], right_table: [], totals: null });
+              return;
+            }
+            currentData = mergeSearchApiDataList(payloads);
+          } else {
+            const result = await searchTransactions({ ...paramsBase, signal });
+            if (seq !== searchSeq.current || signal?.aborted) return;
+            if (!result?.success || !result?.data) {
+              setSearchError(result?.message || result?.error || m.searchFailed);
+              return;
+            }
+            currentData = result.data;
+          }
         }
 
-        setRawSearchData(sanitizeSearchApiData(currentData));
+        let cleaned = sanitizeSearchApiData(currentData);
+        if (typeSearchActive) {
+          const hasTypeSearchMovement = (row) => {
+            if (!row) return false;
+            if (Number(row?.has_crdr_transactions) === 1 || Number(row?.has_win_loss_transactions) === 1) {
+              return true;
+            }
+            if (Number(row?.has_contra_clear_period) === 1) return true;
+            const wl = parseFloat(String(row?.win_loss ?? "").replace(/,/g, "")) || 0;
+            const wlFull = parseFloat(String(row?.win_loss_full ?? "").replace(/,/g, "")) || 0;
+            if (Math.abs(wl) > 0.0001 || Math.abs(wlFull) > 0.0001) return true;
+            const crDr = parseFloat(String(row?.cr_dr ?? "").replace(/,/g, "")) || 0;
+            return Math.abs(crDr) > 0.0001;
+          };
+          cleaned = sanitizeSearchApiData({
+            ...cleaned,
+            left_table: (cleaned.left_table || []).filter(hasTypeSearchMovement),
+            right_table: (cleaned.right_table || []).filter(hasTypeSearchMovement),
+          });
+        }
+
+        setRawSearchData(cleaned);
       } catch (e) {
         if (signal?.aborted || e?.name === "AbortError") return;
         setSearchError(e?.message || m.searchFailed);
@@ -384,6 +451,11 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           setSelectedGroup(snap.selectedGroup ? String(snap.selectedGroup) : null);
           setGroupsAllMode(Boolean(snap.groupsAllMode));
           setGroupAllMode(Boolean(snap.groupAllMode));
+          if (Array.isArray(snap.selectedCurrencies)) {
+            setSelectedCurrencies(
+              snap.selectedCurrencies.map((c) => String(c || "").toUpperCase()).filter(Boolean),
+            );
+          }
           if (snap.currency) setCurrency(String(snap.currency));
           if (snap.dateFrom) setDateFrom(String(snap.dateFrom));
           if (snap.dateTo) setDateTo(String(snap.dateTo));
@@ -446,7 +518,15 @@ export function useMobileTransaction({ listPaused = false } = {}) {
         if (ac.signal.aborted) return;
         const next = codes.length ? codes : ["MYR"];
         setCurrencies(next);
-        setCurrency((prev) => (next.includes(prev) ? prev : next[0] || "MYR"));
+        setSelectedCurrencies((prev) => {
+          if (!prev.length) return prev;
+          const kept = prev.filter((c) => next.includes(c));
+          return kept;
+        });
+        setCurrency((prev) => {
+          if (prev === "ALL") return "ALL";
+          return next.includes(prev) ? prev : "ALL";
+        });
       } catch {
         if (!ac.signal.aborted) setCurrencies(["MYR"]);
       } finally {
@@ -497,6 +577,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
       groupsAllMode,
       groupAllMode,
       currency,
+      selectedCurrencies,
       dateFrom,
       dateTo,
       activePreset,
@@ -515,6 +596,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
       groupsAllMode,
       groupAllMode,
       currency,
+      selectedCurrencies,
       dateFrom,
       dateTo,
       activePreset,
@@ -590,7 +672,22 @@ export function useMobileTransaction({ listPaused = false } = {}) {
         setActivePreset("");
       }
 
-      if (draft.currency) setCurrency(draft.currency);
+      if (Array.isArray(draft.selectedCurrencies)) {
+        const next = draft.selectedCurrencies
+          .map((c) => String(c || "").toUpperCase().trim())
+          .filter((c) => c && c !== "ALL");
+        setSelectedCurrencies(next);
+        setCurrency(next.length === 1 ? next[0] : "ALL");
+      } else if (draft.currency) {
+        const code = String(draft.currency).toUpperCase();
+        if (code === "ALL") {
+          setSelectedCurrencies([]);
+          setCurrency("ALL");
+        } else {
+          setSelectedCurrencies([code]);
+          setCurrency(code);
+        }
+      }
       if (Array.isArray(draft.selectedCategories)) setSelectedCategories(draft.selectedCategories);
 
       if (draft.groupsAllMode) {
@@ -687,9 +784,12 @@ export function useMobileTransaction({ listPaused = false } = {}) {
     setShowCaptureOnly(false);
     setShowPaymentOnly(false);
     setShowZeroBalance(false);
+    setSelectedCurrencies([]);
+    setCurrency("ALL");
     setSelectedCategories([]);
     setTypeSearchActive(false);
     setTypeSearchFormType("");
+    filtersBeforeTypeSearchRef.current = null;
     setReloadNonce((n) => n + 1);
   }, []);
 
@@ -788,18 +888,84 @@ export function useMobileTransaction({ listPaused = false } = {}) {
     (txType) => {
       const tType = String(txType || "").toUpperCase().trim();
       if (!tType) return;
+
+      // First entry: snapshot filters, clear to today (desktop parity).
+      if (!typeSearchActive) {
+        if (!filtersBeforeTypeSearchRef.current) {
+          filtersBeforeTypeSearchRef.current = {
+            selectedCategories: [...selectedCategories],
+            selectedCurrencies: [...selectedCurrencies],
+            currency,
+            dateFrom,
+            dateTo,
+            activePreset,
+            showName,
+            showPaymentOnly,
+            showCaptureOnly,
+            showZeroBalance,
+          };
+        }
+        const today = todayYmd();
+        setDateFrom(today);
+        setDateTo(today);
+        setActivePreset("today");
+        setSelectedCategories([]);
+        setSelectedCurrencies([]);
+        setCurrency("ALL");
+        setShowName(false);
+        setShowPaymentOnly(false);
+        setShowCaptureOnly(false);
+        setShowZeroBalance(false);
+      }
+
       setTypeSearchActive(true);
-      // List ignores form Type — always ALL (Capture Date × any pure manual type).
-      setTypeSearchFormType("ALL");
+      // Period types: list uses ALL (Capture Date × any pure manual type).
+      const PERIOD = new Set([
+        "CONTRA",
+        "PAYMENT",
+        "CLAIM",
+        "CLEAR",
+        "RATE",
+        "ADJUSTMENT",
+        "PROFIT",
+        "ALL",
+      ]);
+      setTypeSearchFormType(PERIOD.has(tType) ? "ALL" : tType);
       setReloadNonce((n) => n + 1);
     },
-    [],
+    [
+      typeSearchActive,
+      selectedCategories,
+      selectedCurrencies,
+      currency,
+      dateFrom,
+      dateTo,
+      activePreset,
+      showName,
+      showPaymentOnly,
+      showCaptureOnly,
+      showZeroBalance,
+    ],
   );
 
   const exitTypeSearch = useCallback(() => {
     clearMobileTxListSnapshot();
+    const snap = filtersBeforeTypeSearchRef.current;
+    filtersBeforeTypeSearchRef.current = null;
     setTypeSearchActive(false);
     setTypeSearchFormType("");
+    if (snap) {
+      setSelectedCategories(Array.isArray(snap.selectedCategories) ? snap.selectedCategories : []);
+      setSelectedCurrencies(Array.isArray(snap.selectedCurrencies) ? snap.selectedCurrencies : []);
+      setCurrency(snap.currency || "ALL");
+      if (snap.dateFrom) setDateFrom(snap.dateFrom);
+      if (snap.dateTo) setDateTo(snap.dateTo);
+      setActivePreset(snap.activePreset || "");
+      setShowName(Boolean(snap.showName));
+      setShowPaymentOnly(Boolean(snap.showPaymentOnly));
+      setShowCaptureOnly(Boolean(snap.showCaptureOnly));
+      setShowZeroBalance(Boolean(snap.showZeroBalance));
+    }
     setReloadNonce((n) => n + 1);
   }, []);
 
@@ -954,8 +1120,10 @@ export function useMobileTransaction({ listPaused = false } = {}) {
     pickAllInGroup,
     applyFilters,
     canUseGroupOnlyForGroup,
-    currency,
+    currency: currencyFilterLabel,
     setCurrency,
+    selectedCurrencies,
+    setSelectedCurrencies,
     currencies,
     formCurrencies,
     dateFrom,
