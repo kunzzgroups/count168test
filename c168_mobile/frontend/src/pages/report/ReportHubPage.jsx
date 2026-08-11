@@ -5,7 +5,7 @@ import { fetchJson } from "../../lib/fetchJson.js";
 import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { reportText } from "../../translateFile/reportTranslate.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
-import { canAccessReport, resolveMobileLandingPath } from "../../utils/mobilePermissions.js";
+import { canShowReportEntry, resolveMobileLandingPath } from "../../utils/mobilePermissions.js";
 import "./report.css";
 
 export default function ReportHubPage() {
@@ -31,7 +31,7 @@ export default function ReportHubPage() {
           return;
         }
         const user = json.data;
-        if (!canAccessReport(user)) {
+        if (!canShowReportEntry(user)) {
           navigate(resolveMobileLandingPath(user), { replace: true });
           return;
         }

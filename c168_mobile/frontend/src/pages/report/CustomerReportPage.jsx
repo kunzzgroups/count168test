@@ -14,8 +14,10 @@ import {
   maintenanceScopeIsReady,
   maintenanceScopeKey,
 } from "../../lib/mobileMaintenanceScope.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
 import { reportText } from "../../translateFile/reportTranslate.js";
-import { canAccessReport } from "../../utils/mobilePermissions.js";
+import { canShowReportEntry } from "../../utils/mobilePermissions.js";
 import { ReportFilterBar, ReportFilterSheet } from "./ReportSheets.jsx";
 import "./report.css";
 
@@ -46,7 +48,7 @@ function CustomerTotalStrip({ i18n, totals }) {
 }
 
 export default function CustomerReportPage() {
-  const s = useMaintenanceSession({ canAccess: canAccessReport });
+  const s = useMaintenanceSession({ canAccess: canShowReportEntry });
   const i18n = useMemo(() => reportText(s.lang), [s.lang]);
   const { scope } = s;
 
@@ -70,10 +72,10 @@ export default function CustomerReportPage() {
   const scopeCacheKey = maintenanceScopeKey(scope);
 
   const loadList = useCallback(
-    async (signal) => {
+    async (signal, { soft = false } = {}) => {
       if (!scopeReady) return;
       const seq = ++seqRef.current;
-      setListLoading(true);
+      if (!soft) setListLoading(true);
       setListError("");
       try {
         const json = await fetchCustomerReport(
@@ -97,11 +99,13 @@ export default function CustomerReportPage() {
         );
       } catch (e) {
         if (e?.name === "AbortError" || seq !== seqRef.current) return;
-        setListError(e?.message || i18n.loadFailed);
-        setRows([]);
-        setTotals(null);
+        if (!soft) {
+          setListError(e?.message || i18n.loadFailed);
+          setRows([]);
+          setTotals(null);
+        }
       } finally {
-        if (seq === seqRef.current) setListLoading(false);
+        if (seq === seqRef.current && !soft) setListLoading(false);
       }
     },
     [
@@ -145,6 +149,14 @@ export default function CustomerReportPage() {
     })();
     return () => ac.abort();
   }, [s.me, scopeReady, scopeCacheKey, scope]);
+
+  useRealtimeDomain(
+    REALTIME_DOMAINS.LEDGER,
+    () => {
+      loadList(undefined, { soft: true });
+    },
+    { enabled: Boolean(s.me) && scopeReady },
+  );
 
   useEffect(() => {
     if (!s.me || !scopeReady) return undefined;

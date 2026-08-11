@@ -13,8 +13,10 @@ import {
   maintenanceScopeIsReady,
   maintenanceScopeKey,
 } from "../../lib/mobileMaintenanceScope.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
+import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
 import { reportText } from "../../translateFile/reportTranslate.js";
-import { canAccessReport } from "../../utils/mobilePermissions.js";
+import { canShowReportEntry } from "../../utils/mobilePermissions.js";
 import { ReportFilterBar, ReportFilterSheet } from "./ReportSheets.jsx";
 import "./report.css";
 
@@ -51,7 +53,7 @@ function DomainTotalStrip({ i18n, totals }) {
 }
 
 export default function DomainReportPage() {
-  const s = useMaintenanceSession({ canAccess: canAccessReport });
+  const s = useMaintenanceSession({ canAccess: canShowReportEntry });
   const i18n = useMemo(() => reportText(s.lang), [s.lang]);
   const { scope } = s;
 
@@ -73,10 +75,10 @@ export default function DomainReportPage() {
   const isGroupScope = scope?.mode === "group";
 
   const loadList = useCallback(
-    async (signal) => {
+    async (signal, { soft = false } = {}) => {
       if (!scopeReady) return;
       const seq = ++seqRef.current;
-      setListLoading(true);
+      if (!soft) setListLoading(true);
       setListError("");
       try {
         const json = await fetchDomainReport(
@@ -93,11 +95,13 @@ export default function DomainReportPage() {
         setTotals(json?.totals || null);
       } catch (e) {
         if (e?.name === "AbortError" || seq !== seqRef.current) return;
-        setListError(e?.message || i18n.loadFailed);
-        setRows([]);
-        setTotals(null);
+        if (!soft) {
+          setListError(e?.message || i18n.loadFailed);
+          setRows([]);
+          setTotals(null);
+        }
       } finally {
-        if (seq === seqRef.current) setListLoading(false);
+        if (seq === seqRef.current && !soft) setListLoading(false);
       }
     },
     [scope, scopeReady, dateFrom, dateTo, processId, i18n.loadFailed],
@@ -110,6 +114,14 @@ export default function DomainReportPage() {
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s.me, scopeCacheKey, dateFrom, dateTo, processId]);
+
+  useRealtimeDomain(
+    REALTIME_DOMAINS.LEDGER,
+    () => {
+      loadList(undefined, { soft: true });
+    },
+    { enabled: Boolean(s.me) && scopeReady },
+  );
 
   const displayRows = useMemo(() => {
     const q = query.trim().toUpperCase();

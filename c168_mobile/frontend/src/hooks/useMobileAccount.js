@@ -20,6 +20,12 @@ import {
   resolveAccountScopeDraft,
 } from "../lib/mobileAccountScope.js";
 import { isPartnershipAuditReadOnlyLocked } from "../lib/partnershipAuditReadOnly.js";
+import {
+  buildMobileRealtimeScopeFromGc,
+  setMobileRealtimeScope,
+} from "../lib/realtime/mobileRealtimeScope.js";
+import { REALTIME_DOMAINS } from "../lib/realtime/realtimeEvents.js";
+import { useRealtimeDomain } from "../lib/realtime/useRealtimeDomain.js";
 import { accountText } from "../translateFile/accountTranslate.js";
 import { buildApiUrl } from "../utils/apiUrl.js";
 import { canAccessAccount, resolveMobileLandingPath } from "../utils/mobilePermissions.js";
@@ -105,6 +111,7 @@ export function useMobileAccount() {
   const [saving, setSaving] = useState(false);
   const toastTimer = useRef(null);
   const listSeq = useRef(0);
+  const softReloadRef = useRef(false);
 
   const scope = useMemo(
     () => ({ companyId, selectedGroup, groupsAllMode, groupAllMode }),
@@ -249,15 +256,19 @@ export function useMobileAccount() {
   useEffect(() => {
     if (!me || (!Number(companyId) && !groupOnlyMode && !groupsAllMode && !groupAllMode)) return;
     const seq = ++listSeq.current;
+    const soft = softReloadRef.current;
+    softReloadRef.current = false;
     const ac = new AbortController();
-    setLoading(true);
+    if (!soft) setLoading(true);
     setError("");
     fetchRows(ac.signal)
       .then((rows) => {
         if (seq === listSeq.current) setAccounts(rows);
       })
       .catch((e) => {
-        if (e?.name !== "AbortError" && seq === listSeq.current) setError(e?.message || i18n.loadError);
+        if (e?.name !== "AbortError" && seq === listSeq.current && !soft) {
+          setError(e?.message || i18n.loadError);
+        }
       })
       .finally(() => {
         if (seq === listSeq.current) {
@@ -267,6 +278,33 @@ export function useMobileAccount() {
       });
     return () => ac.abort();
   }, [companyId, fetchRows, groupAllMode, groupOnlyMode, groupsAllMode, i18n.loadError, me, reloadNonce]);
+
+  // Publish GC scope for MobileRealtimeBridge SSE ticket.
+  useEffect(() => {
+    if (!me) return;
+    setMobileRealtimeScope(
+      buildMobileRealtimeScopeFromGc({
+        companyId,
+        selectedGroup,
+        groupsAllMode,
+        groupAllMode,
+      }),
+    );
+  }, [me, companyId, selectedGroup, groupsAllMode, groupAllMode]);
+
+  const accountRealtimeEnabled =
+    Number.isFinite(Number(companyId)) && Number(companyId) > 0
+      ? true
+      : Boolean(selectedGroup || groupsAllMode || groupAllMode);
+
+  useRealtimeDomain(
+    REALTIME_DOMAINS.ACCOUNTS,
+    () => {
+      softReloadRef.current = true;
+      setReloadNonce((value) => value + 1);
+    },
+    { enabled: accountRealtimeEnabled },
+  );
 
   const displayAccounts = useMemo(() => {
     const rows = [...accounts];

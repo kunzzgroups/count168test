@@ -5,7 +5,7 @@ import { fetchJson } from "../../lib/fetchJson.js";
 import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { MORE_I18N } from "../../translateFile/moreTranslate.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
-import { canAccessAdmin, canAccessMaintenance, canAccessReport } from "../../utils/mobilePermissions.js";
+import { canAccessAdmin, canAccessMaintenance, canShowReportEntry } from "../../utils/mobilePermissions.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import "./more.css";
 
@@ -69,7 +69,7 @@ export default function MorePage() {
       description: mt.maintenanceDescription,
     });
   }
-  if (canAccessReport(me)) {
+  if (canShowReportEntry(me)) {
     tools.push({
       to: "/report",
       icon: "fa-chart-column",

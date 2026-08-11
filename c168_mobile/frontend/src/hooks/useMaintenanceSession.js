@@ -12,6 +12,10 @@ import {
 import { readLoginLang, writeLoginLang } from "../lib/loginLang.js";
 import { canUseGroupOnlyMode, filterCompaniesForUserScope } from "../lib/loginScope.js";
 import { resolveMaintenanceScope } from "../lib/mobileMaintenanceScope.js";
+import {
+  buildMobileRealtimeScopeFromGc,
+  setMobileRealtimeScope,
+} from "../lib/realtime/mobileRealtimeScope.js";
 import { maintenanceText } from "../translateFile/maintenanceTranslate.js";
 import { buildApiUrl } from "../utils/apiUrl.js";
 import { resolveMobileLandingPath } from "../utils/mobilePermissions.js";
@@ -153,6 +157,19 @@ export function useMaintenanceSession({ canAccess }) {
       navigate("/login", { replace: true });
     }
   }, [navigate]);
+
+  // Publish GC scope for MobileRealtimeBridge SSE ticket (Report / Maintenance).
+  useEffect(() => {
+    if (!me) return;
+    setMobileRealtimeScope(
+      buildMobileRealtimeScopeFromGc({
+        companyId,
+        selectedGroup,
+        groupsAllMode: false,
+        groupAllMode: false,
+      }),
+    );
+  }, [me, companyId, selectedGroup, groupMode]);
 
   return {
     lang,

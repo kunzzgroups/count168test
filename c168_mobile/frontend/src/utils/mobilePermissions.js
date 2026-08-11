@@ -1,5 +1,7 @@
 /** Mirrors desktop sidebarPermissions.js for mobile routes only. */
 
+import { isGroupLogin } from "../lib/loginScope.js";
+
 export function normRole(role) {
   return String(role || "").trim().toLowerCase();
 }
@@ -29,6 +31,20 @@ export function canAccessDashboard(me) {
 
 export function canAccessReport(me) {
   return canAccessPermission(me, "report");
+}
+
+/**
+ * Report entry (More + hub + deep links): hide when the active company is Bank-only.
+ * Mirrors desktop `canShowReportInSidebar` using session `me` flags (no GC cache on mobile).
+ */
+export function canShowReportEntry(me) {
+  if (!canAccessReport(me)) return false;
+  if (isGroupLogin(me)) return true;
+  if (me?.company_has_gambling) return true;
+  const code = String(me?.company_code || "").trim().toUpperCase();
+  if (code === "C168" || me?.is_current_company_c168) return true;
+  if (me?.company_has_bank && !me?.company_has_gambling) return false;
+  return true;
 }
 
 export function canAccessTransaction(me) {
@@ -99,7 +115,7 @@ export function resolveMobileLandingPath(me) {
   if (canAccessDashboard(me)) return "/dashboard";
   if (canAccessTransaction(me)) return "/transaction";
   if (canAccessAccount(me)) return "/account";
-  if (canAccessReport(me)) return "/report";
+  if (canShowReportEntry(me)) return "/report";
   return "/more";
 }
 
