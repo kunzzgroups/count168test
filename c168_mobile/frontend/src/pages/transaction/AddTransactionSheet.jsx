@@ -131,6 +131,8 @@ export default function AddTransactionSheet({
   const [txFromAccount, setTxFromAccount] = useState(null);
   const [txCurrency, setTxCurrency] = useState("");
   const [txAmount, setTxAmount] = useState("");
+  /** Desktop `txFullAmount` — full precision from balance_full when prefilled. */
+  const [txFullAmount, setTxFullAmount] = useState("");
   const [txRemark, setTxRemark] = useState("");
   const [txConfirm, setTxConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -140,6 +142,8 @@ export default function AddTransactionSheet({
   const [rateCurrencyFrom, setRateCurrencyFrom] = useState("");
   const [rateCurrencyTo, setRateCurrencyTo] = useState("");
   const [rateCurrencyFromAmount, setRateCurrencyFromAmount] = useState("");
+  /** Desktop `rateFullAmount` — full precision from balance_full when prefilled. */
+  const [rateFullAmount, setRateFullAmount] = useState("");
   const [rateExchangeRateRaw, setRateExchangeRateRaw] = useState("");
   const [rateCurrencyToAmount, setRateCurrencyToAmount] = useState("");
   const [rateToAmountGrossStr, setRateToAmountGrossStr] = useState("");
@@ -168,6 +172,7 @@ export default function AddTransactionSheet({
     setTxFromAccount(null);
     setTxCurrency("");
     setTxAmount("");
+    setTxFullAmount("");
     setTxRemark("");
     setTxConfirm(false);
     setRateToAccount(null);
@@ -175,6 +180,7 @@ export default function AddTransactionSheet({
     setRateCurrencyFrom("");
     setRateCurrencyTo("");
     setRateCurrencyFromAmount("");
+    setRateFullAmount("");
     setRateExchangeRateRaw("");
     setRateCurrencyToAmount("");
     setRateToAmountGrossStr("");
@@ -209,6 +215,11 @@ export default function AddTransactionSheet({
     const side = prefill.side === "right" ? "right" : "left";
     const fillTo = side === "right";
 
+    const amountFull =
+      prefill.amountFull != null && String(prefill.amountFull).trim() !== ""
+        ? String(prefill.amountFull).replace(/,/g, "").trim()
+        : "";
+
     if (txType === "RATE") {
       if (fillTo) {
         setRateToAccount(account);
@@ -218,11 +229,13 @@ export default function AddTransactionSheet({
         setRateTransferToAccount(account);
       }
       if (amount) setRateCurrencyFromAmount(amount);
+      setRateFullAmount(amountFull);
       if (currency) setRateCurrencyFrom(currency);
     } else {
       if (fillTo) setTxToAccount(account);
       else setTxFromAccount(account);
       if (amount) setTxAmount(amount);
+      setTxFullAmount(amountFull);
       if (currency) setTxCurrency(currency);
     }
 
@@ -324,18 +337,22 @@ export default function AddTransactionSheet({
       const middleId = rateMiddlemanAccount?.id ? String(rateMiddlemanAccount.id) : "";
       const mmrNorm = String(rateMiddlemanRate ?? "").replace(/,/g, "").trim();
       const mmFeeNorm = String(rateMiddlemanInputAmount ?? "").replace(/,/g, "").trim();
+      const mmPlatNorm = String(rateMiddlemanPlatformFee ?? "").replace(/,/g, "").trim();
       const hasMiddleRate = mmrNorm !== "";
       const hasMiddleFee = mmFeeNorm !== "";
-      if ((hasMiddleRate || hasMiddleFee) && !middleId) {
+      const hasMiddlePlatFee = mmPlatNorm !== "";
+      const hasAnyMiddleParam = hasMiddleRate || hasMiddleFee || hasMiddlePlatFee;
+      if (hasAnyMiddleParam && !middleId) {
         return pushToast(m.pleaseSelectMiddleManAccount, "error");
       }
-      if (middleId && !hasMiddleRate && !hasMiddleFee) {
+      if (middleId && !hasAnyMiddleParam) {
         return pushToast(m.pleaseEnterMiddleManRateOrFee, "error");
       }
       if (hasMiddleRate && !parseMiddlemanRateInput(mmrNorm).valid) {
         return pushToast(m.pleaseEnterMiddleManRate, "error");
       }
-      if (countRateDecimalPlaces(String(rateCurrencyFromAmount ?? "").replace(/,/g, "").trim()) > RATE_STORE_MAX_DECIMALS) {
+      const finalRateAmount = rateFullAmount || rateCurrencyFromAmount;
+      if (countRateDecimalPlaces(String(finalRateAmount ?? "").replace(/,/g, "").trim()) > RATE_STORE_MAX_DECIMALS) {
         return pushToast(m.rateAmountMaxDecimals, "error");
       }
 
@@ -344,7 +361,7 @@ export default function AddTransactionSheet({
         const { payload } = buildRatePayload({
           toId,
           fromId,
-          fromAmt: rateCurrencyFromAmount,
+          fromAmt: finalRateAmount,
           toGrossStr,
           rateDate,
           txRemark,
@@ -382,7 +399,8 @@ export default function AddTransactionSheet({
     }
     if (!txDate) return pushToast(m.pleaseSelectTransactionDate, "error");
 
-    const cleanedAmt = MoneyDecimal.cleanMoneyInput(txAmount);
+    const finalAmount = txFullAmount || txAmount;
+    const cleanedAmt = MoneyDecimal.cleanMoneyInput(finalAmount);
     if (cleanedAmt === "") {
       return pushToast(isAdjustment ? m.pleaseEnterNonZeroAdjustment : m.pleaseEnterValidAmount, "error");
     }
@@ -545,7 +563,10 @@ export default function AddTransactionSheet({
                   inputMode="decimal"
                   value={txAmount}
                   disabled={mutationsBlocked}
-                  onChange={(e) => setTxAmount(sanitizeAmountInput(e.target.value))}
+                  onChange={(e) => {
+                    setTxFullAmount("");
+                    setTxAmount(sanitizeAmountInput(e.target.value));
+                  }}
                   className="m-tx-form-input"
                 />
               </div>
@@ -615,7 +636,10 @@ export default function AddTransactionSheet({
                     inputMode="decimal"
                     value={rateCurrencyFromAmount}
                     disabled={mutationsBlocked}
-                    onChange={(e) => setRateCurrencyFromAmount(sanitizeAmountInput(e.target.value))}
+                    onChange={(e) => {
+                      setRateFullAmount("");
+                      setRateCurrencyFromAmount(sanitizeAmountInput(e.target.value));
+                    }}
                     placeholder={m.amount}
                     className="m-tx-form-input"
                     aria-label={m.fromAccount}

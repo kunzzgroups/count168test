@@ -135,6 +135,8 @@ export function useMobileTransaction({ listPaused = false } = {}) {
   const searchSeq = useRef(0);
   /** After restoring a list snapshot (Back from history), skip the next auto search once. */
   const skipNextSearchRef = useRef(false);
+  /** First Type Search entry: query all currencies today, then narrow to codes with activity. */
+  const typeSearchDiscoverCodesRef = useRef(null);
   /** Track Payment History pause so Back does not auto re-search. */
   const listPausedRef = useRef(listPaused);
   const rawSearchDataRef = useRef(rawSearchData);
@@ -228,6 +230,12 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           showCaptureOnly,
         });
 
+        const discoverCodes = typeSearchDiscoverCodesRef.current;
+        const codesForQuery =
+          Array.isArray(discoverCodes) && discoverCodes.length
+            ? discoverCodes
+            : currencyCodesForSearch;
+
         const paramsBase = {
           ...scopeApi,
           dateFrom,
@@ -235,7 +243,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           showInactive: queryFilters.showInactiveForQuery,
           showCaptureOnly: queryFilters.showCaptureOnlyForQuery,
           hideZeroBalance: queryFilters.hideZeroBalanceForQuery,
-          currencyCodes: currencyCodesForSearch,
+          currencyCodes: codesForQuery,
           categories: selectedCategories,
           typeSearch: typeSearchActive,
           typeSearchFormType: typeSearchActive ? typeSearchFormType : undefined,
@@ -263,7 +271,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           currentData = await fetchTypeTransactionSearch({
             ...scopeApi,
             transactionType: normalizedType,
-            currencyCodes: currencyCodesForSearch,
+            currencyCodes: codesForQuery,
             signal,
           });
           if (seq !== searchSeq.current || signal?.aborted) return;
@@ -339,6 +347,43 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           });
         }
 
+        // Desktop parity: first Type Search entry discovers currencies with activity today.
+        if (typeSearchDiscoverCodesRef.current) {
+          typeSearchDiscoverCodesRef.current = null;
+          const foundSet = new Set();
+          [...(cleaned.left_table || []), ...(cleaned.right_table || [])].forEach((row) => {
+            const cur = String(row?.currency || "").toUpperCase().trim();
+            if (cur) foundSet.add(cur);
+          });
+          const order = currencies
+            .map((c) => String(c || "").toUpperCase().trim())
+            .filter((c) => c && c !== "ALL");
+          let focusCurrencies = [...foundSet].sort((a, b) => {
+            const ia = order.indexOf(a);
+            const ib = order.indexOf(b);
+            if (ia === -1 && ib === -1) return a.localeCompare(b);
+            if (ia === -1) return 1;
+            if (ib === -1) return -1;
+            return ia - ib;
+          });
+          if (!focusCurrencies.length) {
+            focusCurrencies = [order[0] || "MYR"];
+          }
+          const focusSet = new Set(focusCurrencies);
+          cleaned = sanitizeSearchApiData({
+            ...cleaned,
+            left_table: (cleaned.left_table || []).filter((row) =>
+              focusSet.has(String(row?.currency || "").toUpperCase().trim()),
+            ),
+            right_table: (cleaned.right_table || []).filter((row) =>
+              focusSet.has(String(row?.currency || "").toUpperCase().trim()),
+            ),
+          });
+          skipNextSearchRef.current = true;
+          setSelectedCurrencies(focusCurrencies);
+          setCurrency(focusCurrencies[0]);
+        }
+
         setRawSearchData(cleaned);
       } catch (e) {
         if (signal?.aborted || e?.name === "AbortError") return;
@@ -357,6 +402,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
       showPaymentOnly,
       showCaptureOnly,
       currencyCodesForSearch,
+      currencies,
       selectedCategories,
       typeSearchActive,
       typeSearchFormType,
@@ -913,13 +959,13 @@ export function useMobileTransaction({ listPaused = false } = {}) {
           };
         }
         const today = todayYmd();
-        const fallback = currencies.filter((c) => c && c !== "ALL")[0] || "MYR";
+        const available = currencies.filter((c) => c && c !== "ALL");
+        typeSearchDiscoverCodesRef.current = available.length ? available : ["MYR"];
         setDateFrom(today);
         setDateTo(today);
         setActivePreset("today");
         setSelectedCategories([]);
-        setSelectedCurrencies([fallback]);
-        setCurrency(fallback);
+        // Keep prior currency chips until discover narrows; query uses discover ref.
         setShowName(false);
         setShowPaymentOnly(false);
         setShowCaptureOnly(false);
@@ -959,6 +1005,7 @@ export function useMobileTransaction({ listPaused = false } = {}) {
 
   const exitTypeSearch = useCallback(() => {
     clearMobileTxListSnapshot();
+    typeSearchDiscoverCodesRef.current = null;
     const snap = filtersBeforeTypeSearchRef.current;
     filtersBeforeTypeSearchRef.current = null;
     setTypeSearchActive(false);
