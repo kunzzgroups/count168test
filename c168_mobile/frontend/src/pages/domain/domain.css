@@ -9,6 +9,13 @@
   gap: 0.3rem;
 }
 
+.m-domain-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
 .m-domain-heading h1 {
   margin: 0;
   font-size: clamp(1.6rem, 0.3125vw + 1.2rem, 1.8rem);
@@ -17,20 +24,22 @@
   letter-spacing: -0.01em;
 }
 
-.m-domain-price-scope {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.75rem;
-  color: var(--m-color-text-secondary);
-  font-size: var(--m-text-secondary);
-  font-weight: 700;
+.m-domain-price-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 0.3rem 0.7rem;
+  font-size: clamp(1.1rem, 0.15vw + 0.9rem, 1.2rem);
+  font-weight: 800;
 }
 
-.m-domain-price-scope em {
-  margin-right: 0.25rem;
-  font-style: normal;
-  font-weight: 800;
-  color: var(--m-color-label);
+.m-domain-price-pill > i {
+  font-size: 0.85em;
 }
 
 .m-domain-fee-sheet {
@@ -118,34 +127,34 @@
 
 .m-domain-chips-bar {
   display: grid;
-  gap: 0.45rem;
-  padding: 0 0.8rem 0.7rem;
+  gap: 0.28rem;
+  padding: 0 0.8rem 0.55rem;
 }
 
 .m-domain-chip-lane {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.4rem 0.5rem;
-  align-items: start;
+  gap: 0.2rem 0.4rem;
+  align-items: center;
 }
 
 .m-domain-chip-cat {
-  margin-top: 0.2rem;
-  min-width: 2.2rem;
+  min-width: 1.8rem;
   color: var(--m-color-label);
-  font-size: clamp(1.0rem, 0.15vw + 0.8rem, 1.1rem);
+  font-size: 1rem;
   font-weight: 800;
   line-height: 1.2;
+  letter-spacing: 0.02em;
 }
 
 .m-domain-chip-cat--group {
-  color: #6d28d9;
+  color: #7c3aed;
 }
 
 .m-domain-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.25rem;
   min-width: 0;
 }
 
@@ -154,11 +163,11 @@
   background: #eff6ff;
   color: #1d4ed8;
   border-radius: 999px;
-  padding: 0.28rem 0.65rem;
-  font-size: clamp(1.1rem, 0.15vw + 0.9rem, 1.2rem);
-  font-weight: 800;
+  padding: 0.12rem 0.45rem;
+  font-size: 1rem;
+  font-weight: 700;
   letter-spacing: 0.01em;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .m-domain-chip--group {

@@ -1,13 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import { useIncrementalList } from "../../hooks/useIncrementalList.js";
 import { useMobileDomain } from "../../hooks/useMobileDomain.js";
-import {
-  MAX_VISIBLE_CHIPS,
-  forceSearchValue,
-  formatDomainFeeDisplay2,
-} from "../../lib/domainHelpers.js";
-import "../../styles/filter-bar.css";
+import { MAX_VISIBLE_CHIPS, forceSearchValue } from "../../lib/domainHelpers.js";
 import {
   DomainConfirmSheet,
   DomainExpirationSheet,
@@ -222,46 +217,22 @@ export default function DomainPage() {
 
   const overlayOpen = feeOpen || formOpen || Boolean(expCompanies) || Boolean(expGroups) || Boolean(confirm);
 
-  const pricePreview = useMemo(() => {
-    const fees = domain.domainPeriodPrices;
-    if (!fees) return { company: "—", group: "—" };
-    return {
-      company: formatDomainFeeDisplay2(fees?.company?.["6months"]),
-      group: formatDomainFeeDisplay2(fees?.group?.["6months"]),
-    };
-  }, [domain.domainPeriodPrices]);
-
   const stickyBar = (
     <div className="m-account-sticky m-domain-sticky">
       <div className="m-domain-heading">
-        <h1>{t("domainList")}</h1>
+        <div className="m-domain-heading-row">
+          <h1>{t("domainList")}</h1>
+          <button
+            type="button"
+            className="m-domain-price-pill tap-scale"
+            onClick={() => setFeeOpen(true)}
+            aria-label={t("price")}
+          >
+            <i className="fas fa-tags" aria-hidden="true" />
+            {t("price")}
+          </button>
+        </div>
       </div>
-      <button
-        type="button"
-        className="m-filter-bar tap-scale"
-        onClick={() => setFeeOpen(true)}
-        aria-label={t("price")}
-      >
-        <div className="m-filter-bar-row">
-          <i className="fas fa-tags m-filter-bar-icon" aria-hidden="true" />
-          <span className="m-filter-bar-dates">{t("price")}</span>
-          <span className="m-filter-bar-currency">{t("sixMonths")}</span>
-          <span className="m-filter-bar-action">
-            <i className="fas fa-sliders" aria-hidden="true" />
-          </span>
-        </div>
-        <div className="m-filter-bar-scope m-filter-bar-scope-row">
-          <div className="m-filter-bar-scope-main m-domain-price-scope">
-            <span>
-              <em>{t("companyPrice")}</em> {pricePreview.company}
-            </span>
-            <span>
-              <em>{t("groupPrice")}</em> {pricePreview.group}
-            </span>
-          </div>
-          <span className="m-filter-bar-switch">{t("editWord")}</span>
-        </div>
-      </button>
       <label className="m-account-search">
         <i className="fas fa-magnifying-glass" aria-hidden="true" />
         <input
