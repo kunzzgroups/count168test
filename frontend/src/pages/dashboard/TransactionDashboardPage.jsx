@@ -8,26 +8,39 @@ import { DashboardEarningsSummary } from "./components/DashboardEarningsSummary.
 import { DashboardFilterPanel } from "./components/DashboardFilterPanel.jsx";
 import { DashboardKpiGrid } from "./components/DashboardKpiGrid.jsx";
 import { DashboardTrendChart } from "./components/DashboardTrendChart.jsx";
+import {
+  DASHBOARD_FILTER_PAINT_PACKAGE_KEY,
+  DASHBOARD_LOGIN_FILTER_APPLIED_KEY,
+} from "../../utils/company/sharedCompanyFilter.js";
 import "../../../public/css/userlist.css";
 import "../../../public/css/transaction.css";
 import "../../../public/css/report-outlined-fields.css";
 import "../../../public/css/date-range-picker.css";
 
-const FILTER_PKG_SS_KEY = "dashboard.filterPaintPackage.v1";
+/** Current login fingerprint used to scope the filter paint sticky (never cross-account). */
+function currentStickyOwnerKey() {
+  if (typeof sessionStorage === "undefined") return "";
+  return String(sessionStorage.getItem(DASHBOARD_LOGIN_FILTER_APPLIED_KEY) || "").trim();
+}
 
 function readStickyPackage() {
   if (typeof sessionStorage === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(FILTER_PKG_SS_KEY);
+    const raw = sessionStorage.getItem(DASHBOARD_FILTER_PAINT_PACKAGE_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw);
     if (!p || typeof p !== "object") return null;
+    // Reject packages from another login, or pre-scoping legacy writes.
+    const ownerKey = typeof p.ownerKey === "string" ? p.ownerKey.trim() : "";
+    const currentOwner = currentStickyOwnerKey();
+    if (!ownerKey || !currentOwner || ownerKey !== currentOwner) return null;
     const currencies = Array.isArray(p.currencies) ? p.currencies : [];
     const companiesForPicker = Array.isArray(p.companiesForPicker) ? p.companiesForPicker : [];
     const groupIds = Array.isArray(p.groupIds) ? p.groupIds : [];
     if (!currencies.length) return null;
     if (groupIds.length > 0 && !companiesForPicker.length) return null;
     return {
+      ownerKey,
       groupIds,
       companiesForPicker,
       currencies,
@@ -46,7 +59,7 @@ function readStickyPackage() {
 function writeStickyPackage(pkg) {
   if (typeof sessionStorage === "undefined" || !pkg) return;
   try {
-    sessionStorage.setItem(FILTER_PKG_SS_KEY, JSON.stringify(pkg));
+    sessionStorage.setItem(DASHBOARD_FILTER_PAINT_PACKAGE_KEY, JSON.stringify(pkg));
   } catch {
     /* quota */
   }
@@ -67,23 +80,41 @@ export default function TransactionDashboardPage() {
   });
 
   // Session-sticky full package: filter stays “dead” (complete) across refresh / load races.
+  // Scoped to the active login key so a previous owner’s groups/companies never paint.
   const stickyRef = useRef(readStickyPackage());
+  const ownerKey = currentStickyOwnerKey();
+  if (stickyRef.current?.ownerKey && ownerKey && stickyRef.current.ownerKey !== ownerKey) {
+    stickyRef.current = null;
+  }
   if (
+    ownerKey &&
     page.currencies?.length &&
     ((page.companiesForPicker?.length || 0) > 0 || (page.groupIds?.length || 0) === 0)
   ) {
+    const sameOwner = stickyRef.current?.ownerKey === ownerKey;
+    const prev = sameOwner ? stickyRef.current : null;
+    // After GC bootstrap, empty groupIds/companies are truth for this account — do not
+    // fall back to an older sticky set (that is how T1 leaked onto DEMO).
+    const bootstrapped = Boolean(page.gcBootstrapReady);
     stickyRef.current = {
-      groupIds: page.groupIds?.length ? page.groupIds : stickyRef.current?.groupIds || [],
+      ownerKey,
+      groupIds: page.groupIds?.length
+        ? page.groupIds
+        : bootstrapped
+          ? page.groupIds || []
+          : prev?.groupIds || [],
       companiesForPicker: page.companiesForPicker?.length
         ? page.companiesForPicker
-        : stickyRef.current?.companiesForPicker || [],
+        : bootstrapped
+          ? page.companiesForPicker || []
+          : prev?.companiesForPicker || [],
       currencies: page.currencies,
-      currencyCode: page.currencyCode || stickyRef.current?.currencyCode || "",
+      currencyCode: page.currencyCode || prev?.currencyCode || "",
       selectedGroup: page.selectedGroup,
       groupsAllMode: page.groupsAllMode,
       groupAllMode: page.groupAllMode,
       companyId: page.companyId,
-      dateText: effectiveDateRangeText || stickyRef.current?.dateText || "",
+      dateText: effectiveDateRangeText || prev?.dateText || "",
     };
     writeStickyPackage(stickyRef.current);
   }

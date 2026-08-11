@@ -67,6 +67,11 @@ export const DASHBOARD_SELECTED_CURRENCY_BY_SCOPE_KEY = "dashboard_selected_curr
 export const DASHBOARD_LOGIN_FILTER_APPLIED_KEY = "dashboard_login_filter_applied";
 /** Linked group ids (AP+IG) from get_owner_companies_api for company login filter pills. */
 export const DASHBOARD_ACCESSIBLE_GROUP_IDS_KEY = "dashboard_accessible_group_ids";
+/**
+ * Dashboard filter-panel paint package (anti-flicker sticky board).
+ * Must be login-scoped and cleared on logout — never reuse across accounts.
+ */
+export const DASHBOARD_FILTER_PAINT_PACKAGE_KEY = "dashboard.filterPaintPackage.v1";
 export const DASHBOARD_GROUP_FILTER_EVENT = "eazycount:dashboard-group-filter-changed";
 export const DASHBOARD_CURRENCY_FILTER_EVENT = "eazycount:dashboard-currency-filter-changed";
 /** Dashboard Group/Company bootstrap finished — layout replays sidebar sync (login may miss events). */
@@ -88,6 +93,7 @@ const DASHBOARD_TAB_BOOTSTRAP_KEYS = [
   DASHBOARD_SELECTED_CURRENCY_BY_SCOPE_KEY,
   DASHBOARD_LOGIN_FILTER_APPLIED_KEY,
   DASHBOARD_ACCESSIBLE_GROUP_IDS_KEY,
+  DASHBOARD_FILTER_PAINT_PACKAGE_KEY,
 ];
 
 export function clearDashboardFilterSession() {
@@ -105,6 +111,7 @@ export function clearDashboardFilterSession() {
   sessionStorage.removeItem(DASHBOARD_SELECTED_CURRENCY_BY_SCOPE_KEY);
   sessionStorage.removeItem(DASHBOARD_LOGIN_FILTER_APPLIED_KEY);
   sessionStorage.removeItem(DASHBOARD_ACCESSIBLE_GROUP_IDS_KEY);
+  sessionStorage.removeItem(DASHBOARD_FILTER_PAINT_PACKAGE_KEY);
 }
 
 /** Snapshot dashboard filter sessionStorage for a new browser tab (middle-click / modified click). */
