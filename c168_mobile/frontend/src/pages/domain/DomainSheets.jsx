@@ -26,6 +26,7 @@ import {
   normalizeFeeShareFromServer,
   pruneEmptyShareRows,
   resolveDomainFeePriceForPeriod,
+  sumFeeShareRolePercentages,
   tempGroupCode,
 } from "../../lib/domainHelpers.js";
 import { sanitizeEmailInput, validateEmail } from "../../lib/emailValidation.js";
@@ -150,10 +151,12 @@ export function DomainFeeSheet({ open, onClose, domain }) {
   const { t, notify, setDomainPeriodPrices } = domain;
   const [companyPeriodPrices, setCompanyPeriodPrices] = useState(() => defaultDomainFeeSettings().company);
   const [groupPeriodPrices, setGroupPeriodPrices] = useState(() => defaultDomainFeeSettings().group);
+  const [feeTab, setFeeTab] = useState("company");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setFeeTab("company");
     (async () => {
       try {
         const { json } = await domainApi({ action: "get_domain_fee_settings" });
@@ -195,6 +198,9 @@ export function DomainFeeSheet({ open, onClose, domain }) {
     }
   };
 
+  const activePrices = feeTab === "group" ? groupPeriodPrices : companyPeriodPrices;
+  const setActivePrices = feeTab === "group" ? setGroupPeriodPrices : setCompanyPeriodPrices;
+
   return (
     <Sheet
       open={open}
@@ -207,28 +213,45 @@ export function DomainFeeSheet({ open, onClose, domain }) {
         </button>
       }
     >
-      <p className="m-domain-hint">{t("priceDescriptionDual")}</p>
-      <div className="m-domain-fee-cols">
-        {[
-          ["company", t("companyPrice"), companyPeriodPrices, setCompanyPeriodPrices],
-          ["group", t("groupPrice"), groupPeriodPrices, setGroupPeriodPrices],
-        ].map(([key, title, prices, setPrices]) => (
-          <div key={key} className="m-domain-fee-col">
-            <h3>{title}</h3>
-            {DOMAIN_FEE_PERIOD_KEYS.map((period) => (
-              <div key={period} className="m-domain-fee-row">
-                <label htmlFor={`fee-${key}-${period}`}>{t(PERIOD_LABEL_KEYS[period])}</label>
-                <input
-                  id={`fee-${key}-${period}`}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder={t("pricePlaceholder")}
-                  value={prices[period] ?? ""}
-                  onChange={(e) => setPrices((prev) => ({ ...prev, [period]: e.target.value }))}
-                />
-              </div>
-            ))}
+      <div className="m-domain-fee-sheet m-tx-form-section">
+        <p className="m-tx-form-hint">{t("priceDescriptionDual")}</p>
+        <div className="m-domain-fee-tabs" role="tablist" aria-label={t("price")}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={feeTab === "company"}
+            className={`m-domain-fee-tab tap-scale${feeTab === "company" ? " is-active" : ""}`}
+            onClick={() => setFeeTab("company")}
+          >
+            {t("companyPrice")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={feeTab === "group"}
+            className={`m-domain-fee-tab tap-scale${feeTab === "group" ? " is-active" : ""}`}
+            onClick={() => setFeeTab("group")}
+          >
+            {t("groupPrice")}
+          </button>
+        </div>
+        <p className="m-tx-form-hint">{t("editPeriodHint")}</p>
+        {DOMAIN_FEE_PERIOD_KEYS.map((period) => (
+          <div key={period} className="m-tx-form-field m-domain-form-field">
+            <label className="m-tx-form-label" htmlFor={`fee-${feeTab}-${period}`}>
+              {t(PERIOD_LABEL_KEYS[period])}
+            </label>
+            <input
+              id={`fee-${feeTab}-${period}`}
+              className="m-tx-form-input"
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              placeholder={t("pricePlaceholder")}
+              value={activePrices[period] ?? ""}
+              onChange={(e) => setActivePrices((prev) => ({ ...prev, [period]: e.target.value }))}
+            />
           </div>
         ))}
       </div>
@@ -572,8 +595,22 @@ function DomainSettingsSheet({
   const addShareRow = (role) => {
     setFsa((prev) => ({
       ...prev,
-      [role]: [...(prev[role] || []), { account_id: "", percentage: "" }],
+      [role]: [...(prev[role] || []), { account_id: 0, percentage: "" }],
     }));
+  };
+
+  const removeShareRow = (role, index) => {
+    setFsa((prev) => ({
+      ...prev,
+      [role]: (prev[role] || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const accountOptionLabel = (acc) => {
+    const code = String(acc?.account_id || "").trim().toUpperCase();
+    const name = String(acc?.name || "").trim().toUpperCase();
+    if (code && name && name !== code) return `${code} · ${name}`;
+    return code || String(acc?.id || "");
   };
 
   const save = async () => {
@@ -781,48 +818,103 @@ function DomainSettingsSheet({
           {SHARE_ROLES.map((role) => {
             const rows = fsa?.[role] || [];
             const accounts = role === "profit" ? shareAccountsProfit : shareAccounts;
+            const assignedCount = rows.filter((r) => Number(r.account_id) > 0).length;
+            const total = sumFeeShareRolePercentages(rows);
+            const totalOver = total > 100;
             return (
-              <div key={role} className="m-domain-share-card">
+              <div key={role} className={`m-domain-share-card m-domain-share-card--${role}`}>
                 <div className="m-domain-share-head">
-                  <span>{role.toUpperCase()}</span>
-                  <div className="m-domain-entity-actions">
-                    <button
-                      type="button"
-                      className="m-domain-mini-btn tap-scale"
-                      onClick={() => {
-                        setAddAccountRole(role === "cs" ? "CS" : role.toUpperCase());
-                        setAddAccountOpen(true);
-                      }}
-                    >
-                      +
-                    </button>
-                    <button type="button" className="m-domain-mini-btn tap-scale" onClick={() => addShareRow(role)}>
-                      {t("add")}
-                    </button>
+                  <div className="m-domain-share-head-main">
+                    <span className={`m-domain-share-badge m-domain-share-badge--${role}`}>
+                      {role.toUpperCase()}
+                    </span>
+                    <span className="m-domain-share-meta">
+                      {assignedCount === 1
+                        ? t("oneAccount")
+                        : t("accountCount", { count: assignedCount })}
+                    </span>
+                  </div>
+                  <div className="m-domain-share-head-total">
+                    <span className="m-domain-share-total-label">{t("shareTotal")}</span>
+                    <strong className={totalOver ? "is-over" : ""}>{total.toFixed(2)}%</strong>
                   </div>
                 </div>
+                <div className="m-domain-share-actions">
+                  <button
+                    type="button"
+                    className="m-domain-mini-btn tap-scale"
+                    title={t("addNewAccount")}
+                    aria-label={t("addNewAccount")}
+                    onClick={() => {
+                      setAddAccountRole(role === "cs" ? "CS" : role.toUpperCase());
+                      setAddAccountOpen(true);
+                    }}
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    className="m-domain-mini-btn tap-scale"
+                    onClick={() => addShareRow(role)}
+                  >
+                    {t("add")}
+                  </button>
+                </div>
+                <div className="m-domain-share-col-labels">
+                  <span>{t("account")}</span>
+                  <span>{t("sharePct")}</span>
+                  <span aria-hidden="true" />
+                </div>
                 <div className="m-domain-share-rows">
-                  {rows.map((row, index) => (
-                    <div key={`${role}-${index}`} className="m-domain-share-row">
-                      <select
-                        value={row.account_id || ""}
-                        onChange={(e) => updateShareRow(role, index, { account_id: e.target.value })}
-                      >
-                        <option value="">—</option>
-                        {accounts.map((acc) => (
-                          <option key={acc.id || acc.account_id} value={acc.account_id || acc.id}>
-                            {String(acc.account_id || acc.id).toUpperCase()}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        inputMode="decimal"
-                        placeholder="%"
-                        value={row.percentage ?? ""}
-                        onChange={(e) => updateShareRow(role, index, { percentage: e.target.value })}
-                      />
-                    </div>
-                  ))}
+                  {rows.length === 0 ? (
+                    <p className="m-domain-hint">{t("addAccountInline")}</p>
+                  ) : (
+                    rows.map((row, index) => (
+                      <div key={`${role}-${index}`} className="m-domain-share-row">
+                        <label className="m-domain-share-select-wrap">
+                          <span className="m-domain-sr-only">{t("selectAccount")}</span>
+                          <select
+                            className="m-domain-share-select"
+                            value={Number(row.account_id) > 0 ? String(Number(row.account_id)) : ""}
+                            onChange={(e) =>
+                              updateShareRow(role, index, {
+                                account_id: parseInt(e.target.value, 10) || 0,
+                              })
+                            }
+                          >
+                            <option value="">{t("selectAccount")}</option>
+                            {accounts.map((acc) => (
+                              <option key={acc.id} value={String(acc.id)}>
+                                {accountOptionLabel(acc)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="m-domain-share-pct-wrap">
+                          <span className="m-domain-sr-only">{t("sharePct")}</span>
+                          <input
+                            className="m-domain-share-pct"
+                            inputMode="decimal"
+                            placeholder="0"
+                            value={row.percentage === 0 || row.percentage ? row.percentage : ""}
+                            onChange={(e) =>
+                              updateShareRow(role, index, { percentage: e.target.value })
+                            }
+                          />
+                          <span className="m-domain-share-pct-suffix">%</span>
+                        </label>
+                        <button
+                          type="button"
+                          className="m-domain-share-remove tap-scale"
+                          title={t("removeRow")}
+                          aria-label={t("removeRow")}
+                          onClick={() => removeShareRow(role, index)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             );
