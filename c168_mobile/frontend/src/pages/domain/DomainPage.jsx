@@ -1,12 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import { useIncrementalList } from "../../hooks/useIncrementalList.js";
 import { useMobileDomain } from "../../hooks/useMobileDomain.js";
-import {
-  MAX_VISIBLE_CHIPS,
-  forceSearchValue,
-  formatDomainFeeSettingsInlineSummary,
-} from "../../lib/domainHelpers.js";
+import { MAX_VISIBLE_CHIPS, forceSearchValue } from "../../lib/domainHelpers.js";
 import {
   DomainConfirmSheet,
   DomainExpirationSheet,
@@ -15,6 +11,8 @@ import {
 } from "./DomainSheets.jsx";
 import "../account/account.css";
 import "./domain.css";
+
+const LONG_PRESS_MS = 480;
 
 function resolveGroupsFull(domain) {
   if (Array.isArray(domain?.groups_full) && domain.groups_full.length > 0) {
@@ -29,21 +27,55 @@ function resolveGroupsFull(domain) {
     .map((group_code) => ({ group_code, expiration_date: null }));
 }
 
-function DomainCard({ domain, domainApi, onEdit, onCompanyExp, onGroupExp }) {
+function DomainCard({ domain, domainApi, onEdit, onCompanyExp, onGroupExp, onLongPressSelect }) {
   const { i18n, t, selectMode, checkedIds, toggleChecked, isDeletable } = domainApi;
   const companiesFull = Array.isArray(domain.companies_full) ? domain.companies_full : [];
   const companyList = companiesFull.map((c) => c.company_id).filter(Boolean);
-  const visible = companyList.slice(0, MAX_VISIBLE_CHIPS);
-  const hidden = companyList.slice(MAX_VISIBLE_CHIPS);
   const groupsFull = resolveGroupsFull(domain);
   const groupList = groupsFull.map((g) => g.group_code).filter(Boolean);
-  const visibleGroups = groupList.slice(0, MAX_VISIBLE_CHIPS);
-  const hiddenGroups = groupList.slice(MAX_VISIBLE_CHIPS);
+
+  const groupBudget = Math.min(groupList.length, MAX_VISIBLE_CHIPS);
+  const visibleGroups = groupList.slice(0, groupBudget);
+  const companyBudget = Math.max(0, MAX_VISIBLE_CHIPS - visibleGroups.length);
+  const visibleCompanies = companyList.slice(0, companyBudget);
+  const hiddenCount =
+    groupList.length - visibleGroups.length + (companyList.length - visibleCompanies.length);
+
   const deletable = isDeletable(domain);
   const checked = checkedIds.has(domain.id);
+  const hasChips = groupList.length > 0 || companyList.length > 0;
+
+  const pressTimer = useRef(null);
+  const longPressed = useRef(false);
+
+  const clearPress = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  const onPointerDown = (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    longPressed.current = false;
+    clearPress();
+    pressTimer.current = setTimeout(() => {
+      longPressed.current = true;
+      onLongPressSelect(domain);
+    }, LONG_PRESS_MS);
+  };
+
+  const onPointerEnd = () => clearPress();
 
   return (
-    <article className={`m-account-card m-domain-card${checked ? " is-selected" : ""}`}>
+    <article
+      className={`m-account-card m-domain-card${checked ? " is-selected" : ""}`}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerEnd}
+      onPointerLeave={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <div className="m-domain-card-top">
         {selectMode ? (
           <label className="m-domain-check">
@@ -60,6 +92,10 @@ function DomainCard({ domain, domainApi, onEdit, onCompanyExp, onGroupExp }) {
           type="button"
           className="m-account-card-main tap-scale m-domain-card-main"
           onClick={() => {
+            if (longPressed.current) {
+              longPressed.current = false;
+              return;
+            }
             if (selectMode) {
               if (deletable) toggleChecked(domain.id, !checked);
               return;
@@ -68,7 +104,9 @@ function DomainCard({ domain, domainApi, onEdit, onCompanyExp, onGroupExp }) {
           }}
           aria-label={`${i18n.tapForDetail}: ${domain.owner_code}`}
         >
-          <span className="m-account-avatar">{String(domain.owner_code || "D").slice(0, 2)}</span>
+          <span className="m-account-avatar">
+            {String(domain.owner_code || "D").slice(0, 2)}
+          </span>
           <span className="m-account-card-copy">
             <strong>{String(domain.owner_code || "").toUpperCase()}</strong>
             <span>{String(domain.name || "").toUpperCase()}</span>
@@ -78,77 +116,50 @@ function DomainCard({ domain, domainApi, onEdit, onCompanyExp, onGroupExp }) {
         </button>
       </div>
 
-      <div className="m-domain-chip-block">
-        <span className="m-domain-chip-label">{t("groupIdLabel")}</span>
-        <div className="m-domain-chip-row">
-          {groupList.length === 0 ? (
-            <span className="m-domain-muted">—</span>
-          ) : (
-            <>
-              {visibleGroups.map((gid) => (
-                <button
-                  key={gid}
-                  type="button"
-                  className="m-domain-chip m-domain-chip--group tap-scale"
-                  onClick={() => onGroupExp(groupsFull)}
-                >
-                  {gid}
-                </button>
-              ))}
-              {hiddenGroups.length > 0 ? (
-                <button
-                  type="button"
-                  className="m-domain-chip m-domain-chip--more tap-scale"
-                  onClick={() => onGroupExp(groupsFull)}
-                >
-                  +{hiddenGroups.length}
-                </button>
-              ) : null}
-            </>
-          )}
+      {hasChips ? (
+        <div className="m-domain-chips-bar">
+          {visibleGroups.map((gid) => (
+            <button
+              key={`g-${gid}`}
+              type="button"
+              className="m-domain-chip m-domain-chip--group tap-scale"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onGroupExp(groupsFull)}
+            >
+              {gid}
+            </button>
+          ))}
+          {visibleCompanies.map((cid) => (
+            <button
+              key={`c-${cid}`}
+              type="button"
+              className="m-domain-chip tap-scale"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onCompanyExp(companiesFull)}
+            >
+              {cid}
+            </button>
+          ))}
+          {hiddenCount > 0 ? (
+            <button
+              type="button"
+              className="m-domain-chip m-domain-chip--more tap-scale"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => {
+                if (companyList.length > visibleCompanies.length) onCompanyExp(companiesFull);
+                else onGroupExp(groupsFull);
+              }}
+            >
+              +{hiddenCount}
+            </button>
+          ) : null}
         </div>
-      </div>
+      ) : null}
 
-      <div className="m-domain-chip-block">
-        <span className="m-domain-chip-label">{t("companiesWithColon")}</span>
-        <div className="m-domain-chip-row">
-          {companyList.length === 0 ? (
-            <span className="m-domain-muted">—</span>
-          ) : (
-            <>
-              {visible.map((cid) => (
-                <button
-                  key={cid}
-                  type="button"
-                  className="m-domain-chip tap-scale"
-                  onClick={() => onCompanyExp(companiesFull)}
-                >
-                  {cid}
-                </button>
-              ))}
-              {hidden.length > 0 ? (
-                <button
-                  type="button"
-                  className="m-domain-chip m-domain-chip--more tap-scale"
-                  onClick={() => onCompanyExp(companiesFull)}
-                >
-                  +{hidden.length}
-                </button>
-              ) : null}
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="m-domain-card-meta">
-        <span>
+      <div className="m-account-card-actions m-domain-card-foot">
+        <span className="m-domain-created">
           {t("createdBy")} {String(domain.created_by || "—").toUpperCase()}
         </span>
-        {!selectMode ? (
-          <button type="button" className="m-domain-edit-link tap-scale" onClick={() => onEdit(domain)}>
-            {t("edit")}
-          </button>
-        ) : null}
       </div>
     </article>
   );
@@ -165,11 +176,6 @@ export default function DomainPage() {
   const [confirm, setConfirm] = useState(null);
   const { visible, hasMore, sentinelRef } = useIncrementalList(domain.filteredDomains, 40);
 
-  const feeSummary = useMemo(() => {
-    if (!domain.domainPeriodPrices) return "";
-    return formatDomainFeeSettingsInlineSummary(domain.domainPeriodPrices, t);
-  }, [domain.domainPeriodPrices, t]);
-
   const openAdd = useCallback(() => {
     setEditingDomain(null);
     setFormOpen(true);
@@ -180,13 +186,37 @@ export default function DomainPage() {
     setFormOpen(true);
   }, []);
 
+  const onLongPressSelect = useCallback(
+    (row) => {
+      if (!domain.isDeletable(row)) {
+        domain.notify(t("cannotDeleteOwnersWithCompanies"), "error");
+        return;
+      }
+      if (!domain.selectMode) domain.setSelectMode(true);
+      domain.toggleChecked(row.id, true);
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(12);
+      }
+    },
+    [domain, t],
+  );
+
   const overlayOpen = feeOpen || formOpen || Boolean(expCompanies) || Boolean(expGroups) || Boolean(confirm);
 
   const stickyBar = (
-    <div className="m-account-sticky">
+    <div className="m-account-sticky m-domain-sticky">
       <div className="m-domain-heading">
-        <h1>{t("domainList")}</h1>
-        {feeSummary ? <p className="m-domain-fee-summary">{feeSummary}</p> : null}
+        <div className="m-domain-heading-row">
+          <h1>{t("domainList")}</h1>
+          <button
+            type="button"
+            className="m-domain-price-pill tap-scale"
+            onClick={() => setFeeOpen(true)}
+          >
+            <i className="fas fa-tags" aria-hidden="true" />
+            {t("price")}
+          </button>
+        </div>
       </div>
       <label className="m-account-search">
         <i className="fas fa-magnifying-glass" aria-hidden="true" />
@@ -196,21 +226,15 @@ export default function DomainPage() {
           placeholder={t("searchPlaceholder")}
         />
       </label>
-      <div className="m-account-chips">
-        <button type="button" className="m-account-chip tap-scale" onClick={() => setFeeOpen(true)}>
-          {t("price")}
-        </button>
-        <button
-          type="button"
-          className={`m-account-chip tap-scale${domain.selectMode ? " is-active" : ""}`}
-          onClick={() => {
-            if (domain.selectMode) domain.clearSelection();
-            else domain.setSelectMode(true);
-          }}
-        >
-          {domain.selectMode ? i18n.doneSelect : i18n.selectMode}
-        </button>
-        {domain.selectMode ? (
+      {domain.selectMode ? (
+        <div className="m-account-chips">
+          <button
+            type="button"
+            className="m-account-chip is-active tap-scale"
+            onClick={() => domain.clearSelection()}
+          >
+            {i18n.doneSelect}
+          </button>
           <button
             type="button"
             className="m-account-chip m-domain-chip-danger tap-scale"
@@ -221,8 +245,10 @@ export default function DomainPage() {
               ? t("deleteWithCount", { count: domain.checkedIds.size })
               : t("delete")}
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <p className="m-domain-select-hint">{t("longPressToSelect")}</p>
+      )}
     </div>
   );
 
@@ -253,11 +279,7 @@ export default function DomainPage() {
       }
       overlay={
         <>
-          <DomainFeeSheet
-            open={feeOpen}
-            onClose={() => setFeeOpen(false)}
-            domain={domain}
-          />
+          <DomainFeeSheet open={feeOpen} onClose={() => setFeeOpen(false)} domain={domain} />
           <DomainExpirationSheet
             open={Boolean(expCompanies)}
             onClose={() => setExpCompanies(null)}
@@ -309,6 +331,7 @@ export default function DomainPage() {
                 onEdit={openEdit}
                 onCompanyExp={setExpCompanies}
                 onGroupExp={setExpGroups}
+                onLongPressSelect={onLongPressSelect}
               />
             ))}
             {hasMore ? <div ref={sentinelRef} className="m-admin-sentinel" aria-hidden="true" /> : null}

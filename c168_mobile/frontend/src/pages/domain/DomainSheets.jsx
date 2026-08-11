@@ -126,10 +126,10 @@ function Sheet({ open, title, onClose, tall = false, children, footer = null }) 
 
 function Field({ label, children }) {
   return (
-    <label className="m-domain-field">
-      <span>{label}</span>
+    <div className="m-tx-form-field m-domain-form-field">
+      <label className="m-tx-form-label">{label}</label>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -402,18 +402,24 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
       <div className="m-domain-section">
         <Field label={t("accountId")}>
           <input
+            className="m-tx-form-input m-tx-form-input--muted"
             value={form.account_id}
             onChange={(e) => setForm((f) => ({ ...f, account_id: e.target.value.toUpperCase() }))}
           />
         </Field>
         <Field label={t("name")}>
           <input
+            className="m-tx-form-input m-tx-form-input--muted"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value.toUpperCase() }))}
           />
         </Field>
         <Field label={t("role")}>
-          <select value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
+          <select
+            className="m-tx-form-select m-tx-form-select--bold"
+            value={form.role}
+            onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+          >
             {(roles.length ? roles : ["PROFIT", "SALES", "CS", "IT"]).map((role) => (
               <option key={role} value={String(role).toUpperCase()}>
                 {String(role).toUpperCase()}
@@ -423,6 +429,7 @@ function DomainAddAccountSheet({ open, onClose, companyCode, preferredRole, onSu
         </Field>
         <Field label={t("password")}>
           <PasswordInput
+            className="m-tx-form-input m-tx-form-input--muted"
             value={form.password}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             showLabel={t("showPassword")}
@@ -719,6 +726,7 @@ function DomainSettingsSheet({
         <div className="m-domain-section">
           <Field label={t("renameIdLabel")}>
             <input
+              className="m-tx-form-input m-tx-form-input--muted"
               value={entityCodeInput}
               disabled={renameLocked}
               onChange={(e) => setEntityCodeInput(e.target.value.toUpperCase())}
@@ -1045,12 +1053,12 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
         .filter((c) => !c.group_id || c.group_id === selectedGroupId)
         .sort((a, b) => a.company_id.localeCompare(b.company_id));
     }
-    let filtered;
-    if (selectedGroupId) filtered = tempCompanies.filter((c) => c.group_id === selectedGroupId);
-    else if (tempGroups.length > 0) filtered = tempCompanies.filter((c) => !c.group_id);
-    else filtered = [...tempCompanies];
+    // Mobile default: show all companies; selecting a group filters the list.
+    const filtered = selectedGroupId
+      ? tempCompanies.filter((c) => c.group_id === selectedGroupId)
+      : [...tempCompanies];
     return filtered.sort((a, b) => a.company_id.localeCompare(b.company_id));
-  }, [tempCompanies, tempGroups, selectedGroupId, isMultipleChoiceMode]);
+  }, [tempCompanies, selectedGroupId, isMultipleChoiceMode]);
 
   const handleSubmit = async () => {
     const emailCheck = validateEmail(email);
@@ -1134,20 +1142,26 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
           </button>
         }
       >
-        <div className="m-domain-section">
+        <div className="m-domain-section m-tx-form-section">
           <p className="m-domain-section-title">{t("domainInformation")}</p>
           <Field label={t("ownerCode")}>
             <input
+              className="m-tx-form-input m-tx-form-input--muted"
               value={ownerCode}
               disabled={isEditMode}
               onChange={(e) => setOwnerCode(e.target.value.toUpperCase())}
             />
           </Field>
           <Field label={t("name")}>
-            <input value={name} onChange={(e) => setName(e.target.value)} />
+            <input
+              className="m-tx-form-input m-tx-form-input--muted"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </Field>
           <Field label={t("email")}>
             <input
+              className="m-tx-form-input m-tx-form-input--muted"
               value={email}
               onChange={(e) => setEmail(sanitizeEmailInput(e.target.value))}
               inputMode="email"
@@ -1156,6 +1170,7 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
           </Field>
           <Field label={t("password")}>
             <PasswordInput
+              className="m-tx-form-input m-tx-form-input--muted"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               showLabel={t("showPassword")}
@@ -1167,6 +1182,7 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
           {showSecondaryPwd ? (
             <Field label={t("secondaryPassword")}>
               <PasswordInput
+                className="m-tx-form-input m-tx-form-input--muted"
                 value={secondaryPassword}
                 onChange={(e) =>
                   setSecondaryPassword(e.target.value.replace(/\D/g, "").slice(0, 6))
@@ -1180,27 +1196,43 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
           ) : null}
         </div>
 
-        <div className="m-domain-section">
+        <div className="m-domain-section m-tx-form-section">
           <p className="m-domain-section-title">{t("companiesGroups")}</p>
-          <div className="m-domain-inline-add">
-            <input
-              value={groupInput}
-              placeholder={t("groupIdPlaceholder")}
-              onChange={(e) => setGroupInput(e.target.value.toUpperCase())}
-            />
-            <button type="button" className="m-domain-mini-btn tap-scale" onClick={addGroup}>
-              {t("addGroup")}
-            </button>
+          <div className="m-tx-form-field m-domain-form-field">
+            <label className="m-tx-form-label">{t("groupIdLabel")}</label>
+            <div className="m-domain-add-row">
+              <input
+                className="m-tx-form-input m-tx-form-input--muted"
+                value={groupInput}
+                placeholder={t("groupIdPlaceholder")}
+                onChange={(e) => setGroupInput(e.target.value.toUpperCase())}
+              />
+              <button
+                type="button"
+                className="m-tx-form-btn m-tx-form-btn--outline m-domain-add-action tap-scale"
+                onClick={addGroup}
+              >
+                {t("add")}
+              </button>
+            </div>
           </div>
-          <div className="m-domain-inline-add">
-            <input
-              value={companyInput}
-              placeholder={t("companyIdPlaceholder")}
-              onChange={(e) => setCompanyInput(e.target.value.toUpperCase())}
-            />
-            <button type="button" className="m-domain-mini-btn tap-scale" onClick={addCompany}>
-              {t("addCompany")}
-            </button>
+          <div className="m-tx-form-field m-domain-form-field">
+            <label className="m-tx-form-label">{t("companyIdLabel")}</label>
+            <div className="m-domain-add-row">
+              <input
+                className="m-tx-form-input m-tx-form-input--muted"
+                value={companyInput}
+                placeholder={t("companyIdPlaceholder")}
+                onChange={(e) => setCompanyInput(e.target.value.toUpperCase())}
+              />
+              <button
+                type="button"
+                className="m-tx-form-btn m-tx-form-btn--outline m-domain-add-action tap-scale"
+                onClick={addCompany}
+              >
+                {t("add")}
+              </button>
+            </div>
           </div>
 
           <div className="m-domain-pill-row">
@@ -1221,7 +1253,7 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
             })}
           </div>
           {selectedGroupId ? (
-            <div className="m-domain-entity-actions">
+            <div className="m-domain-toolbar-row">
               <button
                 type="button"
                 className="m-domain-mini-btn tap-scale"
@@ -1231,7 +1263,7 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
               </button>
               <button
                 type="button"
-                className="m-domain-mini-btn tap-scale"
+                className="m-domain-mini-btn m-domain-mini-btn--ghost tap-scale"
                 onClick={() => {
                   const g = tempGroups.find((x) => tempGroupCode(x) === selectedGroupId);
                   setSettingsType("group");
@@ -1255,7 +1287,9 @@ export function DomainFormSheet({ open, onClose, domain, editingDomain, setConfi
               <p className="m-domain-hint">
                 {selectedGroupId
                   ? t("noCompaniesInGroup", { gid: selectedGroupId })
-                  : t("noCompaniesAddedYet")}
+                  : tempCompanies.length === 0
+                    ? t("noCompaniesAddedYet")
+                    : t("selectedCompaniesHint")}
               </p>
             ) : (
               filteredCompanies.map((c) => (
