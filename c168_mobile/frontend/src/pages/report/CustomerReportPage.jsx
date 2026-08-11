@@ -8,6 +8,7 @@ import {
   fetchCustomerReport,
   fetchReportCurrencies,
   formatReportAmount,
+  reportAmountAdd,
 } from "../../lib/reportApi.js";
 import {
   maintenanceScopeIsReady,
@@ -181,6 +182,18 @@ export default function CustomerReportPage() {
     return [...map.entries()];
   }, [displayRows]);
 
+  const multiCurrency = grouped.length > 1;
+  const currencySubtotals = useMemo(() => {
+    const out = new Map();
+    for (const [currency, items] of grouped) {
+      out.set(currency, {
+        win: items.reduce((acc, row) => reportAmountAdd(acc, row.win), "0"),
+        lose: items.reduce((acc, row) => reportAmountAdd(acc, row.lose), "0"),
+      });
+    }
+    return out;
+  }, [grouped]);
+
   const scopeLabel = s.groupMode
     ? s.selectedGroup || i18n.group
     : String(s.selectedCompany?.company_id || "").toUpperCase() || i18n.company;
@@ -278,7 +291,8 @@ export default function CustomerReportPage() {
           </span>
         ))}
       </div>
-      <CustomerTotalStrip i18n={i18n} totals={totals} />
+      {/* Single-currency: API totals OK. Multi-currency: per-block subtotals only (avoid mixed FX). */}
+      {!multiCurrency ? <CustomerTotalStrip i18n={i18n} totals={totals} /> : null}
     </div>
   );
 
@@ -339,31 +353,45 @@ export default function CustomerReportPage() {
           </div>
         ) : (
           <div className="m-rpt-lines">
-            {grouped.map(([currency, items]) => (
-              <div key={currency} className="m-rpt-currency-block">
-                <div className="m-rpt-currency-head">{currency}</div>
-                {items.map((row, idx) => {
-                  const code = String(row.account_id || "").toUpperCase();
-                  const label = row.name ? `${code} (${row.name})` : code || i18n.account;
-                  return (
-                    <article
-                      key={`${row.account_id}|${row.currency}|${idx}`}
-                      className="m-rpt-line"
-                    >
-                      <div className="m-rpt-line-name">{label}</div>
-                      <div className="m-rpt-metric-row m-rpt-metric-row--2">
-                        <CustomerMetric
-                          label={i18n.win}
-                          value={row.win}
-                          tone="is-pos"
-                        />
-                        <CustomerMetric label={i18n.lose} value={row.lose} tone="is-neg" />
+            {grouped.map(([currency, items]) => {
+              const sub = currencySubtotals.get(currency);
+              return (
+                <div key={currency} className="m-rpt-currency-block">
+                  <div className="m-rpt-currency-head">{currency}</div>
+                  {items.map((row, idx) => {
+                    const code = String(row.account_id || "").toUpperCase();
+                    const label = row.name ? `${code} (${row.name})` : code || i18n.account;
+                    return (
+                      <article
+                        key={`${row.account_id}|${row.currency}|${idx}`}
+                        className="m-rpt-line"
+                      >
+                        <div className="m-rpt-line-name">{label}</div>
+                        <div className="m-rpt-metric-row m-rpt-metric-row--2">
+                          <CustomerMetric
+                            label={i18n.win}
+                            value={row.win}
+                            tone="is-pos"
+                          />
+                          <CustomerMetric label={i18n.lose} value={row.lose} tone="is-neg" />
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {multiCurrency && sub ? (
+                    <div className="m-rpt-currency-subtotal">
+                      <div className="m-rpt-summary-label">
+                        {i18n.total} · {currency}
                       </div>
-                    </article>
-                  );
-                })}
-              </div>
-            ))}
+                      <div className="m-rpt-metric-row m-rpt-metric-row--2">
+                        <CustomerMetric label={i18n.win} value={sub.win} tone="is-pos" />
+                        <CustomerMetric label={i18n.lose} value={sub.lose} tone="is-neg" />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

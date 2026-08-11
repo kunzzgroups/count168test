@@ -496,6 +496,12 @@
   border-bottom: 1px solid rgb(148 163 184 / 28%);
 }
 
+.m-rpt-currency-subtotal {
+  padding: 0.55rem 0.7rem 0.7rem;
+  border-top: 1px dashed rgb(148 163 184 / 35%);
+  background: #f8fafc;
+}
+
 .m-rpt-currency-block:last-child .m-rpt-line:last-child {
   border-bottom: 0;
 }

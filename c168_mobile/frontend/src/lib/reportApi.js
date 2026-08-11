@@ -80,7 +80,18 @@ export async function companyIsBankOnly(companyCode, signal) {
   return isBankOnlyCategoryCompany(perms);
 }
 
-const DOMAIN_GROUP_CODES = ["SALARY", "COMMISSION", "BONUS"];
+/** Desktop GROUP_PAYROLL_PROCESS_CODES parity. */
+const DOMAIN_GROUP_CODES = ["PROFIT", "SALARY", "COMMISSION", "BONUS"];
+
+/** High-precision add for Customer per-currency subtotals. */
+export function reportAmountAdd(a, b) {
+  try {
+    const sum = MoneyDecimal.add(String(a || "0"), String(b || "0"));
+    return MoneyDecimal.stripTrailingZeros(sum.toFixed(8));
+  } catch {
+    return "0";
+  }
+}
 
 function normalizeProcessCode(value) {
   return String(value || "")

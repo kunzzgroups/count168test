@@ -1,4 +1,4 @@
-import { pickGroupAnchorCompany } from "./dashboardScope.js";
+import { pickGroupAnchorCompany, sortedUniqueGroupIds } from "./dashboardScope.js";
 
 export function accountScopeIsGroupOnly(scope) {
   return Boolean(
@@ -7,6 +7,42 @@ export function accountScopeIsGroupOnly(scope) {
       !scope?.groupAllMode &&
       !(Number(scope?.companyId) > 0),
   );
+}
+
+/** Normalize getaccount_api `ledger_scope` for edit mutations. */
+export function normalizeAccountLedgerScope(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const mode = String(raw.mode || "").trim().toLowerCase();
+  const groupCode = String(raw.group_code || "").trim().toUpperCase();
+  if (mode === "group" && groupCode) return { mode: "group", group_code: groupCode };
+  return null;
+}
+
+/**
+ * Mutation/query scope: account's own group ledger overrides page company filter.
+ * @returns {Record<string,string>}
+ */
+export function mutationScopePayload(pageScope, modalLedgerScope = null) {
+  const groupCode =
+    modalLedgerScope?.mode === "group"
+      ? String(modalLedgerScope.group_code || "")
+          .trim()
+          .toUpperCase()
+      : "";
+  if (groupCode) {
+    return { group_id: groupCode, group_only: "1" };
+  }
+  return accountScopePayload(pageScope);
+}
+
+/** Groups-All aggregate: unique group codes (desktop groupIdsForGroupsAllAggregate). */
+export function groupIdsForGroupsAllAggregate(companies = [], groupIds = []) {
+  if (Array.isArray(groupIds) && groupIds.length) {
+    return sortedUniqueGroupIds(
+      groupIds.map((g) => ({ group_id: g })),
+    );
+  }
+  return sortedUniqueGroupIds(companies);
 }
 
 export function appendAccountScope(params, scope) {

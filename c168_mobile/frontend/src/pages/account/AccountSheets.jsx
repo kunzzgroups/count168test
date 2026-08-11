@@ -395,6 +395,31 @@ export function AccountFormSheet({ open, onClose, account }) {
           </div>
         ) : null}
       </div>
+      {!account.groupOnlyMode && account.availableCompanies?.length > 0 ? (
+        <div className="m-account-sheet-section">
+          <p className="m-account-section-title">{i18n.assignCompanies || i18n.company}</p>
+          <div className="m-account-pill-row">
+            {account.availableCompanies.map((row) => {
+              const id = Number(row.id);
+              const active = account.selectedCompanyIds.includes(id);
+              const label = String(row.company_code || row.company_id || id).toUpperCase();
+              return (
+                <Pill
+                  key={id}
+                  active={active}
+                  onClick={() =>
+                    account.setSelectedCompanyIds((ids) =>
+                      active ? ids.filter((x) => Number(x) !== id) : [...ids, id],
+                    )
+                  }
+                >
+                  {label}
+                </Pill>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       <div className="m-account-sheet-section">
         <p className="m-account-section-title">{i18n.currencies}</p>
         <div className="m-account-pill-row">
