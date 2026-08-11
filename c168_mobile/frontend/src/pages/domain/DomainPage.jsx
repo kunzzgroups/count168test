@@ -309,19 +309,19 @@ export default function DomainPage() {
             rows={expGroups || []}
             t={t}
           />
-          <DomainConfirmSheet
-            open={Boolean(confirm)}
-            onClose={() => setConfirm(null)}
-            message={confirm?.message || ""}
-            onConfirm={confirm?.onConfirm}
-            t={t}
-          />
           <DomainFormSheet
             open={formOpen}
             onClose={() => setFormOpen(false)}
             domain={domain}
             editingDomain={editingDomain}
             setConfirm={setConfirm}
+          />
+          <DomainConfirmSheet
+            open={Boolean(confirm)}
+            onClose={() => setConfirm(null)}
+            message={confirm?.message || ""}
+            onConfirm={confirm?.onConfirm}
+            t={t}
           />
         </>
       }

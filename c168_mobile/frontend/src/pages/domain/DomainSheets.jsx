@@ -92,11 +92,13 @@ function DateTapRow({ label, value, onChange, disabled }) {
   );
 }
 
-function Sheet({ open, title, onClose, tall = false, children, footer = null }) {
+function Sheet({ open, title, onClose, tall = false, elevate = false, children, footer = null }) {
   useOverlayLock(open, onClose);
   return (
     <div
-      className={`m-sheet-overlay${open ? " m-sheet-overlay--open" : " m-sheet-overlay--closed"}`}
+      className={`m-sheet-overlay${elevate ? " m-sheet-overlay--high" : ""}${
+        open ? " m-sheet-overlay--open" : " m-sheet-overlay--closed"
+      }`}
       aria-hidden={!open}
       inert={open ? undefined : ""}
     >
@@ -310,6 +312,7 @@ export function DomainConfirmSheet({ open, onClose, message, onConfirm, t }) {
       open={open}
       title={t("confirmDeleteTitle")}
       onClose={onClose}
+      elevate
       footer={
         <div className="m-account-footer-actions">
           <button type="button" className="m-account-secondary-btn tap-scale" onClick={onClose}>
