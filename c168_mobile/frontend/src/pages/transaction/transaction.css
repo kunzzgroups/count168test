@@ -295,7 +295,8 @@
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
-  font-size: clamp(1rem, 2.6vw, 1.2rem);
+  /* Dense ledger: caption→micro so Acc/B/F/W/L/CR/DR/Bal fit without ellipsis */
+  font-size: clamp(0.5625rem, 2.4vw, 0.6875rem);
 }
 
 .m-tx-dense-col--acc {
@@ -333,11 +334,11 @@
 }
 
 .m-tx-dense-th {
-  padding: 0.45rem 0.15rem;
+  padding: 0.35rem 0.12rem;
   font-size: inherit;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   color: #f8fafc;
   background: #1e3a5f;
   border-top: 1px solid #1e3a5f;
@@ -471,9 +472,9 @@
 }
 
 .m-tx-dense-td {
-  padding: 0.4rem 0.15rem;
+  padding: 0.3rem 0.12rem;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .m-tx-dense-td--acc {
