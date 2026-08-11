@@ -23,6 +23,12 @@ function currentStickyOwnerKey() {
   return String(sessionStorage.getItem(DASHBOARD_LOGIN_FILTER_APPLIED_KEY) || "").trim();
 }
 
+/** Complete filter package = currencies + (companies or genuinely no groups). */
+function isFilterPackageComplete(pkg) {
+  if (!pkg?.currencies?.length) return false;
+  return (pkg.companiesForPicker?.length || 0) > 0 || (pkg.groupIds?.length || 0) === 0;
+}
+
 function readStickyPackage() {
   if (typeof sessionStorage === "undefined") return null;
   try {
@@ -37,9 +43,7 @@ function readStickyPackage() {
     const currencies = Array.isArray(p.currencies) ? p.currencies : [];
     const companiesForPicker = Array.isArray(p.companiesForPicker) ? p.companiesForPicker : [];
     const groupIds = Array.isArray(p.groupIds) ? p.groupIds : [];
-    if (!currencies.length) return null;
-    if (groupIds.length > 0 && !companiesForPicker.length) return null;
-    return {
+    const pkg = {
       ownerKey,
       groupIds,
       companiesForPicker,
@@ -51,6 +55,9 @@ function readStickyPackage() {
       companyId: p.companyId ?? null,
       dateText: typeof p.dateText === "string" ? p.dateText : "",
     };
+    // Never restore an incomplete package (groups without companies → blank surface on remount).
+    if (!isFilterPackageComplete(pkg)) return null;
+    return pkg;
   } catch {
     return null;
   }
@@ -58,6 +65,7 @@ function readStickyPackage() {
 
 function writeStickyPackage(pkg) {
   if (typeof sessionStorage === "undefined" || !pkg) return;
+  if (!isFilterPackageComplete(pkg)) return;
   try {
     sessionStorage.setItem(DASHBOARD_FILTER_PAINT_PACKAGE_KEY, JSON.stringify(pkg));
   } catch {
@@ -81,33 +89,24 @@ export default function TransactionDashboardPage() {
 
   // Session-sticky full package: filter stays “dead” (complete) across refresh / load races.
   // Scoped to the active login key so a previous owner’s groups/companies never paint.
+  // Same-owner sticky fallback covers Admin↔Home remount races (companies briefly empty).
+  // Cross-login safety is ownerKey + logout on logout — do not clear sticky on bootstrap alone
+  // (that poisoned remounts into a full blank surface).
   const stickyRef = useRef(readStickyPackage());
   const ownerKey = currentStickyOwnerKey();
   if (stickyRef.current?.ownerKey && ownerKey && stickyRef.current.ownerKey !== ownerKey) {
     stickyRef.current = null;
   }
-  if (
-    ownerKey &&
-    page.currencies?.length &&
-    ((page.companiesForPicker?.length || 0) > 0 || (page.groupIds?.length || 0) === 0)
-  ) {
+  if (ownerKey && page.currencies?.length) {
     const sameOwner = stickyRef.current?.ownerKey === ownerKey;
     const prev = sameOwner ? stickyRef.current : null;
-    // After GC bootstrap, empty groupIds/companies are truth for this account — do not
-    // fall back to an older sticky set (that is how T1 leaked onto DEMO).
-    const bootstrapped = Boolean(page.gcBootstrapReady);
-    stickyRef.current = {
+    const next = {
       ownerKey,
-      groupIds: page.groupIds?.length
-        ? page.groupIds
-        : bootstrapped
-          ? page.groupIds || []
-          : prev?.groupIds || [],
+      // Same-owner only: keep previous complete pills while page lists rehydrate after remount.
+      groupIds: page.groupIds?.length ? page.groupIds : prev?.groupIds || page.groupIds || [],
       companiesForPicker: page.companiesForPicker?.length
         ? page.companiesForPicker
-        : bootstrapped
-          ? page.companiesForPicker || []
-          : prev?.companiesForPicker || [],
+        : prev?.companiesForPicker || page.companiesForPicker || [],
       currencies: page.currencies,
       currencyCode: page.currencyCode || prev?.currencyCode || "",
       selectedGroup: page.selectedGroup,
@@ -116,14 +115,23 @@ export default function TransactionDashboardPage() {
       companyId: page.companyId,
       dateText: effectiveDateRangeText || prev?.dateText || "",
     };
-    writeStickyPackage(stickyRef.current);
+    // Only promote sticky when complete — incomplete mid-bootstrap packages would
+    // make readSticky null on the next Admin→Home trip and white-out the surface.
+    if (isFilterPackageComplete(next)) {
+      stickyRef.current = next;
+      writeStickyPackage(stickyRef.current);
+    }
   }
 
   const sticky = stickyRef.current;
-  const packageReady = Boolean(
-    sticky?.currencies?.length &&
-      ((sticky.companiesForPicker?.length || 0) > 0 || (sticky.groupIds?.length || 0) === 0)
-  );
+  // Unlock surface from sticky OR live page — wait only when both incomplete
+  // (Admin→Home remount usually has sticky; cold load uses live once currencies arrive).
+  const liveReady = isFilterPackageComplete({
+    currencies: page.currencies,
+    companiesForPicker: page.companiesForPicker,
+    groupIds: page.groupIds,
+  });
+  const packageReady = isFilterPackageComplete(sticky) || liveReady;
 
   // One surface for filter + KPI/chart — never show one without the other.
   // Once unlocked, stay unlocked (sticky package keeps filter complete / “dead”).
