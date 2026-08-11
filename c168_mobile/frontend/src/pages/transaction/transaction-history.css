@@ -76,13 +76,12 @@
   color: var(--m-color-muted);
 }
 
-/* Dense table: sticky Date; Type+ money scroll; zebra like Acc */
+/* Dense table: Date · Product · W/L · CR/DR · Bal fit viewport (no horizontal scroll) */
 .m-tx-hist-dense-wrap {
   min-width: 0;
   max-width: 100%;
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
   border-radius: 0.5rem;
   background: var(--m-color-surface);
   border: 1px solid #cbd5e1;
@@ -90,12 +89,27 @@
 }
 
 .m-tx-hist-dense-table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  table-layout: auto;
-  font-size: var(--m-text-secondary);
+  table-layout: fixed;
+  font-size: clamp(0.5625rem, 2.4vw, 0.6875rem);
+}
+
+.m-tx-hist-col--date {
+  width: 18%;
+}
+
+.m-tx-hist-col--product {
+  width: 22%;
+}
+
+.m-tx-hist-col--num {
+  width: 17.5%;
+}
+
+.m-tx-hist-col--chev {
+  width: 7%;
 }
 
 .m-tx-hist-dense-th,
@@ -104,7 +118,7 @@
   border-bottom: 1px solid #e2e8f0;
   vertical-align: middle;
   font-variant-numeric: tabular-nums;
-  line-height: 1.25;
+  line-height: 1.15;
 }
 
 .m-tx-hist-dense-th:first-child,
@@ -124,11 +138,11 @@
 }
 
 .m-tx-hist-dense-th {
-  padding: 0.5rem 0.25rem;
-  font-size: var(--m-text-secondary);
+  padding: 0.35rem 0.12rem;
+  font-size: inherit;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.01em;
   color: #f8fafc;
   background: #1e3a5f;
   border-bottom-color: #1e3a5f;
@@ -137,38 +151,30 @@
 
 .m-tx-hist-dense-th--date,
 .m-tx-hist-dense-td--date {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  width: 5.75rem;
-  min-width: 5.75rem;
-  max-width: 5.75rem;
+  min-width: 0;
   text-align: left;
-  padding-left: 0.375rem;
-  box-shadow: 4px 0 8px -4px rgba(15, 23, 42, 0.28);
+  padding-left: 0.3rem;
 }
 
 .m-tx-hist-dense-th--date {
-  z-index: 5;
   background: #1e3a5f;
 }
 
 .m-tx-hist-dense-th--product {
-  min-width: 6.5rem;
+  min-width: 0;
   text-align: left;
 }
 
 .m-tx-hist-dense-th--num {
-  min-width: 8rem;
+  min-width: 0;
   text-align: right;
-  padding-right: 0.375rem;
+  padding-right: 0.25rem;
 }
 
 .m-tx-hist-dense-th--chev {
-  min-width: 2rem;
-  width: 2rem;
+  min-width: 0;
   text-align: center;
-  padding: 0.5rem 0;
+  padding: 0.35rem 0;
 }
 
 .m-tx-hist-row {
@@ -199,7 +205,7 @@
 }
 
 .m-tx-hist-dense-td {
-  padding: 0.5rem 0.25rem;
+  padding: 0.3rem 0.12rem;
   font-weight: 700;
 }
 
@@ -225,8 +231,8 @@
 }
 
 .m-tx-hist-dense-td--product {
+  min-width: 0;
   text-align: left;
-  max-width: 8rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -235,23 +241,23 @@
 }
 
 .m-tx-hist-dense-td--num {
-  min-width: 8rem;
+  min-width: 0;
   text-align: right;
-  padding-right: 0.375rem;
+  padding-right: 0.25rem;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: clip;
-  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  letter-spacing: -0.02em;
 }
 
 .m-tx-hist-dense-td--chev {
   text-align: center;
-  padding: 0.25rem 0;
+  padding: 0.2rem 0;
   color: #64748b;
 }
 
 .m-tx-hist-chev {
-  font-size: var(--m-text-secondary);
+  font-size: inherit;
   opacity: 0.75;
 }
 
@@ -262,10 +268,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   border-radius: 0.25rem;
-  padding: 0.0625rem 0.25rem;
-  font-size: var(--m-text-secondary);
+  padding: 0.05rem 0.2rem;
+  font-size: inherit;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   vertical-align: middle;
 }
 

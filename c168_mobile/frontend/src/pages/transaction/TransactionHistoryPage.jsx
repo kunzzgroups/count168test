@@ -190,6 +190,12 @@ export default function TransactionHistoryPage() {
         ) : (
           <div className="m-tx-hist-dense-wrap">
             <table className="m-tx-hist-dense-table">
+              <colgroup>
+                <col className="m-tx-hist-col--date" />
+                <col className="m-tx-hist-col--product" />
+                <col className="m-tx-hist-col--num" span={3} />
+                <col className="m-tx-hist-col--chev" />
+              </colgroup>
               <thead>
                 <tr>
                   <th scope="col" className="m-tx-hist-dense-th m-tx-hist-dense-th--date">
