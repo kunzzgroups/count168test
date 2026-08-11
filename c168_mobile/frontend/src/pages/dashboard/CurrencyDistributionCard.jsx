@@ -17,6 +17,7 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
   title,
   badgeLabel,
   isCompanyBreakdown = false,
+  tabs = null,
 }) {
   const pieUseConverted = !isCompanyBreakdown && useConverted;
   const pieBaseCode = isCompanyBreakdown ? "" : currencyCode;
@@ -48,7 +49,9 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
   const headBadge = badgeLabel || i18n.currency;
 
   return (
-    <section className="m-dash-card m-dash-card--padded">
+    <section className={`m-dash-card m-dash-card--padded${tabs ? " m-dash-card--with-tabs" : ""}`}>
+      {tabs}
+
       <div className="m-dash-card-head m-dash-card-head--spaced">
         <h2 className="m-dash-card-title">{headTitle}</h2>
         {legend.length > 0 && (
@@ -72,6 +75,7 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
                     <Pie
+                      key={isCompanyBreakdown ? "company" : "currency"}
                       data={slices.length ? slices : [{ code: "—", value: 1, fill: "#e2e8f0" }]}
                       dataKey="value"
                       nameKey="code"

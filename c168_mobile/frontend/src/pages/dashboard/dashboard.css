@@ -820,33 +820,54 @@
   padding: 0.875rem 1.25rem;
 }
 
+.m-dash-card--with-tabs {
+  padding-top: 0.85rem;
+}
+
 .m-dash-earnings-tabs {
-  display: flex;
-  gap: 0.375rem;
-  padding: 0.25rem;
-  border-radius: 0.875rem;
-  background: #f1f5f9;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.2rem;
+  margin: 0 0 0.85rem;
+  padding: 0.2rem;
+  border-radius: 0.75rem;
+  background: var(--m-color-surface-muted, #f1f5f9);
+}
+
+.m-dash-earnings-tabs--count-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .m-dash-earnings-tab {
-  flex: 1 1 0;
-  min-width: max-content;
+  min-width: 0;
   border: 0;
-  border-radius: 0.75rem;
-  padding: 0.55rem 0.75rem;
+  border-radius: 0.55rem;
+  padding: 0.5rem 0.35rem;
   font-size: clamp(1.2rem, 0.15vw + 1.0rem, 1.3rem);
   font-weight: 700;
-  color: #64748b;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--m-color-muted, #64748b);
   background: transparent;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+  transition:
+    background-color 140ms ease-out,
+    color 140ms ease-out,
+    box-shadow 140ms ease-out,
+    transform 100ms ease-out;
+}
+
+.m-dash-earnings-tab:active {
+  transform: scale(0.97);
 }
 
 .m-dash-earnings-tab.is-active {
-  color: #0f172a;
+  color: var(--m-color-primary, #2f6bf6);
   background: #fff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 10px -6px rgba(47, 107, 246, 0.35);
+}
+
+.m-dash-earnings-tab.is-active:active {
+  transform: scale(0.98);
 }
 
 .m-dash-currency-flag {
