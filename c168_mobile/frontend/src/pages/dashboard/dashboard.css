@@ -820,18 +820,30 @@
   padding: 0.875rem 1.25rem;
 }
 
-.m-dash-card--with-tabs {
+.m-dash-earn-panel {
+  animation: m-fade-in 0.35s ease-out both;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(47, 107, 246, 0.045) 0%, rgba(255, 255, 255, 0) 7.5rem),
+    var(--m-color-surface);
+  box-shadow: 0 8px 28px -12px rgba(15, 23, 42, 0.12);
+  outline: 1px solid rgba(241, 245, 249, 0.9);
+  padding: 1rem 1.15rem 1.15rem;
+  overflow: hidden;
+}
+
+.m-dash-earn-panel--tabs {
   padding-top: 0.85rem;
 }
 
 .m-dash-earnings-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.2rem;
-  margin: 0 0 0.85rem;
-  padding: 0.2rem;
-  border-radius: 0.75rem;
-  background: var(--m-color-surface-muted, #f1f5f9);
+  gap: 0.15rem;
+  margin: 0 0 1rem;
+  padding: 0.18rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
 }
 
 .m-dash-earnings-tabs--count-3 {
@@ -841,14 +853,16 @@
 .m-dash-earnings-tab {
   min-width: 0;
   border: 0;
-  border-radius: 0.55rem;
-  padding: 0.5rem 0.35rem;
-  font-size: clamp(1.2rem, 0.15vw + 1.0rem, 1.3rem);
+  outline: none;
+  border-radius: 999px;
+  padding: 0.52rem 0.3rem;
+  font-size: clamp(1.15rem, 0.12vw + 1.0rem, 1.25rem);
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
   letter-spacing: -0.01em;
-  color: var(--m-color-muted, #64748b);
+  color: #64748b;
   background: transparent;
+  -webkit-tap-highlight-color: transparent;
   transition:
     background-color 140ms ease-out,
     color 140ms ease-out,
@@ -856,18 +870,204 @@
     transform 100ms ease-out;
 }
 
+.m-dash-earnings-tab:focus-visible {
+  box-shadow: 0 0 0 2px rgba(47, 107, 246, 0.35);
+}
+
 .m-dash-earnings-tab:active {
   transform: scale(0.97);
 }
 
 .m-dash-earnings-tab.is-active {
-  color: var(--m-color-primary, #2f6bf6);
+  color: #1e3a8a;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 10px -6px rgba(47, 107, 246, 0.35);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 6px 14px -8px rgba(47, 107, 246, 0.45);
 }
 
 .m-dash-earnings-tab.is-active:active {
   transform: scale(0.98);
+}
+
+.m-dash-earn-hero {
+  text-align: left;
+  padding: 0.15rem 0.15rem 0.35rem;
+}
+
+.m-dash-earn-eyebrow {
+  margin: 0;
+  font-size: clamp(1.1rem, 0.1vw + 0.95rem, 1.2rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.m-dash-earn-amount {
+  margin: 0.35rem 0 0;
+  font-size: clamp(2.8rem, 1.2vw + 2.2rem, 3.4rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-dash-earn-amount.is-neg {
+  color: #e11d48;
+}
+
+.m-dash-earn-amount.is-pos {
+  color: #0f766e;
+}
+
+.m-dash-earn-amount-skel {
+  margin-top: 0.45rem;
+  height: 2.4rem;
+  width: 60%;
+  border-radius: 0.75rem;
+  background: linear-gradient(90deg, #f1f5f9, #e2e8f0, #f1f5f9);
+  background-size: 200% 100%;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.m-dash-earn-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.45rem 0 0;
+  font-size: clamp(1.2rem, 0.15vw + 1.0rem, 1.3rem);
+  font-weight: 600;
+  color: #64748b;
+}
+
+.m-dash-earn-meta-sep {
+  opacity: 0.55;
+}
+
+.m-dash-earn-flag {
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+.m-dash-earn-empty {
+  margin: 0.75rem 0 0.25rem;
+  font-size: var(--m-text-body);
+  font-weight: 600;
+  color: var(--m-color-label);
+}
+
+.m-dash-earn-pie-block {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.m-dash-earn-pie-wrap {
+  margin-top: 0;
+}
+
+.m-dash-earn-rows {
+  list-style: none;
+  margin: 0.95rem 0 0;
+  padding: 0.2rem 0 0;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.m-dash-earn-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.8rem 0.1rem;
+}
+
+.m-dash-earn-row + .m-dash-earn-row {
+  border-top: 1px solid rgba(241, 245, 249, 0.95);
+}
+
+.m-dash-earn-avatar {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  flex-shrink: 0;
+  border-radius: 0.85rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+
+.m-dash-earn-avatar--flag {
+  background: #f8fafc;
+  outline: 1px solid rgba(226, 232, 240, 0.95);
+  font-size: 1.15rem;
+  color: inherit;
+}
+
+.m-dash-earn-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.m-dash-earn-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.m-dash-earn-row-code {
+  margin: 0;
+  font-size: clamp(1.35rem, 0.2vw + 1.15rem, 1.5rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.m-dash-earn-row-amount {
+  margin: 0;
+  font-size: clamp(1.35rem, 0.2vw + 1.15rem, 1.5rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+}
+
+.m-dash-earn-row-amount.is-neg {
+  color: #e11d48;
+}
+
+.m-dash-earn-row-sub {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.15rem;
+  font-size: clamp(1.1rem, 0.1vw + 0.95rem, 1.2rem);
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.m-dash-earn-bar {
+  margin-top: 0.45rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.m-dash-earn-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 220ms ease-out;
+}
+
+.m-dash-earn-note {
+  margin: 0.75rem 0 0;
+  font-size: clamp(1.1rem, 0.1vw + 0.95rem, 1.2rem);
+  font-weight: 600;
+  color: #94a3b8;
 }
 
 .m-dash-currency-flag {
