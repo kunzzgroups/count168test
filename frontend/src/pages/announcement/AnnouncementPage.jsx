@@ -12,7 +12,7 @@ import { EditAnnouncementModal, EditMaintenanceModal } from "./components/Announ
 import { AnnouncementPanel, MaintenancePanel } from "./components/AnnouncementPanels.jsx";
 import PagePillTabSwitch from "../../components/PagePillTabSwitch.jsx";
 import { useAuthSession } from "../../context/AuthSessionContext.jsx";
-import { canAccessC168DomainPages } from "../../utils/company/loginScope.js";
+import { canAccessC168DomainPages, isSystemMaintenanceItUser } from "../../utils/company/loginScope.js";
 import { ensureC168DomainApiSession } from "../../utils/company/companySessionSync.js";
 import {
   isRichTextEffectivelyEmpty,
@@ -140,6 +140,11 @@ export default function AnnouncementPage() {
   );
 
   const loadMaintenanceMode = useCallback(async () => {
+    // mode_api is IT-allowlist only; skip probe for others to avoid expected 403 noise.
+    if (!isSystemMaintenanceItUser(me)) {
+      setCanManageMaintenanceMode(false);
+      return;
+    }
     try {
       const res = await fetch(buildApiUrl("api/maintenance/mode_api.php"), { credentials: "include" });
       const json = await res.json();
@@ -162,7 +167,7 @@ export default function AnnouncementPage() {
     } catch {
       setCanManageMaintenanceMode(false);
     }
-  }, []);
+  }, [me]);
 
   const toggleMaintenanceMode = useCallback(
     async (nextEnabled) => {
