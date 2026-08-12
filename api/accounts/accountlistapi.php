@@ -15,7 +15,7 @@ session_write_close(); // 释放 session 锁，允许并发 AJAX 请求并行执
 // ---------- 数据库与业务辅助函数 ----------
 
 /** 返回当前用户在某公司下的账户权限列表（用于展示/调试）。未设置时返回 []。 */
-function getCurrentUserAccountPermissions(PDO $pdo, int $company_id): array {
+function accountlist_user_permissions_rows_for_company(PDO $pdo, int $company_id): array {
     $currentUserId = $_SESSION['user_id'] ?? null;
     if (!$currentUserId) {
         return [];
@@ -598,7 +598,7 @@ try {
         ? getAccountPermissionFilterForCompany($pdo, $permCompanyId, $current_user_role)
         : null;
     $userAccountPermissions = $permCompanyId > 0
-        ? getCurrentUserAccountPermissions($pdo, $permCompanyId)
+        ? accountlist_user_permissions_rows_for_company($pdo, $permCompanyId)
         : [];
 
     $accounts = [];
@@ -646,7 +646,7 @@ try {
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => '数据库错误: ' . $e->getMessage(), 'data' => null]);
-} catch (Exception $e) {
+} catch (Throwable $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => '系统错误: ' . $e->getMessage(), 'data' => null]);
 }
