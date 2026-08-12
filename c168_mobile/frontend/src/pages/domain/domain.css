@@ -148,7 +148,7 @@
 }
 
 .m-domain-chip-cat--group {
-  color: #7c3aed;
+  color: #0d60ff;
 }
 
 .m-domain-chip-row {
@@ -171,9 +171,9 @@
 }
 
 .m-domain-chip--group {
-  border-color: #ddd6fe;
-  background: #f5f3ff;
-  color: #6d28d9;
+  border-color: transparent;
+  background: linear-gradient(180deg, #63c4ff, #0d60ff);
+  color: #fff;
 }
 
 .m-domain-chip--more {

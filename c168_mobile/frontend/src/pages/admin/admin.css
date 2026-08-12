@@ -7,9 +7,9 @@
 
 .m-admin-owner-tag {
   border-radius: var(--m-radius-pill);
-  background: rgba(109, 40, 217, 0.12);
+  background: linear-gradient(180deg, #63c4ff, #0d60ff);
   padding: 0.24rem 0.7rem;
-  color: #6d28d9;
+  color: #fff;
   font-size: var(--m-text-badge-ratio);
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -128,8 +128,8 @@
 }
 
 .m-admin-belonging-chip.is-group {
-  background: rgba(109, 40, 217, 0.1);
-  color: #6d28d9;
+  background: linear-gradient(180deg, #63c4ff, #0d60ff);
+  color: #fff;
 }
 
 .m-admin-access-row {

@@ -29,9 +29,9 @@
 
 .m-filter-pill--active-violet {
   border-color: transparent;
-  background: #7c3aed;
+  background: linear-gradient(180deg, #63c4ff, #0d60ff);
   color: #fff;
-  box-shadow: 0 6px 14px -4px rgba(124, 58, 237, 0.45);
+  box-shadow: 0 6px 14px -4px rgba(13, 96, 255, 0.45);
 }
 
 .m-filter-pill:disabled {

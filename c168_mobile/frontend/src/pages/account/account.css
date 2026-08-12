@@ -93,7 +93,7 @@
 }
 
 .m-account-pill.is-violet.is-active {
-  background: #7c3aed;
+  background: linear-gradient(180deg, #63c4ff, #0d60ff);
 }
 
 .m-account-page {
