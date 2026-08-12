@@ -1375,8 +1375,12 @@ export default function AuthenticatedLayout() {
             </div>
             
             <div className="user-info">
-              <div className="user-name">{me?.name || me?.login_id || "-"}</div>
-              <div className="user-role">{roleLabel || i18n.user}</div>
+              <div className="user-name" title={me?.name || me?.login_id || undefined}>
+                {me?.name || me?.login_id || "-"}
+              </div>
+              <div className="user-role" title={roleLabel || i18n.user || undefined}>
+                {roleLabel || i18n.user}
+              </div>
             </div>
           </div>
           <SidebarLangSwitch lang={lang} onLanguageChange={applyLanguage} ariaLabel={i18n.switchLanguage} />

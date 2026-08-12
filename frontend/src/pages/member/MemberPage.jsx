@@ -450,8 +450,12 @@ export default function MemberPage() {
             </div>
             <div className="user-avatar-dropdown">
               <div className="user-info">
-                <div className="user-name">{me.login_id || "-"}</div>
-                <div className="user-role">{roleLabel}</div>
+                <div className="user-name" title={me.login_id || undefined}>
+                  {me.login_id || "-"}
+                </div>
+                <div className="user-role" title={roleLabel || undefined}>
+                  {roleLabel}
+                </div>
               </div>
             </div>
           </div>

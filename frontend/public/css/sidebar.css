@@ -4,15 +4,16 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
-/* 用户信息容器（包裹头像和用户信息）- 整体水平居中，名字长时向左右对称扩展 */
+/* 用户信息容器（包裹头像和用户信息）- 整体水平居中；长名在侧栏内截断，不溢出主内容区 */
 .user-info-container {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: clamp(4px, 0.52vw, 10px) clamp(8px, 0.83vw, 16px);
-    margin-right: clamp(-40px, -2.1vw, -20px);
-
+    margin-right: 0;
     margin-bottom: clamp(2px, 0.31vw, 6px);
     min-height: 50px;
     contain: layout style;
@@ -39,9 +40,12 @@
     transition: background-color 0.3s ease;
     text-align: center;
     color: white;
-    flex-shrink: 0;
-    /* 优化渲染性能 */
+    flex: 1 1 auto;
+    flex-shrink: 1;
+    /* 优化渲染性能；允许长账号名在侧栏内收缩截断 */
     min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
     contain: layout style;
     /* 确保不会被头像选择菜单覆盖，但也不覆盖菜单 */
     z-index: 1;
@@ -427,26 +431,36 @@
     align-items: flex-start;
     gap: 2px;
     margin-left: 10px;
-    min-width: clamp(60px, 5vw, 100px);
-    flex: 0 1 auto;
+    min-width: 0;
+    flex: 1 1 auto;
+    max-width: 100%;
+    overflow: hidden;
     text-align: center;
 }
 
 .user-name {
     margin: 0;
+    max-width: 100%;
     font-size: clamp(10px, 0.83vw, 16px);
     font-weight: 600;
     color: white;
     line-height: 1.2;
     text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .user-role {
+    max-width: 100%;
     font-size: clamp(9px, 0.57vw, 11px);
     font-weight: 500;
     color: rgba(255, 255, 255, 0.8);
     line-height: 1.2;
     text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* 左边的选项bar */
@@ -2100,7 +2114,7 @@ body.ec-auth-shell .informationmenu .header-logo {
 
 body.ec-auth-shell .informationmenu .user-info-container {
     padding: 0.6rem 1.2rem !important;
-    margin-right: -2.4rem !important;
+    margin-right: 0 !important;
     margin-bottom: 0.4rem !important;
 }
 
@@ -2175,7 +2189,7 @@ body.ec-auth-shell .informationmenu .submenu-item {
 
     body.ec-auth-shell .informationmenu .user-info-container {
         padding: 0.5rem 0.8rem !important;
-        margin-right: -1.6rem !important;
+        margin-right: 0 !important;
     }
 
     body.ec-auth-shell .informationmenu .current-avatar {
