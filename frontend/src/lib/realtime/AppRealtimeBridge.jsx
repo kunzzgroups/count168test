@@ -126,6 +126,13 @@ export default function AppRealtimeBridge() {
             );
           },
         });
+        // User Acc whitelist changed — also drop ledger caches (belt if ledger publish missed).
+        if (source === "user_account_permissions" || source === "update_permissions") {
+          clearAllAutoRenewListCache();
+          notifyTransactionListInvalidated(`realtime_${source}`);
+          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.searchRoot() });
+          void queryClient.invalidateQueries({ queryKey: transactionQueryKeys.contraInboxRoot() });
+        }
         return;
       }
 

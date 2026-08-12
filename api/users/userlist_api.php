@@ -2696,6 +2696,7 @@ try {
                 // 保存 Account 和 Process 权限到 user_company_permissions 表（按当前公司）
                 // 只有当提供了 account_permissions 或 process_permissions 时才更新
                 $editorUserId = (int) ($_SESSION['user_id'] ?? 0);
+                $accountPermsUpdated = false;
                 // Must pass for BOTH DB role and assigned role — otherwise elevating role in the
                 // same request (e.g. supervisor → admin) would still allow account_permissions writes.
                 $originalRoleForAcc = (string) ($originalUser['role'] ?? '');
@@ -2748,6 +2749,7 @@ try {
                             $grantableIds
                         );
                         $accountPerms = json_encode(array_values($mergedAccountRows));
+                        $accountPermsUpdated = true;
                     }
                     
                     if (isset($input['process_permissions'])) {
@@ -2828,6 +2830,7 @@ try {
                 }
 
                 require_once __DIR__ . '/../includes/realtime.php';
+                require_once __DIR__ . '/../includes/ledger_realtime.php';
                 $publishIds = array_values(array_filter(array_map('intval', is_array($validatedScopeCompanyIds ?? null) ? $validatedScopeCompanyIds : [])));
                 if ($publishIds === [] && !empty($scope_company_id)) {
                     $publishIds = [(int) $scope_company_id];
@@ -2837,6 +2840,16 @@ try {
                 }
                 if ($publishIds !== []) {
                     realtime_publish_companies($publishIds, 'users', 'update');
+                    // Acc 白名单变更：Account / Transaction 账号下拉 + 报表/流水全站立刻按新权限重拉
+                    if (!empty($accountPermsUpdated)) {
+                        realtime_publish_companies($publishIds, 'accounts', 'user_account_permissions');
+                        foreach ($publishIds as $pubCompanyId) {
+                            tx_ledger_realtime_publish_scope(
+                                ['mode' => 'company', 'company_id' => (int) $pubCompanyId],
+                                'user_account_permissions'
+                            );
+                        }
+                    }
                 }
                 
                 sendResponse(true, $message, $responseData);

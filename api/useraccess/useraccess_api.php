@@ -230,7 +230,17 @@ try {
 
                 if ($successCount === count($affectedUserIds)) {
                     require_once __DIR__ . '/../includes/realtime.php';
-                    realtime_publish_companies([(int) $current_company_id], 'users', 'update_permissions');
+                    require_once __DIR__ . '/../includes/ledger_realtime.php';
+                    $pubCompanyId = (int) $current_company_id;
+                    realtime_publish_companies([$pubCompanyId], 'users', 'update_permissions');
+                    // Acc 权限批量变更：同步 Account / Transaction / 报表可见范围
+                    realtime_publish_companies([$pubCompanyId], 'accounts', 'user_account_permissions');
+                    if ($pubCompanyId > 0) {
+                        tx_ledger_realtime_publish_scope(
+                            ['mode' => 'company', 'company_id' => $pubCompanyId],
+                            'user_account_permissions'
+                        );
+                    }
                     $msg = $input['source_type'] === 'template'
                         ? "Successfully updated permissions for $successCount user(s) based on template: {$templateUser['name']} ({$templateUser['login_id']})"
                         : "Successfully updated permissions for $successCount user(s) with manually selected permissions";
