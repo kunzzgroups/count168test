@@ -4,6 +4,7 @@ import { accountCompanyPickerZIndex, accountModalOverlayZIndex } from "../../../
 import SimpleSelect from "../../../components/SimpleSelect.jsx";
 import { useSubmitGuard } from "../../../hooks/useSubmitGuard.js";
 import PasswordInput from "../../../components/PasswordInput.jsx";
+import { nextAccountSelectionPreservingOutside } from "../userListLogic.js";
 
 /** Inline so first paint is 3-column even if extracted CSS applies one frame late */
 const modalBodyStyle = {
@@ -248,7 +249,15 @@ const SelectionColumn = React.memo(function SelectionColumn({
           type="button"
           className="btn-account-control"
           disabled={locked}
-          onClick={() => runBulkSelection(variant, () => setSelectedIds(new Set(idList)))}
+          onClick={() =>
+            runBulkSelection(variant, () => {
+              if (variant !== "account") {
+                setSelectedIds(new Set(idList));
+                return;
+              }
+              setSelectedIds((prev) => nextAccountSelectionPreservingOutside(prev, idList, "select"));
+            })
+          }
         >
           {t("selectAll")}
         </button>
@@ -256,7 +265,15 @@ const SelectionColumn = React.memo(function SelectionColumn({
           type="button"
           className="btn-clearall"
           disabled={locked}
-          onClick={() => runBulkSelection(variant, () => setSelectedIds(new Set()))}
+          onClick={() =>
+            runBulkSelection(variant, () => {
+              if (variant !== "account") {
+                setSelectedIds(new Set());
+                return;
+              }
+              setSelectedIds((prev) => nextAccountSelectionPreservingOutside(prev, idList, "clear"));
+            })
+          }
         >
           {t("clearAll")}
         </button>

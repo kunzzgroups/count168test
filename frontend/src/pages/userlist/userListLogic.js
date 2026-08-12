@@ -127,9 +127,58 @@ export function getUserEditFieldLocks(row, currentUserId, currentUserRole) {
     password: false,
     sidebar: isSelf || isSame || isLower,
     company: isSelf || isSame || isLower || !canPickCompany,
-    // 自己编辑自己时锁定账户/流程，避免把自己的账户全部清空后造成自我锁定（账户页无数据）
-    accountProcess: isSelf,
+    // Acc/Process：仅上级可改下级；自己/同级/上级锁定，避免自开回或越权
+    accountProcess: isSelf || isSame || isLower,
   };
+}
+
+/**
+ * Bulk select/clear in User Modal Acc column: only touch editor-visible ids,
+ * keep selected ids outside that set (accounts the editor cannot see/grant).
+ * @param {Iterable<number|string>} prevSelected
+ * @param {Iterable<number|string>} visibleIds
+ * @param {"select"|"clear"} mode
+ * @returns {Set<number>}
+ */
+export function nextAccountSelectionPreservingOutside(prevSelected, visibleIds, mode) {
+  const next = new Set([...prevSelected].map(Number).filter((id) => id > 0));
+  const visible = [...visibleIds].map(Number).filter((id) => id > 0);
+  if (mode === "select") {
+    visible.forEach((id) => next.add(id));
+    return next;
+  }
+  visible.forEach((id) => next.delete(id));
+  return next;
+}
+
+/**
+ * Merge target account permissions: editor may only change ids in grantableIds.
+ * Ids outside grantable stay as on the target (avoids Clear-All wiping hidden accs).
+ * @param {Array<{id?: number}|number>|null|undefined} existingPerms
+ * @param {Array<{id?: number}|number>} submittedPerms
+ * @param {Iterable<number|string>|null|undefined} grantableIds null/undefined = editor may set any submitted id
+ * @returns {Array<{id: number}>}
+ */
+export function mergeAccountPermissionsForEditor(existingPerms, submittedPerms, grantableIds) {
+  const toId = (x) => Number(x?.id ?? x);
+  const submittedIds = new Set(
+    (Array.isArray(submittedPerms) ? submittedPerms : []).map(toId).filter((id) => id > 0),
+  );
+  const existingIds = new Set(
+    (Array.isArray(existingPerms) ? existingPerms : []).map(toId).filter((id) => id > 0),
+  );
+  if (grantableIds == null) {
+    return [...submittedIds].map((id) => ({ id }));
+  }
+  const grantable = new Set([...grantableIds].map(Number).filter((id) => id > 0));
+  const merged = new Set();
+  existingIds.forEach((id) => {
+    if (!grantable.has(id)) merged.add(id);
+  });
+  submittedIds.forEach((id) => {
+    if (grantable.has(id)) merged.add(id);
+  });
+  return [...merged].map((id) => ({ id }));
 }
 
 export function getCurrentUserRolePermissions(currentUserRole) {

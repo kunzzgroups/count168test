@@ -84,6 +84,7 @@ import {
   canInteractWithReadOnlyToggle,
   isUserModalPageReadOnlyLock,
   getUserEditFieldLocks,
+  mergeAccountPermissionsForEditor,
   isCompanyInUserListPicker,
   readUserListGroupFilterOptOut,
   resolveUserListFetchScopeKey,
@@ -2372,12 +2373,46 @@ export default function UserListPage() {
       }
     } else {
       const caps = computeRowCapabilities(editingRow, currentUserId, currentUserRole);
-      if (caps.isSelf || caps.isHigherLevel || caps.isSameLevel) {
-        payload.account_permissions = accountPerms;
-        if (shouldSendProcessPermissions) payload.process_permissions = processPerms;
-      } else {
+      if (!(caps.isSelf || caps.isHigherLevel || caps.isSameLevel)) {
         payload.permissions = Array.from(permSelected);
-        payload.account_permissions = accountPerms;
+      }
+      // Acc/Process：仅上级改下级时提交；自己/同级/上级锁定，避免自开回
+      if (!fieldLocks.accountProcess) {
+        const detail = editUserDetailCacheRef.current.get(String(form.id || ""));
+        let existingAp = null;
+        let existingUnset = true;
+        try {
+          if (detail && detail.account_permissions != null) {
+            existingUnset = false;
+            existingAp =
+              typeof detail.account_permissions === "string"
+                ? JSON.parse(detail.account_permissions)
+                : detail.account_permissions;
+          }
+        } catch {
+          existingAp = [];
+          existingUnset = false;
+        }
+        const editorSeesAllAccounts =
+          currentUserRole === "owner" ||
+          currentUserRole === "partnership" ||
+          currentUserRole === "audit";
+        const grantableIds = editorSeesAllAccounts ? null : modalAccounts.map((a) => Number(a.id));
+        // null（未设置）交给 API 按公司全量合并；已有列表则前端先保住编辑者看不见的 id
+        if (existingUnset) {
+          payload.account_permissions = accountPerms;
+        } else {
+          const mergedRows = mergeAccountPermissionsForEditor(existingAp, accountPerms, grantableIds);
+          payload.account_permissions = mergedRows.map((row) => {
+            const fromModal = modalAccounts.find((x) => Number(x.id) === Number(row.id));
+            let account_id = fromModal?.account_id || "";
+            if (!account_id && Array.isArray(existingAp)) {
+              const prev = existingAp.find((x) => Number(x?.id ?? x) === Number(row.id));
+              account_id = prev?.account_id || "";
+            }
+            return { id: Number(row.id), account_id };
+          });
+        }
         if (shouldSendProcessPermissions) payload.process_permissions = processPerms;
       }
       if ((currentUserRole === "admin" || currentUserRole === "owner") && !fieldLocks.company && !useDualTenantUserPicker) {
