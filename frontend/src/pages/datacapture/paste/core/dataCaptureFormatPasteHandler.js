@@ -47,13 +47,23 @@ function isEditableFormField(el) {
   return isGridPasteBlockedTarget(el);
 }
 
-function afterFormatPasteFilled(filled, area) {
+/**
+ * Post-fill bookkeeping.
+ * @param {boolean} filled
+ * @param {HTMLElement|null} area
+ * @param {{ formatShell?: boolean }} [options]
+ *   formatShell (default true): 2.Format UI — ready flag, preview cache, paste area.
+ *   Pass false when 1.Text reuses the Format fill core without touching Format shell state.
+ */
+function afterFormatPasteFilled(filled, area, { formatShell = true } = {}) {
   if (!filled) return false;
-  setFormatGridReady(true);
-  syncFormatPreviewFromDom();
-  if (area) area.innerHTML = "";
-  showFormatEditableGrid();
-  toggleFormatDisplay();
+  if (formatShell) {
+    setFormatGridReady(true);
+    syncFormatPreviewFromDom();
+    if (area) area.innerHTML = "";
+    showFormatEditableGrid();
+    toggleFormatDisplay();
+  }
   recomputeSubmitStateAfterPaste();
   return true;
 }
@@ -205,7 +215,14 @@ export function formatHtmlLooksLikeVerticalNx1(html) {
 /** Process HTML/TSV clipboard content into preview + editable grid. */
 export function processFormatTableHtml(
   html,
-  { area = null, startRow = null, startCol = null, anchorCell = null, plainMatrix = null } = {},
+  {
+    area = null,
+    startRow = null,
+    startCol = null,
+    anchorCell = null,
+    plainMatrix = null,
+    formatShell = true,
+  } = {},
 ) {
   if (!html) return false;
   const normalizedHtml = resolveNormalizedHtml(html) || html;
@@ -226,22 +243,42 @@ export function processFormatTableHtml(
     startCol: resolvedStartCol,
     plainMatrix,
   });
-  return afterFormatPasteFilled(filled, area);
+  return afterFormatPasteFilled(filled, area, { formatShell });
 }
 
-export function processFormatTsv(text, { area = null, startRow = null, startCol = null, anchorCell = null } = {}) {
+export function processFormatTsv(
+  text,
+  { area = null, startRow = null, startCol = null, anchorCell = null, formatShell = true } = {},
+) {
   if (!text || !text.includes("\t")) return false;
   const plainMatrix = parsePlainTextMatrix(text);
   const tableHtml = tsvToHtmlTable(text);
-  return processFormatTableHtml(tableHtml, { area, startRow, startCol, anchorCell, plainMatrix });
+  return processFormatTableHtml(tableHtml, {
+    area,
+    startRow,
+    startCol,
+    anchorCell,
+    plainMatrix,
+    formatShell,
+  });
 }
 
 /**
- * 2.Format dual-source: plain matrix owns structure; HTML supplies .positive / link colors.
+ * Dual-source fill: plain matrix owns structure; HTML supplies .positive / link colors.
  * Applies patches directly (no HTML table round-trip) so collapsed clipboard cannot win.
- * Format-only — does not touch 1.TEXT handlers.
+ * Shared by 2.Format and 1.Text (Text passes formatShell: false).
  */
-export function processFormatDualSource(html, text, { area = null, startRow = null, startCol = null, anchorCell = null } = {}) {
+export function processFormatDualSource(
+  html,
+  text,
+  {
+    area = null,
+    startRow = null,
+    startCol = null,
+    anchorCell = null,
+    formatShell = true,
+  } = {},
+) {
   if (!text?.trim()) return false;
   const matrix = parsePlainTextMatrix(text);
   if (!matrixLooksMultiColumn(matrix)) return false;
@@ -280,17 +317,42 @@ export function processFormatDualSource(html, text, { area = null, startRow = nu
     "success",
   );
   console.log(`Format: Dual-source applied ${patches.length}x${patchedCols} directly (no HTML reparse)`);
-  return afterFormatPasteFilled(true, area);
+  return afterFormatPasteFilled(true, area, { formatShell });
 }
 
-/** 2.Format: mat-row plain vertical dump → reshape → HTML table fill. */
-export function processFormatPlainMatrix(text, { area = null, startRow = null, startCol = null, anchorCell = null, html = "" } = {}) {
+/** Plain vertical dump → reshape → HTML table fill (2.Format + 1.Text shared core). */
+export function processFormatPlainMatrix(
+  text,
+  {
+    area = null,
+    startRow = null,
+    startCol = null,
+    anchorCell = null,
+    html = "",
+    formatShell = true,
+  } = {},
+) {
   if (!text?.trim()) return false;
-  if (html) return processFormatDualSource(html, text, { area, startRow, startCol, anchorCell });
+  if (html) {
+    return processFormatDualSource(html, text, {
+      area,
+      startRow,
+      startCol,
+      anchorCell,
+      formatShell,
+    });
+  }
   const matrix = parsePlainTextMatrix(text);
   if (!matrixLooksMultiColumn(matrix)) return false;
   const tableHtml = plainMatrixToHtmlTable(matrix);
-  return processFormatTableHtml(tableHtml, { area, startRow, startCol, anchorCell, plainMatrix: matrix });
+  return processFormatTableHtml(tableHtml, {
+    area,
+    startRow,
+    startCol,
+    anchorCell,
+    plainMatrix: matrix,
+    formatShell,
+  });
 }
 
 function readClipboard(clipboard) {
@@ -316,14 +378,14 @@ function tryFormatHtmlFill(html, _options, htmlFillOpts) {
   return processFormatTableHtml(html, htmlFillOpts);
 }
 
-function tryProcessFormatClipboard(html, text, options) {
+function tryProcessFormatClipboard(html, text, options = {}) {
   if (
     tryHandleAwcWinLossReportPaste(html, text, {
       anchorCell: options?.anchorCell,
       startRowOverride: options?.startRow,
     })
   ) {
-    return afterFormatPasteFilled(true, options?.area);
+    return afterFormatPasteFilled(true, options?.area, options);
   }
 
   const plainText = resolveFormatPlainText(html, text);
@@ -394,6 +456,15 @@ function tryProcessFormatClipboard(html, text, options) {
     return processFormatPlainMatrix(plainText, { ...dualOpts, html: html || "" });
   }
   return false;
+}
+
+/**
+ * Shared Format clipboard fill (dual-source / HTML table / TSV).
+ * 1.Text should pass `{ formatShell: false }` so preview / formatGridReady /
+ * #pasteAreaFormat are not touched. 2.Format callers keep the default shell.
+ */
+export function tryFillGridWithFormatClipboard(html, text, options = {}) {
+  return tryProcessFormatClipboard(html, text, options);
 }
 
 /** Paste handler for #pasteAreaFormat (direct paste into format area). */

@@ -5,14 +5,20 @@ import {
   clipboardLooksLikeGridPaste,
   resolvePasteCell,
 } from "./dataCaptureClipboard.js";
-import { getDefaultPasteAnchorCell } from "./dataCapturePasteApply.js";
+import {
+  getDefaultPasteAnchorCell,
+  resolveFormatPasteStartRow,
+} from "./dataCapturePasteApply.js";
 import {
   autoDetectCaptureTypeFromPaste,
   parseCitibetPasteData,
 } from "./dataCapturePasteDetect.js";
 import { handleCitibetPaste } from "../vendors/dataCaptureCitibetPaste.js";
 import { handleTextModePaste } from "./dataCaptureTextPaste.js";
-import { handleFormatCellPaste } from "./dataCaptureFormatPasteHandler.js";
+import {
+  handleFormatCellPaste,
+  tryFillGridWithFormatClipboard,
+} from "./dataCaptureFormatPasteHandler.js";
 import { handleGenericPaste } from "./dataCaptureGenericPaste.js";
 import { handle4ReturnPaste, handleApiReturnPaste } from "../vendors/dataCaptureReturnPaste.js";
 import { handleVPowerPaste } from "../vendors/dataCaptureVPowerPaste.js";
@@ -173,6 +179,16 @@ export function handleCellPasteEvent(e) {
       if (citibetParsed && handleCitibetPaste(e, pastedData, cell, "CITIBET", citibetParsed)) {
         return;
       }
+    }
+    // Align structure + cell styles with 2.Format fill core; never touch Format shell.
+    if (
+      tryFillGridWithFormatClipboard(getClipboardHtml(e), pastedData, {
+        anchorCell: cell,
+        startRow: resolveFormatPasteStartRow(cell),
+        formatShell: false,
+      })
+    ) {
+      return;
     }
     if (handleTextModePaste(e, pastedData, cell)) return;
     invokeGenericPasteFallback(e, pastedData);
