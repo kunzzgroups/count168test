@@ -38,7 +38,7 @@
     border-radius: 25px;
     /* 只对背景色应用过渡，避免布局属性变化导致的闪烁 */
     transition: background-color 0.3s ease;
-    text-align: center;
+    text-align: left;
     color: white;
     flex: 1 1 0;
     flex-shrink: 1;
@@ -436,7 +436,7 @@
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
-    text-align: center;
+    text-align: left;
 }
 
 .user-name {
@@ -449,7 +449,7 @@
     font-weight: 600;
     color: white;
     line-height: 1.2;
-    text-align: center;
+    text-align: left;
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-all;
@@ -470,7 +470,7 @@
     font-weight: 500;
     color: rgba(255, 255, 255, 0.8);
     line-height: 1.2;
-    text-align: center;
+    text-align: left;
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-all;
