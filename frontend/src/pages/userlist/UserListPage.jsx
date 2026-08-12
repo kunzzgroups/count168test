@@ -85,6 +85,7 @@ import {
   isUserModalPageReadOnlyLock,
   getUserEditFieldLocks,
   mergeAccountPermissionsForEditor,
+  shrinkAccountPermissionsForSelf,
   isCompanyInUserListPicker,
   readUserListGroupFilterOptOut,
   resolveUserListFetchScopeKey,
@@ -348,7 +349,16 @@ export default function UserListPage() {
   const [selectedProcessIds, setSelectedProcessIds] = useState(new Set());
   const [roleSelectDisabled, setRoleSelectDisabled] = useState(false);
   const [loginDisabled, setLoginDisabled] = useState(false);
-  const [fieldLocks, setFieldLocks] = useState({ name: false, email: false, role: false, password: false, sidebar: false, company: false });
+  const [fieldLocks, setFieldLocks] = useState({
+    name: false,
+    email: false,
+    role: false,
+    password: false,
+    sidebar: false,
+    company: false,
+    account: false,
+    process: false,
+  });
 
   const handleUserListSort = useCallback((column) => {
     setSortDirection((direction) => (sortColumn === column && direction === "asc" ? "desc" : "asc"));
@@ -2056,7 +2066,16 @@ export default function UserListPage() {
     setIsEditMode(false); setEditingRow(null);
     setForm({ id: "", login_id: "", name: "", email: "", role: "", password: "", secondary_password: "", status: "active", read_only: true });
     setRoleSelectDisabled(false); setLoginDisabled(false);
-    setFieldLocks({ name: false, email: false, role: false, password: false, sidebar: false, company: false });
+    setFieldLocks({
+      name: false,
+      email: false,
+      role: false,
+      password: false,
+      sidebar: false,
+      company: false,
+      account: false,
+      process: false,
+    });
     const allP = new Set(getVisiblePermissionKeys("").filter((k) => !permDisabledMap[k])); setPermSelected(allP);
     void loadCompaniesForModal();
     const cachedAccess = modalAccessCacheRef.current.get(modalCacheKey);
@@ -2376,8 +2395,10 @@ export default function UserListPage() {
       if (!(caps.isSelf || caps.isHigherLevel || caps.isSameLevel)) {
         payload.permissions = Array.from(permSelected);
       }
-      // Acc/Process：仅上级改下级时提交；自己/同级/上级锁定，避免自开回
-      if (!fieldLocks.accountProcess) {
+      // Acc：上级改下级，或自己关掉不想看的（仅可减少）。Process：仅上级改下级。
+      const accountLocked = !!(fieldLocks.account ?? fieldLocks.accountProcess);
+      const processLocked = !!(fieldLocks.process ?? fieldLocks.accountProcess);
+      if (!accountLocked) {
         const detail = editUserDetailCacheRef.current.get(String(form.id || ""));
         let existingAp = null;
         let existingUnset = true;
@@ -2398,12 +2419,8 @@ export default function UserListPage() {
           currentUserRole === "partnership" ||
           currentUserRole === "audit";
         const grantableIds = editorSeesAllAccounts ? null : modalAccounts.map((a) => Number(a.id));
-        // null（未设置）交给 API 按公司全量合并；已有列表则前端先保住编辑者看不见的 id
-        if (existingUnset) {
-          payload.account_permissions = accountPerms;
-        } else {
-          const mergedRows = mergeAccountPermissionsForEditor(existingAp, accountPerms, grantableIds);
-          payload.account_permissions = mergedRows.map((row) => {
+        const enrichRows = (mergedRows) =>
+          mergedRows.map((row) => {
             const fromModal = modalAccounts.find((x) => Number(x.id) === Number(row.id));
             let account_id = fromModal?.account_id || "";
             if (!account_id && Array.isArray(existingAp)) {
@@ -2412,8 +2429,20 @@ export default function UserListPage() {
             }
             return { id: Number(row.id), account_id };
           });
+        if (caps.isSelf) {
+          payload.account_permissions = enrichRows(
+            shrinkAccountPermissionsForSelf(existingAp, accountPerms, existingUnset),
+          );
+        } else if (existingUnset) {
+          payload.account_permissions = accountPerms;
+        } else {
+          payload.account_permissions = enrichRows(
+            mergeAccountPermissionsForEditor(existingAp, accountPerms, grantableIds),
+          );
         }
-        if (shouldSendProcessPermissions) payload.process_permissions = processPerms;
+      }
+      if (!processLocked && shouldSendProcessPermissions) {
+        payload.process_permissions = processPerms;
       }
       if ((currentUserRole === "admin" || currentUserRole === "owner") && !fieldLocks.company && !useDualTenantUserPicker) {
         payload.company_ids = shouldForceGroupScope ? saveCompanyIds : (groupOnlyUserList ? saveCompanyIds : selectedCompanyIds);

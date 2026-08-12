@@ -142,6 +142,8 @@ export const USER_LIST_I18N = {
     apiCannotDeleteHigherRole: "You cannot delete accounts with higher role level",
     apiCannotToggleSameRole: "You cannot toggle status of accounts with the same role level",
     apiCannotToggleHigherRole: "You cannot toggle status of accounts with higher role level",
+    apiCannotChangePasswordSameOrHigherRole:
+      "You cannot change password of accounts with the same or higher role level",
     apiDeleteUserFailed: "Failed to delete user",
     apiCompanyUpdated: "Company updated",
     apiNoPermissionAccessCompany: "No permission to access this company",
@@ -289,6 +291,7 @@ export const USER_LIST_I18N = {
     apiCannotDeleteHigherRole: "不能删除更高角色级别的账号",
     apiCannotToggleSameRole: "不能切换同级角色的账号状态",
     apiCannotToggleHigherRole: "不能切换更高角色级别的账号状态",
+    apiCannotChangePasswordSameOrHigherRole: "不能修改同级或更高角色级别账号的密码",
     apiDeleteUserFailed: "删除用户失败",
     apiCompanyUpdated: "公司已更新",
     apiNoPermissionAccessCompany: "无权限访问该公司",
@@ -345,6 +348,8 @@ const USER_LIST_API_MESSAGE_KEYS = {
   [normApiMessage("You cannot delete accounts with higher role level")]: "apiCannotDeleteHigherRole",
   [normApiMessage("You cannot toggle status of accounts with the same role level")]: "apiCannotToggleSameRole",
   [normApiMessage("You cannot toggle status of accounts with higher role level")]: "apiCannotToggleHigherRole",
+  [normApiMessage("You cannot change password of accounts with the same or higher role level")]:
+    "apiCannotChangePasswordSameOrHigherRole",
   [normApiMessage("状态更新成功")]: "statusUpdated",
   [normApiMessage("Status updated")]: "statusUpdated",
   [normApiMessage("Toggle failed")]: "toggleFailed",

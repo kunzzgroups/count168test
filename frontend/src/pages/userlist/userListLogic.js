@@ -111,7 +111,18 @@ export function isOwnerEditingOwnerShadow(row, currentUserRole) {
  */
 export function getUserEditFieldLocks(row, currentUserId, currentUserRole) {
   if (isOwnerEditingOwnerShadow(row, currentUserRole)) {
-    return { name: false, email: false, role: true, password: false, sidebar: true, company: true, accountProcess: true };
+    return {
+      name: false,
+      email: false,
+      role: true,
+      password: false,
+      sidebar: true,
+      company: true,
+      account: true,
+      process: true,
+      /** @deprecated use account + process */
+      accountProcess: true,
+    };
   }
   const caps = computeRowCapabilities(row, currentUserId, currentUserRole);
   const curLevel = ROLE_HIERARCHY[normRole(currentUserRole)] ?? 999;
@@ -120,16 +131,41 @@ export function getUserEditFieldLocks(row, currentUserId, currentUserRole) {
   const isSame = !isSelf && curLevel === editLevel;
   const isLower = !isSelf && curLevel > editLevel;
   const canPickCompany = currentUserRole === "admin" || currentUserRole === "owner";
+  // Acc：自己可关不想看的；同级/上级锁定。Process：自己也锁（本轮只开 Acc）
+  const accountLocked = isSame || isLower;
+  const processLocked = isSelf || isSame || isLower;
   return {
     name: isSame || isLower,
     email: isSame || isLower,
     role: isSame || isLower,
-    password: false,
+    // 密码：自己或严格下级可改；同级/上级不可越级改
+    password: isSame || isLower,
     sidebar: isSelf || isSame || isLower,
     company: isSelf || isSame || isLower || !canPickCompany,
-    // Acc/Process：仅上级可改下级；自己/同级/上级锁定，避免自开回或越权
-    accountProcess: isSelf || isSame || isLower,
+    account: accountLocked,
+    process: processLocked,
+    /** @deprecated use account + process */
+    accountProcess: accountLocked && processLocked,
   };
+}
+
+/**
+ * Self-edit may only shrink the whitelist (uncheck). Cannot add ids not already held.
+ * @param {Array<{id?: number}|number>|null|undefined} existingPerms null/undefined = unset (treat as no prior filter → allow any submitted among visible)
+ * @param {Array<{id?: number}|number>} submittedPerms
+ * @param {boolean} existingUnset
+ * @returns {Array<{id: number}>}
+ */
+export function shrinkAccountPermissionsForSelf(existingPerms, submittedPerms, existingUnset = false) {
+  const toId = (x) => Number(x?.id ?? x);
+  const submittedIds = [...new Set((Array.isArray(submittedPerms) ? submittedPerms : []).map(toId).filter((id) => id > 0))];
+  if (existingUnset) {
+    return submittedIds.map((id) => ({ id }));
+  }
+  const existingIds = new Set(
+    (Array.isArray(existingPerms) ? existingPerms : []).map(toId).filter((id) => id > 0),
+  );
+  return submittedIds.filter((id) => existingIds.has(id)).map((id) => ({ id }));
 }
 
 /**

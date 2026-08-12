@@ -214,8 +214,9 @@ function userlist_merge_account_permissions(
 }
 
 /**
- * Whether current session may change target user's account_permissions (strict subordinate only).
+ * Whether current session may change another user's account_permissions (strict subordinate only).
  * Callers that also change role must check both the existing and newly assigned roles.
+ * Self-edit uses shrink-only path separately (may close Acc they do not want to see).
  */
 function userlist_can_edit_target_account_permissions(int $editorUserId, string $editorRole, int $targetUserId, string $targetRole): bool
 {
@@ -226,6 +227,48 @@ function userlist_can_edit_target_account_permissions(int $editorUserId, string 
         return false;
     }
     return userlistRoleLevel($editorRole) < userlistRoleLevel($targetRole);
+}
+
+/**
+ * Self-edit: keep only submitted ids that already exist on the user (shrink whitelist).
+ * When existing is null (unset = see all), materialize submitted ∩ grantable as the new list.
+ *
+ * @param array|null $existingDecoded
+ * @param int[]|null $grantableIds null = unrestricted among submitted
+ */
+function userlist_shrink_account_permissions_for_self(
+    PDO $pdo,
+    int $companyId,
+    $existingDecoded,
+    array $submittedRows,
+    ?array $grantableIds
+): array {
+    $submitted = userlist_normalize_account_perm_rows($submittedRows);
+    if ($grantableIds !== null) {
+        $grantable = array_fill_keys(array_map('intval', $grantableIds), true);
+        $submitted = array_values(array_filter(
+            $submitted,
+            static fn (array $row): bool => isset($grantable[(int) $row['id']])
+        ));
+    }
+    if ($existingDecoded === null) {
+        // Fill account_id labels when missing
+        return userlist_merge_account_permissions($pdo, $companyId, [], $submitted, $grantableIds);
+    }
+    $existingById = [];
+    foreach (userlist_normalize_account_perm_rows($existingDecoded) as $row) {
+        $existingById[(int) $row['id']] = $row;
+    }
+    $out = [];
+    foreach ($submitted as $row) {
+        $id = (int) $row['id'];
+        if (!isset($existingById[$id])) {
+            continue;
+        }
+        $out[$id] = ($row['account_id'] ?? '') !== '' ? $row : $existingById[$id];
+    }
+    ksort($out);
+    return array_values($out);
 }
 
 /** Audit：manager 及以上可写 read_only；Partnership：仅 owner */
@@ -2598,16 +2641,28 @@ try {
             // Account 和 Process 权限不再更新到 user 表，而是更新到 user_company_permissions 表
             // 这些字段保留在 $input 中，稍后在事务中处理
             
-            // Only update password if provided
+            // Only update password if provided — self or strict subordinate only (no peer/superior)
             $userPasswordWasUpdated = false;
-            if (isset($input['password']) && trim($input['password']) !== '') {
+            $wantsPasswordUpdate = isset($input['password']) && trim((string) $input['password']) !== '';
+            $wantsSecondaryPasswordUpdate = isset($input['secondary_password']) && trim((string) $input['secondary_password']) !== '';
+            if ($wantsPasswordUpdate || $wantsSecondaryPasswordUpdate) {
+                $pwdEditorId = (int) ($_SESSION['user_id'] ?? 0);
+                $pwdTargetId = (int) $input['id'];
+                $pwdIsSelf = $pwdEditorId > 0 && $pwdEditorId === $pwdTargetId;
+                $pwdEditorLevel = userlistRoleLevel((string) $current_user_role);
+                $pwdTargetLevel = userlistRoleLevel((string) ($originalUser['role'] ?? ''));
+                if (!$pwdIsSelf && $pwdEditorLevel >= $pwdTargetLevel) {
+                    sendResponse(false, 'You cannot change password of accounts with the same or higher role level');
+                }
+            }
+            if ($wantsPasswordUpdate) {
                 $updateFields[] = "password = ?";
                 $updateValues[] = secure_hash_password($input['password']);
                 $userPasswordWasUpdated = true;
             }
             
             // Only update secondary_password if provided (for c168 company users)
-            if (isset($input['secondary_password']) && trim($input['secondary_password']) !== '') {
+            if ($wantsSecondaryPasswordUpdate) {
                 // 验证二级密码：必须是6位数字
                 if (!preg_match('/^\d{6}$/', $input['secondary_password'])) {
                     sendResponse(false, 'Secondary password must be exactly 6 digits');
@@ -2697,6 +2752,7 @@ try {
                 // 只有当提供了 account_permissions 或 process_permissions 时才更新
                 $editorUserId = (int) ($_SESSION['user_id'] ?? 0);
                 $accountPermsUpdated = false;
+                $isSelfAccEdit = $editorUserId > 0 && $editorUserId === (int) $input['id'];
                 // Must pass for BOTH DB role and assigned role — otherwise elevating role in the
                 // same request (e.g. supervisor → admin) would still allow account_permissions writes.
                 $originalRoleForAcc = (string) ($originalUser['role'] ?? '');
@@ -2714,9 +2770,13 @@ try {
                         (int) $input['id'],
                         $assignedRoleForAcc
                     );
-                // 自己/同级/上级（含提权后的新角色）：忽略客户端提交的 account_permissions
-                if (isset($input['account_permissions']) && !$canEditTargetAcc) {
+                // 同级/上级：忽略 Acc。自己：允许 shrink-only（见下方）。
+                if (isset($input['account_permissions']) && !$canEditTargetAcc && !$isSelfAccEdit) {
                     unset($input['account_permissions']);
+                }
+                // Process 仍不允许自己改
+                if ($isSelfAccEdit && isset($input['process_permissions'])) {
+                    unset($input['process_permissions']);
                 }
 
                 if (isset($input['account_permissions']) || isset($input['process_permissions'])) {
@@ -2741,13 +2801,23 @@ try {
                             $editorUserId,
                             (string) $current_user_role
                         );
-                        $mergedAccountRows = userlist_merge_account_permissions(
-                            $pdo,
-                            (int) $scope_company_id,
-                            $existingIsNull ? null : $existingDecoded,
-                            is_array($input['account_permissions']) ? $input['account_permissions'] : [],
-                            $grantableIds
-                        );
+                        if ($isSelfAccEdit) {
+                            $mergedAccountRows = userlist_shrink_account_permissions_for_self(
+                                $pdo,
+                                (int) $scope_company_id,
+                                $existingIsNull ? null : $existingDecoded,
+                                is_array($input['account_permissions']) ? $input['account_permissions'] : [],
+                                $grantableIds
+                            );
+                        } else {
+                            $mergedAccountRows = userlist_merge_account_permissions(
+                                $pdo,
+                                (int) $scope_company_id,
+                                $existingIsNull ? null : $existingDecoded,
+                                is_array($input['account_permissions']) ? $input['account_permissions'] : [],
+                                $grantableIds
+                            );
+                        }
                         $accountPerms = json_encode(array_values($mergedAccountRows));
                         $accountPermsUpdated = true;
                     }

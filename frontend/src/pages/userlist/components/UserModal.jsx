@@ -561,7 +561,10 @@ function UserModal({
   }, [open, pageReadOnlyLock]);
 
   const permissionsLocked = fieldLocks.sidebar || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
-  const accountProcessLocked = !!fieldLocks.accountProcess || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
+  const accountLocked =
+    !!(fieldLocks.account ?? fieldLocks.accountProcess) || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
+  const processLocked =
+    !!(fieldLocks.process ?? fieldLocks.accountProcess) || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
   const showSecondaryPassword = isC168Company || !!editingRow?.is_owner_shadow;
 
   const userModalShell = (
@@ -599,7 +602,7 @@ function UserModal({
                       <label htmlFor="password">{isEditMode ? t("password") : t("passwordRequiredMark")}</label>
                       <PasswordInput
                         id="password"
-                        disabled={pageReadOnlyLock}
+                        disabled={fieldLocks.password || pageReadOnlyLock}
                         value={form.password}
                         onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                         showLabel={t("showPassword")}
@@ -614,7 +617,7 @@ function UserModal({
                         maxLength={6}
                         pattern="[0-9]{6}"
                         placeholder={t("secondaryPasswordPlaceholder")}
-                        disabled={pageReadOnlyLock}
+                        disabled={fieldLocks.password || pageReadOnlyLock}
                         value={form.secondary_password}
                         onChange={(e) => setForm((f) => ({ ...f, secondary_password: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
                         showLabel={t("showPassword")}
@@ -629,7 +632,7 @@ function UserModal({
                     <label htmlFor="password">{isEditMode ? t("password") : t("passwordRequiredMark")}</label>
                     <PasswordInput
                       id="password"
-                      disabled={pageReadOnlyLock}
+                      disabled={fieldLocks.password || pageReadOnlyLock}
                       value={form.password}
                       onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                       showLabel={t("showPassword")}
@@ -802,7 +805,7 @@ function UserModal({
               selectedIds={selectedAccountIds}
               setSelectedIds={setSelectedAccountIds}
               idList={accountIdList}
-              locked={accountProcessLocked}
+              locked={accountLocked}
               bulkSelectionSettling={bulkSettlingVariant === "account"}
               runBulkSelection={runBulkSelection}
               t={t}
@@ -817,7 +820,7 @@ function UserModal({
                 selectedIds={selectedProcessIds}
                 setSelectedIds={setSelectedProcessIds}
                 idList={processIdList}
-                locked={accountProcessLocked}
+                locked={processLocked}
                 bulkSelectionSettling={bulkSettlingVariant === "process"}
                 runBulkSelection={runBulkSelection}
                 t={t}
