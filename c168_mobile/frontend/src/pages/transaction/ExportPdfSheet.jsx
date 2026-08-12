@@ -200,7 +200,7 @@ export default function ExportPdfSheet({
                       setSelectedCurrencies([]);
                     }}
                     className={`tap-scale rounded-xl px-3 py-2 text-[11px] font-bold ${
-                      isAllSelected ? "bg-[#2f6bf6] text-white" : "bg-slate-100 text-slate-600"
+                      isAllSelected ? "bg-[linear-gradient(180deg,#63c4ff,#0d60ff)] text-white" : "bg-slate-100 text-slate-600"
                     }`}
                   >
                     {m.all}
@@ -215,7 +215,7 @@ export default function ExportPdfSheet({
                       onClick={() => toggleCurrency(code)}
                       className={`tap-scale rounded-xl px-3 py-2 text-[11px] font-bold ${
                         active || (currencies.length === 1 && selectedCurrencies.includes(code))
-                          ? "bg-[#2f6bf6] text-white"
+                          ? "bg-[linear-gradient(180deg,#63c4ff,#0d60ff)] text-white"
                           : "bg-slate-100 text-slate-600"
                       }`}
                     >
@@ -248,7 +248,7 @@ export default function ExportPdfSheet({
             type="button"
             disabled={exporting || loadingCurrencies || exportCodes.length === 0}
             onClick={() => void handleExport()}
-            className="tap-scale flex-[2] rounded-2xl bg-[#2f6bf6] py-3.5 text-[14px] font-bold text-white disabled:opacity-50"
+            className="tap-scale flex-[2] rounded-2xl bg-[linear-gradient(180deg,#63c4ff,#0d60ff)] py-3.5 text-[14px] font-bold text-white disabled:opacity-50"
           >
             {exporting ? m.exportPdfExporting : m.exportPdf}
           </button>

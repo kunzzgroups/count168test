@@ -156,9 +156,9 @@
 
 .m-sheet-footer-btn--primary {
   flex: 2;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
-  box-shadow: 0 8px 18px -6px rgba(47, 107, 246, 0.6);
+  box-shadow: 0 8px 18px -6px rgba(13, 96, 255, 0.55);
 }
 
 .m-sheet-host {

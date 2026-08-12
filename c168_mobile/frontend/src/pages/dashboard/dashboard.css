@@ -158,7 +158,7 @@
 .m-dash-empty-action {
   margin-top: 1rem;
   border-radius: 0.75rem;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   padding: 0.5rem 1rem;
   font-size: var(--m-text-body);
   font-weight: 700;

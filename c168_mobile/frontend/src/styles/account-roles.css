@@ -28,8 +28,8 @@
 }
 
 .m-account-role.transaction-role-expenses {
-  background-color: #f0e1ff;
-  color: #4f148f;
+  background: var(--m-grad-brand);
+  color: #fff;
 }
 
 .m-account-role.transaction-role-company {

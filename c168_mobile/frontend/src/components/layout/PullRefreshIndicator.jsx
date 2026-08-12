@@ -50,7 +50,7 @@ export default function PullRefreshIndicator({ pullPx, progress, phase, labels }
                 cy={size / 2}
                 r={r}
                 fill="none"
-                stroke={armed ? "#2f6bf6" : "#94a3b8"}
+                stroke={armed ? "#0d60ff" : "#94a3b8"}
                 strokeWidth={stroke}
                 strokeLinecap="round"
                 strokeDasharray={`${arcLen} ${circumference}`}
@@ -63,7 +63,7 @@ export default function PullRefreshIndicator({ pullPx, progress, phase, labels }
                 cy={size / 2}
                 r={r}
                 fill="none"
-                stroke="#2f6bf6"
+                stroke="#0d60ff"
                 strokeWidth={stroke}
                 strokeLinecap="round"
                 strokeDasharray={`${circumference * 0.28} ${circumference}`}

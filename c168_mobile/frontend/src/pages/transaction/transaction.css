@@ -78,7 +78,7 @@
 }
 
 .m-tx-chip--active {
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
 }
 
@@ -103,7 +103,7 @@
   place-items: center;
   border-radius: var(--m-radius-pill);
   border: 1px solid rgba(107, 155, 255, 0.8);
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
   box-shadow: var(--m-shadow-fab);
 }

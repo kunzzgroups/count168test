@@ -7,7 +7,7 @@
 
 .m-admin-owner-tag {
   border-radius: var(--m-radius-pill);
-  background: linear-gradient(180deg, #63c4ff, #0d60ff);
+  background: var(--m-grad-brand);
   padding: 0.24rem 0.7rem;
   color: #fff;
   font-size: var(--m-text-badge-ratio);
@@ -45,7 +45,7 @@
 
 .m-admin-btn--primary {
   border-color: var(--m-color-primary);
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
 }
 
@@ -120,7 +120,7 @@
 
 .m-admin-belonging-chip {
   border-radius: var(--m-radius-pill);
-  background: rgba(47, 107, 246, 0.1);
+  background: rgba(13, 96, 255, 0.1);
   padding: 0.35rem 0.85rem;
   color: var(--m-color-primary);
   font-size: var(--m-text-sub-ratio);
@@ -128,7 +128,7 @@
 }
 
 .m-admin-belonging-chip.is-group {
-  background: linear-gradient(180deg, #63c4ff, #0d60ff);
+  background: var(--m-grad-brand);
   color: #fff;
 }
 
@@ -227,8 +227,8 @@
 }
 
 .m-admin-picker-item.is-checked {
-  border-color: rgba(47, 107, 246, 0.5);
-  background: rgba(47, 107, 246, 0.06);
+  border-color: rgba(13, 96, 255, 0.5);
+  background: rgba(13, 96, 255, 0.06);
 }
 
 .m-admin-picker-item i {

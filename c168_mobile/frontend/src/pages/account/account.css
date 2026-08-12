@@ -87,13 +87,10 @@
 }
 
 .m-account-chip.is-active,
-.m-account-pill.is-active {
-  background: var(--m-color-primary);
-  color: #fff;
-}
-
+.m-account-pill.is-active,
 .m-account-pill.is-violet.is-active {
-  background: linear-gradient(180deg, #63c4ff, #0d60ff);
+  background: var(--m-grad-brand);
+  color: #fff;
 }
 
 .m-account-page {
@@ -234,7 +231,7 @@
 }
 
 .m-account-switch.is-on {
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
 }
 
 .m-account-switch.is-on span {
@@ -247,7 +244,7 @@
   height: 3.5rem;
   place-items: center;
   border-radius: 50%;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
   box-shadow: var(--m-shadow-fab);
 }
@@ -320,7 +317,7 @@
 
 .m-account-primary-btn {
   width: 100%;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
 }
 

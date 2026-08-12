@@ -2,12 +2,12 @@ import { getRoleClass } from "../../lib/transactionPaymentLogic.js";
 import { formatTransactionGridMoneyHalfUp } from "../../lib/transactionFormat.js";
 
 const ROLE_COLORS = {
-  "transaction-role-capital": "border-l-violet-500",
+  "transaction-role-capital": "border-l-blue-500",
   "transaction-role-bank": "border-l-sky-500",
   "transaction-role-cash": "border-l-emerald-500",
   "transaction-role-profit": "border-l-amber-500",
-  "transaction-role-expenses": "border-l-rose-500",
-  "transaction-role-company": "border-l-indigo-500",
+  "transaction-role-expenses": "border-l-blue-600",
+  "transaction-role-company": "border-l-sky-600",
   "transaction-role-member": "border-l-teal-500",
   "transaction-role-agent": "border-l-cyan-500",
 };
@@ -52,7 +52,7 @@ function Metric({ label, value, emphasize = false }) {
       <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
       <p
         className={`mt-0.5 text-[11px] font-bold tabular-nums ${
-          emphasize ? "text-[#2f6bf6]" : "text-slate-700"
+          emphasize ? "text-[#0d60ff]" : "text-slate-700"
         }`}
       >
         {formatTransactionGridMoneyHalfUp(value)}

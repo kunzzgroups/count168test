@@ -20,16 +20,10 @@
   flex-shrink: 0;
 }
 
-.m-filter-pill--active-blue {
-  border-color: transparent;
-  background: var(--m-color-primary);
-  color: #fff;
-  box-shadow: 0 6px 14px -4px rgba(47, 107, 246, 0.5);
-}
-
+.m-filter-pill--active-blue,
 .m-filter-pill--active-violet {
   border-color: transparent;
-  background: linear-gradient(180deg, #63c4ff, #0d60ff);
+  background: var(--m-grad-brand);
   color: #fff;
   box-shadow: 0 6px 14px -4px rgba(13, 96, 255, 0.45);
 }
@@ -69,7 +63,7 @@
 }
 
 .m-filter-span-badge--custom {
-  background: rgba(47, 107, 246, 0.12);
+  background: rgba(13, 96, 255, 0.12);
   color: var(--m-color-primary);
 }
 
@@ -113,7 +107,7 @@
 
 .m-filter-range-row--active {
   border-color: var(--m-color-primary);
-  box-shadow: 0 0 0 2px rgba(47, 107, 246, 0.2);
+  box-shadow: 0 0 0 2px rgba(13, 96, 255, 0.2);
 }
 
 .m-filter-range-row:not(.m-filter-range-row--active):active {
@@ -318,13 +312,13 @@
 }
 
 .m-filter-cal-day--edge {
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
   box-shadow: var(--m-shadow-card);
 }
 
 .m-filter-cal-day--mid {
-  background: rgba(47, 107, 246, 0.15);
+  background: rgba(13, 96, 255, 0.15);
   color: var(--m-color-primary);
 }
 
@@ -352,7 +346,7 @@
 
 .m-filter-cal-footer-btn--primary {
   flex: 1.4;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
 }
 

@@ -95,7 +95,7 @@
   padding: 0.875rem 0;
   font-size: 0.875rem;
   font-weight: 700;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
 }
 
@@ -276,7 +276,7 @@
 .m-tx-date-row:focus-within {
   border-color: var(--m-color-primary);
   background: var(--m-color-surface);
-  box-shadow: 0 0 0 2px rgba(47, 107, 246, 0.2);
+  box-shadow: 0 0 0 2px rgba(13, 96, 255, 0.2);
 }
 
 .m-tx-date-row--disabled {

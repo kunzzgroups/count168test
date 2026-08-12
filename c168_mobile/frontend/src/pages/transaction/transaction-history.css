@@ -16,7 +16,7 @@
   flex-shrink: 0;
   place-items: center;
   border-radius: 999px;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
 }
 

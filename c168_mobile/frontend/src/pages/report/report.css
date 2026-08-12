@@ -75,7 +75,7 @@
   height: 2.9rem;
   place-items: center;
   border-radius: 50%;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
   font-size: 1.1rem;
 }
@@ -561,7 +561,7 @@
 }
 
 .m-rpt-toggle.is-on .m-rpt-toggle-knob {
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
 }
 
 .m-rpt-toggle.is-on .m-rpt-toggle-knob::after {

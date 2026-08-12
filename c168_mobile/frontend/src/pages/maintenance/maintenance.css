@@ -76,13 +76,13 @@
   height: 2.9rem;
   place-items: center;
   border-radius: 50%;
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
   color: #fff;
   font-size: 1.1rem;
 }
 
 .m-mt-record-icon.is-violet {
-  background: linear-gradient(180deg, #63c4ff, #0d60ff);
+  background: var(--m-grad-brand);
 }
 
 .m-mt-record-copy {
@@ -356,7 +356,7 @@
 
 .m-mt-check.is-on {
   border-color: var(--m-color-primary);
-  background: var(--m-color-primary);
+  background: var(--m-grad-brand);
 }
 
 .m-mt-check.is-disabled {
@@ -389,7 +389,7 @@
 .m-mt-type-tag.is-green { background: #dcfce7; color: #047857; }
 .m-mt-type-tag.is-amber { background: #fef3c7; color: #b45309; }
 .m-mt-type-tag.is-teal { background: #ccfbf1; color: #0f766e; }
-.m-mt-type-tag.is-violet { background: linear-gradient(180deg, #63c4ff, #0d60ff); color: #fff; }
+.m-mt-type-tag.is-violet { background: var(--m-grad-brand); color: #fff; }
 .m-mt-type-tag.is-slate { background: #e2e8f0; color: #475569; }
 
 /* ---- Action bar (delete) ---- */

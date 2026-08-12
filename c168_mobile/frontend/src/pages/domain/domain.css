@@ -148,7 +148,7 @@
 }
 
 .m-domain-chip-cat--group {
-  color: #0d60ff;
+  color: var(--m-color-primary);
 }
 
 .m-domain-chip-row {
@@ -172,7 +172,7 @@
 
 .m-domain-chip--group {
   border-color: transparent;
-  background: linear-gradient(180deg, #63c4ff, #0d60ff);
+  background: var(--m-grad-brand);
   color: #fff;
 }
 
@@ -473,8 +473,8 @@
 }
 
 .m-domain-share-badge--it {
-  background: #ede9fe;
-  color: #6d28d9;
+  background: var(--m-grad-brand);
+  color: #fff;
 }
 
 .m-domain-share-meta {

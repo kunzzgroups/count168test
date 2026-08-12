@@ -19,8 +19,9 @@
   --text-small: 0.875rem;
 
   /* Mobile app shell — shared across pages */
-  --m-color-primary: #2f6bf6;
-  --m-color-primary-border: #6b9bff;
+  --m-color-primary: #0d60ff;
+  --m-color-primary-border: #63c4ff;
+  --m-grad-brand: linear-gradient(180deg, #63c4ff, #0d60ff);
   --m-color-danger: #e11d48;
   --m-color-danger-soft: #fff1f2;
   --m-color-danger-text: #be123c;
@@ -56,7 +57,7 @@
 
   --m-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
   --m-shadow-float: 0 8px 20px -12px rgba(15, 23, 42, 0.2);
-  --m-shadow-fab: 0 10px 28px -10px rgba(47, 107, 246, 0.55);
+  --m-shadow-fab: 0 10px 28px -10px rgba(13, 96, 255, 0.55);
 
   --m-shell-bg: #f2f5fb;
   --m-appbar-bg: #002d49;
