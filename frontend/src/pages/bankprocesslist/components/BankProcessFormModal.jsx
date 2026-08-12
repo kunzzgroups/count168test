@@ -6,6 +6,7 @@ import {
   BankSearchableAccountPick,
   BankSimpleSelect,
 } from "./bankProcessFormFields.jsx";
+import { ProfitSharingDeleteIcon } from "./ProfitSharingModal.jsx";
 import {
   parseProfitSharingToRows,
   serializeProfitSharingRows,
@@ -428,7 +429,7 @@ export default function BankProcessFormModal({
                               aria-label={t("removeRow")}
                               onClick={() => removeProfitSharingAt(idx)}
                             >
-                              ×
+                              <ProfitSharingDeleteIcon className="remove-profit-sharing-item-icon" width={14} height={14} />
                             </button>
                           </div>
                         ))

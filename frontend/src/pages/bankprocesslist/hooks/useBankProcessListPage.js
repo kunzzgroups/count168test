@@ -1820,11 +1820,16 @@ export function useBankProcessListPage() {
   };
 
   const openProfitShareModal = () => {
-    const rows = parseProfitSharingToRows(form.profit_sharing, accounts).map((r) => ({
-      ...r,
-      amount: r.amount ? formatBankMoneyFixed2(r.amount) : "",
-    }));
-    setProfitShareRows(rows.length ? rows : [{ accountId: "", accountLabel: "", amount: "" }]);
+    const rows = parseProfitSharingToRows(form.profit_sharing, accounts).map((r) => {
+      const prevMatch = profitShareRows.find((pr) => pr.accountId && String(pr.accountId) === String(r.accountId));
+      return {
+        ...r,
+        amount: r.amount ? formatBankMoneyFixed2(r.amount) : "",
+        amountMode: prevMatch?.amountMode || "",
+        percentInput: prevMatch?.percentInput || "",
+      };
+    });
+    setProfitShareRows(rows.length ? rows : [{ accountId: "", accountLabel: "", amount: "", amountMode: "", percentInput: "" }]);
     setProfitShareModalOpen(true);
   };
 

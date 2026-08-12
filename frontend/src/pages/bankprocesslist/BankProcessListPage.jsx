@@ -810,8 +810,10 @@ export default function BankProcessListPage() {
       {profitShareModalOpen && (
         <ProfitSharingModal
           profitShareRows={profitShareRows} setProfitShareRows={setProfitShareRows} accounts={accounts}
+          cost={form.cost} price={form.price}
           onConfirm={confirmProfitShareModal} onClose={() => setProfitShareModalOpen(false)}
           onOpenAddAccountForField={openAddAccountForField}
+          notify={notify}
           t={t}
         />
       )}

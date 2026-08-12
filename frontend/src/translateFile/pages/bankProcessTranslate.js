@@ -186,6 +186,8 @@ export const BANK_PROCESS_I18N = {
     removeRow: "Remove row",
     addAnotherAccountAmount: "Add another Account & Amount",
     addAccountInline: "+ Add Account",
+    profitSharingExceedsRemaining: "This amount exceeds the remaining profit ({remaining}). Please enter a smaller amount or percentage.",
+    profitSharingPercentMax100: "Percentage cannot exceed 100%.",
 
     confirmDeleteTitle: "Confirm Delete",
     confirmDeleteMessage: "Are you sure you want to delete {count} process(es)? This action cannot be undone.",
@@ -447,6 +449,8 @@ export const BANK_PROCESS_I18N = {
     removeRow: "删除行",
     addAnotherAccountAmount: "新增一行账号与金额",
     addAccountInline: "+ 添加账号",
+    profitSharingExceedsRemaining: "该金额超过剩余利润（{remaining}），请输入更小的金额或百分比。",
+    profitSharingPercentMax100: "百分比不能超过 100%。",
 
     confirmDeleteTitle: "确认删除",
     confirmDeleteMessage: "确定删除 {count} 条流程吗？此操作不可撤销。",
