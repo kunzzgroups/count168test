@@ -62,10 +62,18 @@ function getAccountPermissionFilterForCompany(PDO $pdo, int $company_id, string 
     if (empty($userAccountPermissions) || !is_array($userAccountPermissions)) {
         return [];
     }
-    $accountIds = array_values(array_unique(array_filter(array_map('intval', array_column($userAccountPermissions, 'id')), function ($id) {
-        return $id > 0;
-    })));
-    return $accountIds;
+    // Exclude self_hidden: site lists hide Accs the user closed; grants remain for self re-open.
+    $accountIds = [];
+    foreach ($userAccountPermissions as $row) {
+        if (is_array($row) && !empty($row['self_hidden'])) {
+            continue;
+        }
+        $id = is_array($row) ? (int) ($row['id'] ?? 0) : (int) $row;
+        if ($id > 0) {
+            $accountIds[] = $id;
+        }
+    }
+    return array_values(array_unique($accountIds));
 }
 
 function validateCompanyAccess(PDO $pdo, int $company_id): void {

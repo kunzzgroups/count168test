@@ -85,6 +85,9 @@ import {
   isUserModalPageReadOnlyLock,
   getUserEditFieldLocks,
   mergeAccountPermissionsForEditor,
+  buildSelfAccHeldIds,
+  isAccountPermSelfHidden,
+  mergeModalAccountsWithGranted,
   shrinkAccountPermissionsForSelf,
   isCompanyInUserListPicker,
   readUserListGroupFilterOptOut,
@@ -347,6 +350,10 @@ export default function UserListPage() {
   const [editReadyIds, setEditReadyIds] = useState(() => new Set());
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [selectedProcessIds, setSelectedProcessIds] = useState(new Set());
+  /** Self-edit Acc held baseline (ids that may be re-checked). null = not self shrink mode */
+  const [selfAccHeldIds, setSelfAccHeldIds] = useState(null);
+  const selfAccHeldIdsRef = useRef(null);
+  selfAccHeldIdsRef.current = selfAccHeldIds;
   const [roleSelectDisabled, setRoleSelectDisabled] = useState(false);
   const [loginDisabled, setLoginDisabled] = useState(false);
   const [fieldLocks, setFieldLocks] = useState({
@@ -1983,8 +1990,39 @@ export default function UserListPage() {
     setForm((f) => ({ ...f, read_only: detail.read_only !== undefined ? parseInt(detail.read_only, 10) === 1 : true }));
     let ap = null, pp = null; try { if (detail.account_permissions != null) ap = typeof detail.account_permissions === "string" ? JSON.parse(detail.account_permissions) : detail.account_permissions; } catch { ap = []; }
     try { if (detail.process_permissions != null) pp = typeof detail.process_permissions === "string" ? JSON.parse(detail.process_permissions) : detail.process_permissions; } catch { pp = []; }
-    setSelectedAccountIds(ap === null ? new Set(accList.map(a => Number(a.id))) : new Set((Array.isArray(ap) ? ap : []).map(x => Number(x.id || x))));
+    // JSON "null" parses to null → treat as unset whitelist
+    const accUnset = ap === null;
+    const accRows = accUnset ? null : Array.isArray(ap) ? ap : [];
+    const isSelfEdit = Number(row.id) === Number(currentUserId) && !row.is_owner_shadow;
+    // Self: selected = not self_hidden; held = all still-granted (incl. self_hidden) so they can re-open.
+    // Superior: selected = all granted (incl. self_hidden) so Save won't revoke self-hidden Accs.
+    let modalAccList = accList;
+    if (!accUnset && Array.isArray(accRows)) {
+      modalAccList = mergeModalAccountsWithGranted(accList, accRows);
+      if (modalAccList.length !== accList.length) {
+        setModalAccounts(modalAccList);
+      }
+      if (isSelfEdit) {
+        setSelectedAccountIds(
+          new Set(
+            accRows
+              .filter((x) => !isAccountPermSelfHidden(x))
+              .map((x) => Number(x.id || x))
+              .filter((id) => id > 0),
+          ),
+        );
+      } else {
+        setSelectedAccountIds(new Set(accRows.map((x) => Number(x.id || x)).filter((id) => id > 0)));
+      }
+    } else {
+      setSelectedAccountIds(new Set(accList.map((a) => Number(a.id))));
+    }
     setSelectedProcessIds(pp === null ? new Set(procList.map(p => Number(p.id))) : new Set((Array.isArray(pp) ? pp : []).map(x => Number(x.id || x))));
+    if (isSelfEdit) {
+      setSelfAccHeldIds(buildSelfAccHeldIds(accRows, accUnset, modalAccList.map((a) => a.id)));
+    } else {
+      setSelfAccHeldIds(null);
+    }
     if (currentUserRole === "admin" || currentUserRole === "owner") {
       if (useDualTenantUserPicker) {
         const groupCodes = Array.isArray(detail.group_codes) ? detail.group_codes : [];
@@ -2029,9 +2067,11 @@ export default function UserListPage() {
       setSelectedProcessIds(new Set(procList.map((p) => Number(p.id))));
       setSelectedCompanyIds([]);
       setSelectedGroupIds([]);
+      setSelfAccHeldIds(null);
     }
   }, [
     scopeCompanyId,
+    currentUserId,
     currentUserRole,
     modalPickerCompanies,
     modalGroupCompanies,
@@ -2189,7 +2229,12 @@ export default function UserListPage() {
     });
   };
 
-  const closeModal = useCallback(() => { modalLoadSeqRef.current += 1; setModalOpen(false); setEditingRow(null); }, []);
+  const closeModal = useCallback(() => {
+    modalLoadSeqRef.current += 1;
+    setModalOpen(false);
+    setEditingRow(null);
+    setSelfAccHeldIds(null);
+  }, []);
 
   const toggleUserStatus = async (row) => {
     if (userMutationsBlocked) {
@@ -2430,8 +2475,17 @@ export default function UserListPage() {
             return { id: Number(row.id), account_id };
           });
         if (caps.isSelf) {
+          // Held baseline from open (DB whitelist or effective modal ids). Never
+          // "allow any submitted" — that re-granted superior-closed Accs via Select All.
+          const heldIds = selfAccHeldIdsRef.current;
+          const heldPerms =
+            heldIds instanceof Set
+              ? [...heldIds].map((id) => ({ id: Number(id) }))
+              : existingUnset
+                ? accountPerms
+                : existingAp;
           payload.account_permissions = enrichRows(
-            shrinkAccountPermissionsForSelf(existingAp, accountPerms, existingUnset),
+            shrinkAccountPermissionsForSelf(heldPerms, accountPerms),
           );
         } else if (existingUnset) {
           payload.account_permissions = accountPerms;
@@ -2463,6 +2517,8 @@ export default function UserListPage() {
           next.delete(Number(form.id));
           return next;
         });
+        // Acc whitelist may have changed — drop modal account list cache so next open is filtered.
+        modalAccessCacheRef.current.clear();
       }
       notifyApi(json.message, "saved", "success");
       closeModal();
@@ -2824,7 +2880,7 @@ export default function UserListPage() {
             document.body
           )
         : null}
-      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
+      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} selfAccHeldIds={selfAccHeldIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
       <UserConfirmModal open={confirmOpen} message={confirmMessage} onConfirm={confirmDelete} onClose={() => setConfirmOpen(false)} confirmDisabled={userMutationsBlocked} t={t} />
     </>
   );

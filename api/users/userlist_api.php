@@ -67,9 +67,10 @@ function userlistRoleLevel(string $role): int {
 }
 
 /**
- * Normalize account_permissions payload rows to [{id, account_id}, ...].
+ * Normalize account_permissions payload rows to [{id, account_id, self_hidden?}, ...].
+ * self_hidden marks Accs the user closed themselves (still granted; can re-open without superior).
  */
-function userlist_normalize_account_perm_rows($perms): array
+function userlist_normalize_account_perm_rows($perms, bool $preserveSelfHidden = true): array
 {
     if (!is_array($perms)) {
         return [];
@@ -81,11 +82,40 @@ function userlist_normalize_account_perm_rows($perms): array
             continue;
         }
         $accountId = is_array($row) ? (string) ($row['account_id'] ?? '') : '';
-        if (!isset($byId[$id]) || $accountId !== '') {
-            $byId[$id] = ['id' => $id, 'account_id' => $accountId];
+        $prev = $byId[$id] ?? ['id' => $id, 'account_id' => ''];
+        if ($accountId !== '') {
+            $prev['account_id'] = $accountId;
         }
+        if ($preserveSelfHidden && is_array($row) && !empty($row['self_hidden'])) {
+            $prev['self_hidden'] = true;
+        }
+        $byId[$id] = $prev;
     }
     return array_values($byId);
+}
+
+/** @param array<int, array{id:int,account_id?:string,self_hidden?:bool}> $mergedById */
+function userlist_fill_account_perm_labels(PDO $pdo, array $mergedById): array
+{
+    $missing = [];
+    foreach ($mergedById as $id => $row) {
+        if (($row['account_id'] ?? '') === '') {
+            $missing[] = (int) $id;
+        }
+    }
+    if ($missing !== []) {
+        $ph = implode(',', array_fill(0, count($missing), '?'));
+        $stmt = $pdo->prepare("SELECT id, account_id FROM account WHERE id IN ($ph)");
+        $stmt->execute($missing);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $acc) {
+            $aid = (int) ($acc['id'] ?? 0);
+            if ($aid > 0 && isset($mergedById[$aid]) && ($mergedById[$aid]['account_id'] ?? '') === '') {
+                $mergedById[$aid]['account_id'] = (string) ($acc['account_id'] ?? '');
+            }
+        }
+    }
+    ksort($mergedById);
+    return array_values($mergedById);
 }
 
 /**
@@ -153,17 +183,12 @@ function userlist_merge_account_permissions(
     array $submittedRows,
     ?array $grantableIds
 ): array {
-    $submitted = userlist_normalize_account_perm_rows($submittedRows);
+    // Submitted checkboxes never carry self_hidden; preserve it from existing when id stays granted.
+    $submitted = userlist_normalize_account_perm_rows($submittedRows, false);
     $submittedById = [];
     foreach ($submitted as $row) {
         $submittedById[(int) $row['id']] = $row;
     }
-
-    if ($grantableIds === null) {
-        return array_values($submittedById);
-    }
-
-    $grantable = array_fill_keys(array_map('intval', $grantableIds), true);
 
     if ($existingDecoded === null) {
         $existingIds = userlist_company_account_ids($pdo, $companyId);
@@ -173,10 +198,32 @@ function userlist_merge_account_permissions(
         }
     } else {
         $existingById = [];
-        foreach (userlist_normalize_account_perm_rows($existingDecoded) as $row) {
+        foreach (userlist_normalize_account_perm_rows($existingDecoded, true) as $row) {
             $existingById[(int) $row['id']] = $row;
         }
     }
+
+    $applySubmittedRow = static function (int $id, array $row, array $existingById): array {
+        if (isset($existingById[$id]) && !empty($existingById[$id]['self_hidden'])) {
+            $row['self_hidden'] = true;
+        } else {
+            unset($row['self_hidden']);
+        }
+        if (($row['account_id'] ?? '') === '' && isset($existingById[$id]['account_id'])) {
+            $row['account_id'] = (string) $existingById[$id]['account_id'];
+        }
+        return $row;
+    };
+
+    if ($grantableIds === null) {
+        $merged = [];
+        foreach ($submittedById as $id => $row) {
+            $merged[$id] = $applySubmittedRow((int) $id, $row, $existingById);
+        }
+        return userlist_fill_account_perm_labels($pdo, $merged);
+    }
+
+    $grantable = array_fill_keys(array_map('intval', $grantableIds), true);
 
     $merged = [];
     foreach ($existingById as $id => $row) {
@@ -186,31 +233,11 @@ function userlist_merge_account_permissions(
     }
     foreach ($submittedById as $id => $row) {
         if (isset($grantable[$id])) {
-            $merged[$id] = $row;
+            $merged[$id] = $applySubmittedRow((int) $id, $row, $existingById);
         }
     }
 
-    // Fill missing account_id labels when possible
-    $missing = [];
-    foreach ($merged as $id => $row) {
-        if (($row['account_id'] ?? '') === '') {
-            $missing[] = (int) $id;
-        }
-    }
-    if ($missing !== []) {
-        $ph = implode(',', array_fill(0, count($missing), '?'));
-        $stmt = $pdo->prepare("SELECT id, account_id FROM account WHERE id IN ($ph)");
-        $stmt->execute($missing);
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $acc) {
-            $aid = (int) ($acc['id'] ?? 0);
-            if ($aid > 0 && isset($merged[$aid]) && ($merged[$aid]['account_id'] ?? '') === '') {
-                $merged[$aid]['account_id'] = (string) ($acc['account_id'] ?? '');
-            }
-        }
-    }
-
-    ksort($merged);
-    return array_values($merged);
+    return userlist_fill_account_perm_labels($pdo, $merged);
 }
 
 /**
@@ -230,11 +257,13 @@ function userlist_can_edit_target_account_permissions(int $editorUserId, string 
 }
 
 /**
- * Self-edit: keep only submitted ids that already exist on the user (shrink whitelist).
- * When existing is null (unset = see all), materialize submitted ∩ grantable as the new list.
+ * Self-edit: toggle self_hidden on already-granted Accs (do not drop grant rows).
+ * - Checked → visible (clear self_hidden)
+ * - Unchecked → still granted with self_hidden (can re-open without superior)
+ * - Cannot add ids a superior already removed from the grant list
  *
  * @param array|null $existingDecoded
- * @param int[]|null $grantableIds null = unrestricted among submitted
+ * @param int[]|null $grantableIds null = unrestricted among company accounts
  */
 function userlist_shrink_account_permissions_for_self(
     PDO $pdo,
@@ -243,32 +272,65 @@ function userlist_shrink_account_permissions_for_self(
     array $submittedRows,
     ?array $grantableIds
 ): array {
-    $submitted = userlist_normalize_account_perm_rows($submittedRows);
-    if ($grantableIds !== null) {
-        $grantable = array_fill_keys(array_map('intval', $grantableIds), true);
-        $submitted = array_values(array_filter(
-            $submitted,
-            static fn (array $row): bool => isset($grantable[(int) $row['id']])
-        ));
+    $submitted = userlist_normalize_account_perm_rows($submittedRows, false);
+    $submittedById = [];
+    foreach ($submitted as $row) {
+        $submittedById[(int) $row['id']] = $row;
     }
+
+    $ceilingIds = $grantableIds;
+    if ($ceilingIds === null) {
+        $ceilingIds = userlist_company_account_ids($pdo, $companyId);
+    }
+    $ceiling = array_fill_keys(array_map('intval', $ceilingIds), true);
+    $submittedById = array_filter(
+        $submittedById,
+        static fn (array $row): bool => isset($ceiling[(int) $row['id']])
+    );
+
     if ($existingDecoded === null) {
-        // Fill account_id labels when missing
-        return userlist_merge_account_permissions($pdo, $companyId, [], $submitted, $grantableIds);
+        // Unset (see-all): materialize ceiling; unchecked → self_hidden (still re-openable).
+        $out = [];
+        foreach ($ceilingIds as $id) {
+            $id = (int) $id;
+            if ($id <= 0 || !isset($ceiling[$id])) {
+                continue;
+            }
+            $row = ['id' => $id, 'account_id' => ''];
+            if (isset($submittedById[$id])) {
+                if (($submittedById[$id]['account_id'] ?? '') !== '') {
+                    $row['account_id'] = (string) $submittedById[$id]['account_id'];
+                }
+            } else {
+                $row['self_hidden'] = true;
+            }
+            $out[$id] = $row;
+        }
+        return userlist_fill_account_perm_labels($pdo, $out);
     }
+
     $existingById = [];
-    foreach (userlist_normalize_account_perm_rows($existingDecoded) as $row) {
+    foreach (userlist_normalize_account_perm_rows($existingDecoded, true) as $row) {
         $existingById[(int) $row['id']] = $row;
     }
+
     $out = [];
-    foreach ($submitted as $row) {
-        $id = (int) $row['id'];
-        if (!isset($existingById[$id])) {
-            continue;
+    foreach ($existingById as $id => $row) {
+        if (isset($submittedById[$id])) {
+            $next = $row;
+            unset($next['self_hidden']);
+            if (($submittedById[$id]['account_id'] ?? '') !== '') {
+                $next['account_id'] = (string) $submittedById[$id]['account_id'];
+            }
+            $out[$id] = $next;
+        } else {
+            $next = $row;
+            $next['self_hidden'] = true;
+            $out[$id] = $next;
         }
-        $out[$id] = ($row['account_id'] ?? '') !== '' ? $row : $existingById[$id];
     }
-    ksort($out);
-    return array_values($out);
+    // Ignore submitted ids not in existing grant (superior-revoked).
+    return userlist_fill_account_perm_labels($pdo, $out);
 }
 
 /** Audit：manager 及以上可写 read_only；Partnership：仅 owner */

@@ -149,23 +149,88 @@ export function getUserEditFieldLocks(row, currentUserId, currentUserRole) {
   };
 }
 
+/** @param {unknown} row */
+export function isAccountPermSelfHidden(row) {
+  if (!row || typeof row !== "object") return false;
+  const v = row.self_hidden;
+  return v === true || v === 1 || v === "1";
+}
+
 /**
- * Self-edit may only shrink the whitelist (uncheck). Cannot add ids not already held.
- * @param {Array<{id?: number}|number>|null|undefined} existingPerms null/undefined = unset (treat as no prior filter → allow any submitted among visible)
- * @param {Array<{id?: number}|number>} submittedPerms
+ * Ensure Accs still granted but self_hidden appear in the modal so the user can re-check them.
+ * @param {Array<{id?: number, account_id?: string, name?: string}>} accList
+ * @param {Array<{id?: number, account_id?: string, name?: string}|number>} grantedRows
+ */
+export function mergeModalAccountsWithGranted(accList, grantedRows) {
+  const byId = new Map((Array.isArray(accList) ? accList : []).map((a) => [Number(a.id), a]));
+  for (const row of Array.isArray(grantedRows) ? grantedRows : []) {
+    const id = Number(row?.id ?? row);
+    if (!(id > 0) || byId.has(id)) continue;
+    byId.set(id, {
+      id,
+      account_id: typeof row === "object" && row ? String(row.account_id || "") : "",
+      name: typeof row === "object" && row ? String(row.name || "").trim() : "",
+    });
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Self-edit held baseline (= still granted, including self_hidden).
+ * Superior-revoked Accs are absent from existingPerms and cannot be re-checked.
+ * Unset (null) → currently visible modal ids at open.
+ * @param {Array<{id?: number}|number>|null|undefined} existingPerms
  * @param {boolean} existingUnset
+ * @param {Iterable<number|string>} visibleAccountIds
+ * @returns {Set<number>}
+ */
+export function buildSelfAccHeldIds(existingPerms, existingUnset, visibleAccountIds) {
+  const toId = (x) => Number(x?.id ?? x);
+  if (!existingUnset && existingPerms != null) {
+    return new Set(
+      (Array.isArray(existingPerms) ? existingPerms : []).map(toId).filter((id) => id > 0),
+    );
+  }
+  return new Set([...visibleAccountIds].map(Number).filter((id) => id > 0));
+}
+
+/**
+ * Self-edit payload: only checked (visible) ids among held grants.
+ * API marks unchecked held ids as self_hidden (still granted for later self re-open).
+ * @param {Array<{id?: number}|number>|null|undefined} heldPerms
+ * @param {Array<{id?: number}|number>} submittedPerms
  * @returns {Array<{id: number}>}
  */
-export function shrinkAccountPermissionsForSelf(existingPerms, submittedPerms, existingUnset = false) {
+export function shrinkAccountPermissionsForSelf(heldPerms, submittedPerms) {
   const toId = (x) => Number(x?.id ?? x);
   const submittedIds = [...new Set((Array.isArray(submittedPerms) ? submittedPerms : []).map(toId).filter((id) => id > 0))];
-  if (existingUnset) {
-    return submittedIds.map((id) => ({ id }));
-  }
-  const existingIds = new Set(
-    (Array.isArray(existingPerms) ? existingPerms : []).map(toId).filter((id) => id > 0),
+  const heldIds = new Set(
+    (Array.isArray(heldPerms) ? heldPerms : []).map(toId).filter((id) => id > 0),
   );
-  return submittedIds.filter((id) => existingIds.has(id)).map((id) => ({ id }));
+  return submittedIds.filter((id) => heldIds.has(id)).map((id) => ({ id }));
+}
+
+/**
+ * Self Acc bulk select/clear: Select All may only re-check held ids (cannot restore
+ * superior-closed Accs that still appear in a stale modal list).
+ * @param {Iterable<number|string>} prevSelected
+ * @param {Iterable<number|string>} visibleIds
+ * @param {Iterable<number|string>} heldIds
+ * @param {"select"|"clear"} mode
+ * @returns {Set<number>}
+ */
+export function nextSelfAccountSelection(prevSelected, visibleIds, heldIds, mode) {
+  const next = new Set([...prevSelected].map(Number).filter((id) => id > 0));
+  const visible = [...visibleIds].map(Number).filter((id) => id > 0);
+  const held = new Set([...heldIds].map(Number).filter((id) => id > 0));
+  if (mode === "select") {
+    visible.forEach((id) => {
+      if (held.has(id)) next.add(id);
+    });
+    return next;
+  }
+  visible.forEach((id) => next.delete(id));
+  return next;
 }
 
 /**

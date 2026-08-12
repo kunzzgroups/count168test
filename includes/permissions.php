@@ -1,5 +1,35 @@
 <?php
 // permissions.php
+
+/**
+ * Extract account ids from account_permissions JSON rows.
+ * Rows with self_hidden=true stay in the grant list but are excluded from visibility by default.
+ *
+ * @param mixed $userAccountPermissions
+ * @return int[]
+ */
+function permissions_extract_account_ids($userAccountPermissions, bool $includeSelfHidden = false): array
+{
+    if (!is_array($userAccountPermissions) || $userAccountPermissions === []) {
+        return [];
+    }
+    $ids = [];
+    foreach ($userAccountPermissions as $row) {
+        if (is_array($row)) {
+            if (!$includeSelfHidden && !empty($row['self_hidden'])) {
+                continue;
+            }
+            $id = (int) ($row['id'] ?? 0);
+        } else {
+            $id = (int) $row;
+        }
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+    }
+    return array_values(array_unique($ids));
+}
+
 function getCurrentUserAccountPermissions($pdo) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
@@ -126,13 +156,8 @@ function filterAccountsByPermissions($pdo, $baseQuery, $params = [], $permission
         return [$baseQuery, $params];
     }
     
-    // 如果 account_permissions 有值，只显示权限列表中的账户
-    $accountIds = array_column($userAccountPermissions, 'id');
-    // 确保所有 ID 都是整数类型，避免类型不匹配问题
-    $accountIds = array_map('intval', $accountIds);
-    $accountIds = array_filter($accountIds, function($id) { return $id > 0; }); // 过滤无效的 ID
-    $accountIds = array_unique($accountIds); // 去重
-    $accountIds = array_values($accountIds); // 重新索引数组
+    // 可见 = 授权列表且未 self_hidden（自己关掉的仍留在授权里，可自行勾回）
+    $accountIds = permissions_extract_account_ids($userAccountPermissions, false);
     
     // 只有当有有效的账户 ID 时，才添加过滤条件
     if (!empty($accountIds)) {

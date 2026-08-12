@@ -4,7 +4,10 @@ import { accountCompanyPickerZIndex, accountModalOverlayZIndex } from "../../../
 import SimpleSelect from "../../../components/SimpleSelect.jsx";
 import { useSubmitGuard } from "../../../hooks/useSubmitGuard.js";
 import PasswordInput from "../../../components/PasswordInput.jsx";
-import { nextAccountSelectionPreservingOutside } from "../userListLogic.js";
+import {
+  nextAccountSelectionPreservingOutside,
+  nextSelfAccountSelection,
+} from "../userListLogic.js";
 
 /** Inline so first paint is 3-column even if extracted CSS applies one frame late */
 const modalBodyStyle = {
@@ -198,6 +201,8 @@ const SelectionColumn = React.memo(function SelectionColumn({
   setSelectedIds,
   idList,
   locked,
+  /** @type {Set<number>|null|undefined} self Acc: only these ids may be (re)checked */
+  shrinkOnlyHeldIds = null,
   bulkSelectionSettling,
   runBulkSelection,
   t,
@@ -207,17 +212,21 @@ const SelectionColumn = React.memo(function SelectionColumn({
     variant === "account"
       ? "user-modal-col user-modal-col--account account-process-col"
       : "user-modal-col user-modal-col--process account-process-col";
+  const selfShrinkOnly = variant === "account" && shrinkOnlyHeldIds instanceof Set;
 
   const onToggle = useCallback(
     (id, checked) => {
+      const nId = Number(id);
+      // Self shrink-only: block checking Accs not in the held baseline (superior-closed).
+      if (checked && selfShrinkOnly && !shrinkOnlyHeldIds.has(nId)) return;
       setSelectedIds((prev) => {
         const n = new Set(prev);
-        if (checked) n.add(Number(id));
-        else n.delete(Number(id));
+        if (checked) n.add(nId);
+        else n.delete(nId);
         return n;
       });
     },
-    [setSelectedIds],
+    [setSelectedIds, selfShrinkOnly, shrinkOnlyHeldIds],
   );
 
   return (
@@ -230,6 +239,12 @@ const SelectionColumn = React.memo(function SelectionColumn({
         {items.map((it) => {
           const primary = variant === "account" ? it.account_id : it.process_id;
           const secondary = variant === "account" ? it.name : it.description;
+          const nId = Number(it.id);
+          const checked = selectedIds.has(nId);
+          // Unchecked + not held → lock (cannot restore superior-closed Acc).
+          // Checked + not held → still allow uncheck.
+          const cardLocked =
+            locked || (selfShrinkOnly && !shrinkOnlyHeldIds.has(nId) && !checked);
           return (
             <AccessSelectCard
               key={it.id}
@@ -237,8 +252,8 @@ const SelectionColumn = React.memo(function SelectionColumn({
               idPrefix={idPrefix}
               primary={primary}
               secondary={secondary}
-              checked={selectedIds.has(Number(it.id))}
-              locked={locked}
+              checked={checked}
+              locked={cardLocked}
               onToggle={onToggle}
             />
           );
@@ -255,6 +270,12 @@ const SelectionColumn = React.memo(function SelectionColumn({
                 setSelectedIds(new Set(idList));
                 return;
               }
+              if (selfShrinkOnly) {
+                setSelectedIds((prev) =>
+                  nextSelfAccountSelection(prev, idList, shrinkOnlyHeldIds, "select"),
+                );
+                return;
+              }
               setSelectedIds((prev) => nextAccountSelectionPreservingOutside(prev, idList, "select"));
             })
           }
@@ -269,6 +290,12 @@ const SelectionColumn = React.memo(function SelectionColumn({
             runBulkSelection(variant, () => {
               if (variant !== "account") {
                 setSelectedIds(new Set());
+                return;
+              }
+              if (selfShrinkOnly) {
+                setSelectedIds((prev) =>
+                  nextSelfAccountSelection(prev, idList, shrinkOnlyHeldIds, "clear"),
+                );
                 return;
               }
               setSelectedIds((prev) => nextAccountSelectionPreservingOutside(prev, idList, "clear"));
@@ -310,6 +337,8 @@ function UserModal({
   modalAccounts,
   selectedAccountIds,
   setSelectedAccountIds,
+  /** Self-edit Acc held baseline; null = not self shrink-only mode */
+  selfAccHeldIds = null,
   modalProcesses,
   selectedProcessIds,
   setSelectedProcessIds,
@@ -806,6 +835,7 @@ function UserModal({
               setSelectedIds={setSelectedAccountIds}
               idList={accountIdList}
               locked={accountLocked}
+              shrinkOnlyHeldIds={selfAccHeldIds}
               bulkSelectionSettling={bulkSettlingVariant === "account"}
               runBulkSelection={runBulkSelection}
               t={t}
