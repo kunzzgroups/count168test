@@ -3719,9 +3719,10 @@ try {
             explode(',', (string) $_GET['currencies'])
         ), static fn (string $c): bool => $c !== '')))
         : [];
+    // FE sends earnings_only=1 with kpi_only=1 for light pie packs — still take the
+    // multi-currency branch (kpi_only only skips chart GROUP BY inside each capture).
     if (
         $earningsOnly
-        && !$kpiOnly
         && count($multiCurrencyCodes) > 1
         && $company_id !== null
         && $company_id > 0

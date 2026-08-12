@@ -125,6 +125,7 @@ export function warmDashboardRouteCache({ me = null } = {}) {
           : null;
     if (!scopeCompanyKey) return;
 
+    const orderCodes = readUserCurrencyDisplayOrder();
     const currency =
       readDashboardSelectedCurrency(
         buildDashboardCacheKey({
@@ -135,14 +136,16 @@ export function warmDashboardRouteCache({ me = null } = {}) {
           selectedGroup,
           groupAllMode: false,
         })
-      ) || "";
+      ) ||
+      (Array.isArray(orderCodes) && orderCodes[0]
+        ? String(orderCodes[0]).trim().toUpperCase()
+        : "");
 
     // Warm FX for the persisted scope off the critical path — the dashboard will need
     // base→quote rates for every pill the moment it opens; seeding them here (sidebar
     // idle) removes the "amounts jump after rates land" lag on first paint. Best-effort:
     // falls back to the user's persisted currency order when the scope has no record yet.
     {
-      const orderCodes = readUserCurrencyDisplayOrder();
       const warmCodes = [
         ...new Set(
           [currency, ...(orderCodes || [])]
@@ -185,6 +188,7 @@ export function warmDashboardRouteCache({ me = null } = {}) {
     } else {
       return;
     }
+    // Always set currency when known so warm + live kpi share one bootstrap dedupe key.
     if (currency) q.set("currency", currency);
 
     const requestKey = q.toString();

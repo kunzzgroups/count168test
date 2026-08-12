@@ -233,13 +233,13 @@ async function fetchGroupLedgerCurrencyCodes(companies, groupKey, me) {
   const q = buildGroupOnlyScopeCurrencyQuery(companies, g);
   if (!q.get("company_id") && !q.get("group_id")) return [];
   try {
-    const curRes = await fetch(
-      buildApiUrl(`api/transactions/get_scope_account_currencies_api.php?${q.toString()}`),
-      { credentials: "include" }
+    const packed = await fetchCurrencyListHttpDeduped(
+      currencyListHttpInflight,
+      "api/transactions/get_scope_account_currencies_api.php",
+      q.toString()
     );
-    const curJson = await curRes.json();
-    if (!curRes.ok || !curJson.success || !Array.isArray(curJson.data)) return [];
-    return curJson.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
+    if (!packed?.res?.ok || !packed.json?.success || !Array.isArray(packed.json.data)) return [];
+    return packed.json.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
   } catch {
     return [];
   }
@@ -263,13 +263,18 @@ async function fetchCompanyCurrencySettingCodes(companyId, companyRow, viewGroup
 
   for (const q of queries) {
     try {
-      const res = await fetch(
-        buildApiUrl(`api/transactions/get_company_currencies_api.php?${q.toString()}`),
-        { credentials: "include" }
+      const packed = await fetchCurrencyListHttpDeduped(
+        currencyListHttpInflight,
+        "api/transactions/get_company_currencies_api.php",
+        q.toString()
       );
-      const json = await res.json();
-      if (res.ok && json.success && Array.isArray(json.data) && json.data.length) {
-        return json.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
+      if (
+        packed?.res?.ok &&
+        packed.json?.success &&
+        Array.isArray(packed.json.data) &&
+        packed.json.data.length
+      ) {
+        return packed.json.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
       }
     } catch {
       /* try next query shape */
@@ -280,13 +285,18 @@ async function fetchCompanyCurrencySettingCodes(companyId, companyRow, viewGroup
     const subQ = buildSubsidiaryCompanyCurrencyQuery(cid, vg);
     if (subQ) {
       try {
-        const curRes = await fetch(
-          buildApiUrl(`api/transactions/get_scope_account_currencies_api.php?${subQ}`),
-          { credentials: "include" }
+        const packed = await fetchCurrencyListHttpDeduped(
+          currencyListHttpInflight,
+          "api/transactions/get_scope_account_currencies_api.php",
+          subQ
         );
-        const curJson = await curRes.json();
-        if (curRes.ok && curJson.success && Array.isArray(curJson.data) && curJson.data.length) {
-          return curJson.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
+        if (
+          packed?.res?.ok &&
+          packed.json?.success &&
+          Array.isArray(packed.json.data) &&
+          packed.json.data.length
+        ) {
+          return packed.json.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
         }
       } catch {
         /* ignore */
@@ -306,13 +316,13 @@ async function fetchCompanyAccountCurrencyCodes(companyId) {
   if (!Number.isFinite(cid) || cid <= 0) return [];
   try {
     const q = new URLSearchParams({ company_id: String(cid) });
-    const res = await fetch(
-      buildApiUrl(`api/transactions/get_scope_account_currencies_api.php?${q.toString()}`),
-      { credentials: "include" }
+    const packed = await fetchCurrencyListHttpDeduped(
+      currencyListHttpInflight,
+      "api/transactions/get_scope_account_currencies_api.php",
+      q.toString()
     );
-    const json = await res.json();
-    if (res.ok && json.success && Array.isArray(json.data)) {
-      return json.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
+    if (packed?.res?.ok && packed.json?.success && Array.isArray(packed.json.data)) {
+      return packed.json.data.map((r) => String(r.code).toUpperCase()).filter(Boolean);
     }
   } catch {
     /* ignore */
@@ -737,6 +747,9 @@ const COMPANY_SESSION_DEFER_MS = 2000;
 /** Defer group-all currency refresh while dashboard merge is in flight. */
 const CURRENCY_REFRESH_DEFER_MS = 600;
 /** Parallel company dashboard fetches when merging Group/Company "All". */
+/** Module-level dedupe for currency-list helpers used outside the hook instance. */
+const currencyListHttpInflight = new Map();
+
 const MERGE_DASHBOARD_PARALLEL_BATCH = 8;
 /** Idle delay before one-time session warm of picker companies (current currency only). */
 const SESSION_DASHBOARD_WARM_DELAY_MS = 600;
@@ -904,6 +917,26 @@ async function fetchBootstrapHttpDeduped(inflightMap, requestKey, init) {
       inflightMap.delete(dedupeKey);
     }
   });
+  inflightMap.set(dedupeKey, promise);
+  return promise;
+}
+
+/** Dedupe concurrent identical currency-list GETs (scope / company currencies). */
+async function fetchCurrencyListHttpDeduped(inflightMap, apiPath, queryString) {
+  const dedupeKey = `${apiPath}?${String(queryString || "")}`;
+  const existing = inflightMap.get(dedupeKey);
+  if (existing) return existing;
+  const promise = (async () => {
+    const res = await fetch(buildApiUrl(dedupeKey), { credentials: "include" });
+    const json = await res.json();
+    return { res, json };
+  })()
+    .catch(() => null)
+    .finally(() => {
+      if (inflightMap.get(dedupeKey) === promise) {
+        inflightMap.delete(dedupeKey);
+      }
+    });
   inflightMap.set(dedupeKey, promise);
   return promise;
 }
@@ -1136,6 +1169,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
   const dashboardApiInflightRef = useRef(new Map());
   /** Dedupe concurrent user_currency_order_api.php by company_id (ignore `_t`). */
   const userCurrencyOrderInflightRef = useRef(new Map());
+  /** Dedupe concurrent get_*_currencies list GETs by full query string. */
+  const currencyListInflightRef = useRef(new Map());
   /** Scope key while loadCurrencies network work is in flight. */
   const currencyLoadInFlightScopeRef = useRef("");
   /** Scope key while a full bootstrap (KPI + earnings) is in flight for the active view. */
@@ -2935,16 +2970,18 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           const subQ = buildSubsidiaryCompanyCurrencyQuery(pickId, groupKey);
           if (subQ) {
             try {
-              const curRes = await fetch(
-                buildApiUrl(`api/transactions/get_scope_account_currencies_api.php?${subQ}`),
-                { credentials: "include" }
+              const packed = await fetchCurrencyListHttpDeduped(
+                currencyListInflightRef.current,
+                "api/transactions/get_scope_account_currencies_api.php",
+                subQ
               );
-              const curJson = await curRes.json();
+              const curRes = packed?.res;
+              const curJson = packed?.json;
               if (
                 gen === currencyLoadGenRef.current &&
                 scopeCurrencyKeyRef.current === scopeKey &&
-                curRes.ok &&
-                curJson.success &&
+                curRes?.ok &&
+                curJson?.success &&
                 Array.isArray(curJson.data)
               ) {
                 const rowCodes = curJson.data
@@ -3014,10 +3051,11 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           companiesForPicker,
         });
 
-        const [curRes, ordJson] = await Promise.all([
-          fetch(
-            buildApiUrl(`api/transactions/get_scope_account_currencies_api.php?${q.toString()}`),
-            { credentials: "include" }
+        const [curPacked, ordJson] = await Promise.all([
+          fetchCurrencyListHttpDeduped(
+            currencyListInflightRef.current,
+            "api/transactions/get_scope_account_currencies_api.php",
+            q.toString()
           ),
           orderCompanyId
             ? fetchUserCurrencyOrderHttpDeduped(
@@ -3026,8 +3064,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
               )
             : Promise.resolve(null),
         ]);
-        const curJson = await curRes.json();
-        if (curRes.ok && curJson.success && Array.isArray(curJson.data)) {
+        const curRes = curPacked?.res;
+        const curJson = curPacked?.json;
+        if (curRes?.ok && curJson?.success && Array.isArray(curJson.data)) {
           codes = curJson.data.map((r) => String(r.code).toUpperCase());
         }
         if (subsidiaryDashboardScope && singleCid) {
@@ -3099,12 +3138,14 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
               : groupKey;
             const q = new URLSearchParams({ company_id: String(cid) });
             if (vg) q.set("view_group", vg);
-            const curRes = await fetch(
-              buildApiUrl(`api/transactions/get_company_currencies_api.php?${q.toString()}`),
-              { credentials: "include" }
+            const packed = await fetchCurrencyListHttpDeduped(
+              currencyListInflightRef.current,
+              "api/transactions/get_company_currencies_api.php",
+              q.toString()
             );
-            const curJson = await curRes.json();
-            if (!curRes.ok || !curJson.success || !Array.isArray(curJson.data)) return [];
+            const curRes = packed?.res;
+            const curJson = packed?.json;
+            if (!curRes?.ok || !curJson?.success || !Array.isArray(curJson.data)) return [];
             return curJson.data.map((r) => String(r.code).toUpperCase());
           })
         );
@@ -3766,14 +3807,19 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         // One request returns every requested currency's earnings for this company
         // (server aggregates in-process ≈200ms) — replaces N single-currency
         // round-trips (each ~0.25-2s over HTTPS) for the Group/Company All pie.
-        q.append("currencies", [...new Set(currencies)].join(","));
+        q.append(
+          "currencies",
+          sortCurrencyCodesForBootstrap([...new Set(currencies)]).join(",")
+        );
       } else {
         const cur = currencyOverride ?? currencyCodeRef.current;
         if (cur) q.append("currency", cur);
       }
       if (earningsOnly) {
-        q.append("kpi_only", "1");
         q.append("earnings_only", "1");
+        // Multi-currency packs must not rely on kpi_only alone; single-currency
+        // light packs still skip chart GROUP BY via kpi_only.
+        if (!multi) q.append("kpi_only", "1");
       }
       const viewGroup =
         viewGroupOverride ??
@@ -5320,25 +5366,67 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         merged.subsidiary_earnings_by_company = byCompany;
       }
 
-      // Multi-currency mode: each company's payload carries { currencies: { CODE: {…} } }
-      // (server aggregates all requested currencies in one request). mergeGroupData
-      // only understands single-currency payloads, so aggregate the per-company
-      // currency maps here and stash them on the merged payload for the caller.
+      // Multi-currency mode: each company returns { currencies: { CODE: fullPayload } }.
+      // Merge per currency with the same ownership/subsidiary rules as single-currency
+      // Company All (do not raw-sum profit/expenses — that drops ownership %).
       if (Array.isArray(currencies) && currencies.length > 1) {
         const acc = {};
-        for (const pair of pairs) {
-          const perCur = pair.data?.currencies;
-          if (!perCur || typeof perCur !== "object") continue;
-          for (const [code, entry] of Object.entries(perCur)) {
+        const codeList = sortCurrencyCodesForBootstrap(currencies);
+        for (const code of codeList) {
+          const codeUpper = String(code || "").trim().toUpperCase();
+          const codePairs = [];
+          for (const pair of pairs) {
+            const perCur = pair.data?.currencies;
+            if (!perCur || typeof perCur !== "object") continue;
+            const entry =
+              perCur[code] ??
+              perCur[codeUpper] ??
+              perCur[String(code).trim()];
             if (!entry || typeof entry !== "object") continue;
-            acc[code] = acc[code] || { expenses: "0", profit: "0" };
-            acc[code].expenses = String(
-              parseFloat(acc[code].expenses || "0") + parseFloat(entry.expenses || "0")
-            );
-            acc[code].profit = String(
-              parseFloat(acc[code].profit || "0") + parseFloat(entry.profit || "0")
-            );
+            const data =
+              entry.period_total != null ||
+              entry.daily_data != null ||
+              entry.has_ownership_setup !== undefined ||
+              (entry.profit != null && typeof entry.profit === "object")
+                ? entry
+                : {
+                    period_total: {
+                      profit: entry.profit ?? entry.netProfit ?? "0",
+                      expenses: entry.expenses ?? "0",
+                    },
+                    profit: entry.profit ?? entry.netProfit ?? "0",
+                    expenses: entry.expenses ?? "0",
+                  };
+            codePairs.push({
+              company: pair.company,
+              data,
+              viewGroup: pair.viewGroup,
+            });
+            const cid = parseInt(pair.company?.id, 10);
+            if (Number.isFinite(cid) && cid > 0) {
+              seedDashboardPayloadCacheForCompany(
+                cid,
+                pair.viewGroup,
+                rangeFrom,
+                rangeTo,
+                codeUpper,
+                data
+              );
+            }
           }
+          if (!codePairs.length) continue;
+          const mergedCode = mergeGroupData(
+            codePairs.map((p) => p.data),
+            { startDate: rangeFrom, endDate: rangeTo }
+          );
+          const byCompanyCode = buildCompanyNetProfitRowsFromPairs(
+            codePairs,
+            viewGroupFallback ?? selectedGroup
+          );
+          if (byCompanyCode.length) {
+            mergedCode.subsidiary_earnings_by_company = byCompanyCode;
+          }
+          acc[codeUpper] = mergedCode;
         }
         merged.currencies = acc;
       }
@@ -5674,7 +5762,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
    */
   const fetchMultiCurrencyEarningsRows = useCallback(
     async (codes, gen) => {
-      const list = Array.isArray(codes) ? codes : [];
+      const list = sortCurrencyCodesForBootstrap(Array.isArray(codes) ? codes : []);
       if (list.length <= 1) return null;
       if (gen !== earningsFetchGenRef.current) return null;
       try {
@@ -5685,15 +5773,25 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           { earningsOnly: true, useActiveScopeAbort: false, currencies: list }
         );
         if (gen !== earningsFetchGenRef.current) return null;
-        // loadMergedDashboard returns a merged payload; multi-currency mode stashes
-        // the aggregated per-currency map on the payload root (`merged.currencies`).
+        // Company All: currencies map holds per-code merged payloads (ownership-safe).
+        // Single company: map holds each currency's capture payload.
         const map = payload?.currencies ?? payload?.data?.currencies;
         if (!map || typeof map !== "object") return null;
         const rows = [];
         for (const code of list) {
-          const entry = map[code] ?? map[String(code).toUpperCase()];
-          if (!entry) {
+          const codeUpper = String(code || "").trim().toUpperCase();
+          const entry = map[code] ?? map[codeUpper];
+          if (!entry || typeof entry !== "object") {
             rows.push({ code, netProfit: null, earnings: null });
+            continue;
+          }
+          if (
+            entry.period_total != null ||
+            entry.daily_data != null ||
+            entry.subsidiary_earnings_by_company != null ||
+            entry.has_ownership_setup !== undefined
+          ) {
+            rows.push(buildCurrencyRowFromPayload(code, entry));
             continue;
           }
           const profit = parseFloat(entry.profit ?? entry.netProfit ?? "0");
@@ -5710,7 +5808,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         return null;
       }
     },
-    [loadMergedDashboard]
+    [loadMergedDashboard, buildCurrencyRowFromPayload]
   );
 
   const fetchGroupAllEarningsRowsForRange = useCallback(
@@ -5891,11 +5989,17 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       );
 
       try {
-        const settled = await runTasksInBatches(
-          others,
-          EARNINGS_KPI_PARALLEL_BATCH,
-          (code) => fetchSingleCurrencyEarnings(code, gen)
-        );
+        let settled = null;
+        const multiRows = await fetchMultiCurrencyEarningsRows([primary, ...others], gen);
+        if (multiRows && Array.isArray(multiRows)) {
+          settled = multiRows;
+        } else {
+          settled = await runTasksInBatches(
+            others,
+            EARNINGS_KPI_PARALLEL_BATCH,
+            (code) => fetchSingleCurrencyEarnings(code, gen)
+          );
+        }
 
         if (gen !== earningsFetchGenRef.current) {
           scheduleIncompleteEarningsRetry(120);
@@ -5905,7 +6009,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         const rows = buildSeededEarningsRows(codes, primary, primaryNetProfit, primaryEarnings).map(
           (row) => {
             if (row.netProfit != null && row.earnings != null) return row;
-            const hit = settled.find(
+            const hit = (settled || []).find(
               (entry) =>
                 entry &&
                 String(entry.code).toUpperCase() === String(row.code).toUpperCase()
@@ -5959,6 +6063,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       computeCurrencyMetricsFromPayload,
       buildSeededEarningsRows,
       fetchSingleCurrencyEarnings,
+      fetchMultiCurrencyEarningsRows,
       dashboardScopeKey,
       resolveDashboardScopeKey,
       scheduleIncompleteEarningsRetry,
@@ -5966,15 +6071,9 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
   );
 
   /**
-   * Parallel secondary-currency earnings for atomic first paint.
-   * Uses dashboardFetchGen (not earningsFetchGen) so scope-effect bumps cannot abort it.
-   */
-  /**
-   * The actual N-request fan-out for every non-primary currency — split out of
-   * `loadEarningsParallelForAtomicPaint` so the atomic-paint scope load can kick this
-   * off a short beat after the primary KPI/chart request instead of only after it
-   * resolves. Doesn't need the primary payload at all (only the final row-merge does),
-   * so there's nothing here that actually requires waiting on `boot`.
+   * Secondary-currency earnings for atomic first paint.
+   * Prefers one `currencies=` pack (Company All: C HTTP; single: 1 HTTP); falls back
+   * to per-currency only when the multi-currency endpoint is unavailable.
    */
   const fetchEarningsOthersSettled = useCallback(
     (dashboardGen, codes, primaryCode, scopeKeyForGuard = "") => {
@@ -5986,32 +6085,80 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       const guardKey = scopeKeyForGuard || dashboardFetchInFlightScopeRef.current || "parallel";
       earningsParallelInFlightRef.current = guardKey;
 
-      return runTasksInBatches(
-        others,
-        groupAllMode ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL : EARNINGS_KPI_PARALLEL_BATCH,
-        async (code) => {
-          if (dashboardGen !== dashboardFetchGenRef.current) return null;
-          // One quick same-request retry per currency — a lone transient failure
-          // (network blip, momentary backend hiccup) shouldn't mark this currency
-          // permanently missing and drag the whole batch's completeness check down.
-          for (let attempt = 0; attempt < 2; attempt += 1) {
-            try {
-              const payload = await loadMergedDashboard(
-                dateFromRef.current,
-                dateToRef.current,
-                code,
-                { earningsOnly: true, useActiveScopeAbort: false }
-              );
-              if (dashboardGen !== dashboardFetchGenRef.current) return null;
-              return buildCurrencyRowFromPayload(code, payload);
-            } catch {
-              if (dashboardGen !== dashboardFetchGenRef.current) return null;
-              /* try once more before giving up */
-            }
+      const rowsFromMultiMap = (map) => {
+        if (!map || typeof map !== "object") return null;
+        const rows = [];
+        for (const code of others) {
+          const codeUpper = String(code || "").trim().toUpperCase();
+          const entry = map[code] ?? map[codeUpper];
+          if (!entry || typeof entry !== "object") {
+            rows.push({ code, netProfit: null, earnings: null });
+            continue;
           }
-          return { code, netProfit: null, earnings: null };
+          if (
+            entry.period_total != null ||
+            entry.daily_data != null ||
+            entry.subsidiary_earnings_by_company != null ||
+            entry.has_ownership_setup !== undefined
+          ) {
+            rows.push(buildCurrencyRowFromPayload(code, entry));
+            continue;
+          }
+          const profit = parseFloat(entry.profit ?? entry.netProfit ?? "0");
+          const expenses = parseFloat(entry.expenses ?? "0");
+          const net = Number.isFinite(profit - expenses) ? profit - expenses : null;
+          rows.push({
+            code,
+            netProfit: net,
+            earnings: Number.isFinite(profit) ? profit : null,
+          });
         }
-      ).finally(() => {
+        return rows;
+      };
+
+      return (async () => {
+        // Prefer one currencies= pack (Company All: C HTTP; single: 1 HTTP) instead of
+        // C×(M−1) / (M−1) per-currency fan-out.
+        try {
+          if (dashboardGen !== dashboardFetchGenRef.current) return [];
+          const payload = await loadMergedDashboard(
+            dateFromRef.current,
+            dateToRef.current,
+            null,
+            { earningsOnly: true, useActiveScopeAbort: false, currencies: list }
+          );
+          if (dashboardGen !== dashboardFetchGenRef.current) return [];
+          const multiRows = rowsFromMultiMap(payload?.currencies ?? payload?.data?.currencies);
+          if (multiRows && multiRows.some((row) => row?.earnings != null || row?.netProfit != null)) {
+            return multiRows;
+          }
+        } catch {
+          /* fall back to per-currency */
+        }
+
+        return runTasksInBatches(
+          others,
+          groupAllMode ? EARNINGS_KPI_PARALLEL_BATCH_GROUP_ALL : EARNINGS_KPI_PARALLEL_BATCH,
+          async (code) => {
+            if (dashboardGen !== dashboardFetchGenRef.current) return null;
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+              try {
+                const payload = await loadMergedDashboard(
+                  dateFromRef.current,
+                  dateToRef.current,
+                  code,
+                  { earningsOnly: true, useActiveScopeAbort: false }
+                );
+                if (dashboardGen !== dashboardFetchGenRef.current) return null;
+                return buildCurrencyRowFromPayload(code, payload);
+              } catch {
+                if (dashboardGen !== dashboardFetchGenRef.current) return null;
+              }
+            }
+            return { code, netProfit: null, earnings: null };
+          }
+        );
+      })().finally(() => {
         if (earningsParallelInFlightRef.current === guardKey) {
           earningsParallelInFlightRef.current = "";
         }
@@ -7339,15 +7486,14 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           const bootPromise = loadDashboardViaBootstrap({
             scope: primaryBootstrapScope,
             currencyOverride: provisionalCurrency || undefined,
-            // Empty array skips currencies= fan-out on the primary KPI/chart request.
+            // Empty array: keep primary KPI/chart on one currency. Pie uses a separate
+            // dashboard_api `currencies=` pack (in-process ~200ms) — not bootstrap's
+            // serial secondary loop and not M−1 HTTPS round-trips.
             currencyCodesOverride: [],
           });
 
-          // Currency card: start its own per-currency fan-out a short beat after the
-          // primary request (not gated on it resolving) — lets the Currency card land
-          // close behind KPI/chart instead of always paying KPI/chart's time plus its
-          // own on top. The stagger gives the primary request first claim on the
-          // connection/server for that opening beat.
+          // Currency card: one multi-currency pack (staggered so KPI/chart claim the
+          // connection first). Falls back to per-currency only if that pack fails.
           //
           // Claim the in-flight guard NOW, not only once the timer fires — otherwise
           // `paintBootstrap()`'s seed branch below (`void upgradeActiveScopeEarnings()`,
