@@ -2498,10 +2498,8 @@ export default function UserListPage() {
           existingAp = [];
           existingUnset = false;
         }
-        const editorSeesAllAccounts =
-          currentUserRole === "owner" ||
-          currentUserRole === "partnership" ||
-          currentUserRole === "audit";
+        // Only owner bypasses Acc whitelist when merging grants; partnership/audit grant within visible set.
+        const editorSeesAllAccounts = currentUserRole === "owner";
         const grantableIds = editorSeesAllAccounts ? null : modalAccounts.map((a) => Number(a.id));
         const enrichRows = (mergedRows) =>
           mergedRows.map((row) => {
@@ -2548,10 +2546,8 @@ export default function UserListPage() {
           existingPp = [];
           existingProcUnset = false;
         }
-        const editorSeesAllProcesses =
-          currentUserRole === "owner" ||
-          currentUserRole === "partnership" ||
-          currentUserRole === "audit";
+        // Only owner bypasses Process whitelist when merging grants; partnership/audit grant within visible set.
+        const editorSeesAllProcesses = currentUserRole === "owner";
         const grantableProcessIds = editorSeesAllProcesses ? null : modalProcesses.map((p) => Number(p.id));
         const enrichProcessRows = (mergedRows) =>
           mergedRows.map((row) => {
