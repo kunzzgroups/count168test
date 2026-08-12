@@ -470,28 +470,14 @@ function tryProcessFormatClipboard(html, text, options = {}) {
 
 /**
  * Shared Format clipboard fill (dual-source / HTML table / TSV).
- * 1.Text should pass `{ formatShell: false }` so preview / formatGridReady /
- * #pasteAreaFormat are not touched. 2.Format callers keep the default shell.
- *
- * Text wide Excel/HTML: use Format HTML fill only (skipPlainGrill, no AWC /
- * dual-source steal) so structure + yellow/bg/icons match org without shell.
- * Vertical N×1 / plain dumps still use the full Format reshape pipeline.
+ * 1.Text passes `{ formatShell: false }` so preview / formatGridReady /
+ * #pasteAreaFormat are not touched, and `{ skipPlainGrill: true }` so HTML
+ * structure/styles are not rejected for dual-source. Same orchestration as
+ * 2.Format (normalize → HTML fill → dual-source fallback) — required for
+ * Material rows like REDIRECT2U that need the full Format pipeline.
  */
 export function tryFillGridWithFormatClipboard(html, text, options = {}) {
   if (options.formatShell === false) {
-    const normalized = resolveNormalizedHtml(html) || html || "";
-    const hasWideHtmlTable =
-      Boolean(normalized) &&
-      /<table\b/i.test(normalized) &&
-      !formatHtmlLooksLikeVerticalNx1(normalized);
-    if (hasWideHtmlTable) {
-      return processFormatTableHtml(normalized, {
-        ...options,
-        formatShell: false,
-        skipPlainGrill: true,
-        plainMatrix: null,
-      });
-    }
     return tryProcessFormatClipboard(html, text, {
       ...options,
       formatShell: false,
