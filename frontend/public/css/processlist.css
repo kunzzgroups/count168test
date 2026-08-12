@@ -2234,7 +2234,7 @@ body.ec-auth-shell .process-page #addBankModal .bank-remark-actions .bank-note-o
 #addBankModal .bank-form .custom-select-button,
 #addBankModal .bank-form .account-select-with-buttons .custom-select-button {
     color: var(--bank-form-field-text) !important;
-    font-weight: 700 !important;
+    /*font-weight: 700 !important;*/
 }
 
 /* 可填控件：压过 global-13inch 的 11px，与下拉同字号/高度，观感统一 */
