@@ -1860,6 +1860,53 @@ function userlist_company_ids_in_group_scope(array $accessibleCompanies, string 
     return array_values(array_unique($out));
 }
 
+/**
+ * Group-only Acc/Process grants live on the group-entity company row.
+ * Non-null subsidiary rows (esp. stale []) shadow entity null/grants in
+ * permissions_load_*_decoded (fallback only when company column is SQL NULL).
+ * Clear sibling columns after a group-scoped write so load falls through.
+ */
+function userlist_clear_group_permission_shadows(
+    PDO $pdo,
+    int $userId,
+    int $keepCompanyId,
+    string $groupScope,
+    bool $clearAccount,
+    bool $clearProcess
+): void {
+    if ($userId <= 0 || (!$clearAccount && !$clearProcess)) {
+        return;
+    }
+    $g = userlist_normalize_group_id($groupScope);
+    if ($g === null) {
+        return;
+    }
+    $ids = userlist_company_ids_in_group_scope(userlist_fetch_accessible_companies($pdo), $g);
+    $entityId = userlist_resolve_group_tenant_entity_company_id($pdo, $g);
+    if ($entityId > 0) {
+        $ids[] = $entityId;
+    }
+    $ids = array_values(array_unique(array_filter(
+        array_map('intval', $ids),
+        static fn (int $id): bool => $id > 0 && $id !== $keepCompanyId
+    )));
+    if ($ids === []) {
+        return;
+    }
+    $sets = [];
+    if ($clearAccount) {
+        $sets[] = 'account_permissions = NULL';
+    }
+    if ($clearProcess) {
+        $sets[] = 'process_permissions = NULL';
+    }
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    $sql = 'UPDATE user_company_permissions SET ' . implode(', ', $sets)
+        . ', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND company_id IN (' . $ph . ')';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(array_merge([$userId], $ids));
+}
+
 function userlist_resolve_filter_company_ids(PDO $pdo, array $input): array
 {
     global $current_company_id;
@@ -3238,6 +3285,22 @@ try {
                         $accountPermsUpdated ? 1 : 0,
                         $processPermsUpdated ? 1 : 0,
                     ]);
+                    // Group-only writes target entity; clear stale subsidiary [] that would shadow see-all/grants.
+                    if (
+                        $groupTenantWrite
+                        && $groupScope !== null
+                        && (int) $scope_company_id > 0
+                        && ($accountPermsUpdated || $processPermsUpdated)
+                    ) {
+                        userlist_clear_group_permission_shadows(
+                            $pdo,
+                            (int) $input['id'],
+                            (int) $scope_company_id,
+                            $groupScope,
+                            !empty($accountPermsUpdated),
+                            !empty($processPermsUpdated)
+                        );
+                    }
                 }
                 
                 // 提交事务
@@ -3766,9 +3829,15 @@ try {
                     $user['group_codes'] = userlist_fetch_user_group_codes($pdo, (int) $user['id']);
                     $user['company_ids'] = userlist_fetch_user_subsidiary_company_ids($pdo, (int) $user['id']);
                     
-                    // 从 user_company_permissions 表获取当前公司下的权限（如果存在）
+                    // Acc/Process: group_only edits are stored on the group-entity company.
+                    // Prefer that id over session company_id (subsidiary [] would otherwise shadow).
                     $permCompanyId = (int) $current_company_id;
-                    if ($permCompanyId <= 0 && $groupScopeForGet !== null) {
+                    if ($groupScopeForGet !== null && userlist_is_group_only_list_request($input)) {
+                        $entityPermId = userlist_resolve_group_tenant_entity_company_id($pdo, $groupScopeForGet);
+                        if ($entityPermId > 0) {
+                            $permCompanyId = $entityPermId;
+                        }
+                    } elseif ($permCompanyId <= 0 && $groupScopeForGet !== null) {
                         $permCompanyId = userlist_resolve_group_tenant_entity_company_id($pdo, $groupScopeForGet);
                     }
                     if ($permCompanyId > 0) {
