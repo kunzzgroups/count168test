@@ -279,13 +279,8 @@ function filterProcessesByPermissions($pdo, $baseQuery, $params = [], $permissio
         return [$baseQuery, $params];
     }
 
-    // 如果 process_permissions 有值，只显示权限列表中的流程
-    $processIds = array_column($userProcessPermissions, 'id');
-    // 确保所有 ID 都是整数类型
-    $processIds = array_map('intval', $processIds);
-    $processIds = array_filter($processIds, function($id) { return $id > 0; }); // 过滤无效的 ID
-    $processIds = array_unique($processIds); // 去重
-    $processIds = array_values($processIds); // 重新索引数组
+    // 可见 = 授权列表且未 self_hidden（自己关掉的仍留在授权里，可自行勾回）
+    $processIds = permissions_extract_account_ids($userProcessPermissions, false);
     
     if (!empty($processIds)) {
         $placeholders = str_repeat('?,', count($processIds) - 1) . '?';

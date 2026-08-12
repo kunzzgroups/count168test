@@ -131,9 +131,9 @@ export function getUserEditFieldLocks(row, currentUserId, currentUserRole) {
   const isSame = !isSelf && curLevel === editLevel;
   const isLower = !isSelf && curLevel > editLevel;
   const canPickCompany = currentUserRole === "admin" || currentUserRole === "owner";
-  // Acc：自己可关不想看的；同级/上级锁定。Process：自己也锁（本轮只开 Acc）
+  // Acc / Process：自己可关不想看的；同级/上级锁定
   const accountLocked = isSame || isLower;
-  const processLocked = isSelf || isSame || isLower;
+  const processLocked = isSame || isLower;
   return {
     name: isSame || isLower,
     email: isSame || isLower,
@@ -170,6 +170,25 @@ export function mergeModalAccountsWithGranted(accList, grantedRows) {
       id,
       account_id: typeof row === "object" && row ? String(row.account_id || "") : "",
       name: typeof row === "object" && row ? String(row.name || "").trim() : "",
+    });
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Ensure still-granted but self_hidden processes appear in the modal for re-check.
+ * @param {Array<{id?: number, process_id?: string, description?: string}>} procList
+ * @param {Array<{id?: number, process_id?: string, description?: string}|number>} grantedRows
+ */
+export function mergeModalProcessesWithGranted(procList, grantedRows) {
+  const byId = new Map((Array.isArray(procList) ? procList : []).map((p) => [Number(p.id), p]));
+  for (const row of Array.isArray(grantedRows) ? grantedRows : []) {
+    const id = Number(row?.id ?? row);
+    if (!(id > 0) || byId.has(id)) continue;
+    byId.set(id, {
+      id,
+      process_id: typeof row === "object" && row ? String(row.process_id || "") : "",
+      description: typeof row === "object" && row ? String(row.description || "").trim() : "",
     });
   }
   return [...byId.values()];

@@ -252,7 +252,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
     variant === "account"
       ? "user-modal-col user-modal-col--account account-process-col"
       : "user-modal-col user-modal-col--process account-process-col";
-  const selfShrinkOnly = variant === "account" && shrinkOnlyHeldIds instanceof Set;
+  const selfShrinkOnly = shrinkOnlyHeldIds instanceof Set;
   const scrollRef = useRef(null);
   const [cols, setCols] = useState(4);
   const [rowEstimate, setRowEstimate] = useState(43);
@@ -363,10 +363,6 @@ const SelectionColumn = React.memo(function SelectionColumn({
           disabled={locked}
           onClick={() =>
             runBulkSelection(variant, () => {
-              if (variant !== "account") {
-                setSelectedIds(new Set(idList));
-                return;
-              }
               if (selfShrinkOnly) {
                 setSelectedIds((prev) =>
                   nextSelfAccountSelection(prev, idList, shrinkOnlyHeldIds, "select"),
@@ -385,10 +381,6 @@ const SelectionColumn = React.memo(function SelectionColumn({
           disabled={locked}
           onClick={() =>
             runBulkSelection(variant, () => {
-              if (variant !== "account") {
-                setSelectedIds(new Set());
-                return;
-              }
               if (selfShrinkOnly) {
                 setSelectedIds((prev) =>
                   nextSelfAccountSelection(prev, idList, shrinkOnlyHeldIds, "clear"),
@@ -436,6 +428,8 @@ function UserModal({
   setSelectedAccountIds,
   /** Self-edit Acc held baseline; null = not self shrink-only mode */
   selfAccHeldIds = null,
+  /** Self-edit Process held baseline; null = not self shrink-only mode */
+  selfProcessHeldIds = null,
   modalProcesses,
   selectedProcessIds,
   setSelectedProcessIds,
@@ -889,6 +883,7 @@ function UserModal({
                 setSelectedIds={setSelectedProcessIds}
                 idList={processIdList}
                 locked={processLocked}
+                shrinkOnlyHeldIds={selfProcessHeldIds}
                 bulkSelectionSettling={bulkSettlingVariant === "process"}
                 runBulkSelection={runBulkSelection}
                 listActive={open}

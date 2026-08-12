@@ -88,6 +88,7 @@ import {
   buildSelfAccHeldIds,
   isAccountPermSelfHidden,
   mergeModalAccountsWithGranted,
+  mergeModalProcessesWithGranted,
   shrinkAccountPermissionsForSelf,
   isCompanyInUserListPicker,
   readUserListGroupFilterOptOut,
@@ -354,6 +355,10 @@ export default function UserListPage() {
   const [selfAccHeldIds, setSelfAccHeldIds] = useState(null);
   const selfAccHeldIdsRef = useRef(null);
   selfAccHeldIdsRef.current = selfAccHeldIds;
+  /** Self-edit Process held baseline */
+  const [selfProcessHeldIds, setSelfProcessHeldIds] = useState(null);
+  const selfProcessHeldIdsRef = useRef(null);
+  selfProcessHeldIdsRef.current = selfProcessHeldIds;
   const [roleSelectDisabled, setRoleSelectDisabled] = useState(false);
   const [loginDisabled, setLoginDisabled] = useState(false);
   const [fieldLocks, setFieldLocks] = useState({
@@ -2017,11 +2022,35 @@ export default function UserListPage() {
     } else {
       setSelectedAccountIds(new Set(accList.map((a) => Number(a.id))));
     }
-    setSelectedProcessIds(pp === null ? new Set(procList.map(p => Number(p.id))) : new Set((Array.isArray(pp) ? pp : []).map(x => Number(x.id || x))));
+    const procUnset = pp === null;
+    const procRows = procUnset ? null : Array.isArray(pp) ? pp : [];
+    let modalProcList = procList;
+    if (!procUnset && Array.isArray(procRows)) {
+      modalProcList = mergeModalProcessesWithGranted(procList, procRows);
+      if (modalProcList.length !== procList.length) {
+        setModalProcesses(modalProcList);
+      }
+      if (isSelfEdit) {
+        setSelectedProcessIds(
+          new Set(
+            procRows
+              .filter((x) => !isAccountPermSelfHidden(x))
+              .map((x) => Number(x.id || x))
+              .filter((id) => id > 0),
+          ),
+        );
+      } else {
+        setSelectedProcessIds(new Set(procRows.map((x) => Number(x.id || x)).filter((id) => id > 0)));
+      }
+    } else {
+      setSelectedProcessIds(new Set(procList.map((p) => Number(p.id))));
+    }
     if (isSelfEdit) {
       setSelfAccHeldIds(buildSelfAccHeldIds(accRows, accUnset, modalAccList.map((a) => a.id)));
+      setSelfProcessHeldIds(buildSelfAccHeldIds(procRows, procUnset, modalProcList.map((p) => p.id)));
     } else {
       setSelfAccHeldIds(null);
+      setSelfProcessHeldIds(null);
     }
     if (currentUserRole === "admin" || currentUserRole === "owner") {
       if (useDualTenantUserPicker) {
@@ -2068,6 +2097,7 @@ export default function UserListPage() {
       setSelectedCompanyIds([]);
       setSelectedGroupIds([]);
       setSelfAccHeldIds(null);
+      setSelfProcessHeldIds(null);
     }
   }, [
     scopeCompanyId,
@@ -2234,6 +2264,7 @@ export default function UserListPage() {
     setModalOpen(false);
     setEditingRow(null);
     setSelfAccHeldIds(null);
+    setSelfProcessHeldIds(null);
   }, []);
 
   const toggleUserStatus = async (row) => {
@@ -2440,7 +2471,7 @@ export default function UserListPage() {
       if (!(caps.isSelf || caps.isHigherLevel || caps.isSameLevel)) {
         payload.permissions = Array.from(permSelected);
       }
-      // Acc：上级改下级，或自己关掉不想看的（仅可减少）。Process：仅上级改下级。
+      // Acc / Process：上级改下级，或自己关掉不想看的（self_hidden，可再开回）
       const accountLocked = !!(fieldLocks.account ?? fieldLocks.accountProcess);
       const processLocked = !!(fieldLocks.process ?? fieldLocks.accountProcess);
       if (!accountLocked) {
@@ -2475,8 +2506,6 @@ export default function UserListPage() {
             return { id: Number(row.id), account_id };
           });
         if (caps.isSelf) {
-          // Held baseline from open (DB whitelist or effective modal ids). Never
-          // "allow any submitted" — that re-granted superior-closed Accs via Select All.
           const heldIds = selfAccHeldIdsRef.current;
           const heldPerms =
             heldIds instanceof Set
@@ -2496,7 +2525,56 @@ export default function UserListPage() {
         }
       }
       if (!processLocked && shouldSendProcessPermissions) {
-        payload.process_permissions = processPerms;
+        const detail = editUserDetailCacheRef.current.get(String(form.id || ""));
+        let existingPp = null;
+        let existingProcUnset = true;
+        try {
+          if (detail && detail.process_permissions != null) {
+            existingProcUnset = false;
+            existingPp =
+              typeof detail.process_permissions === "string"
+                ? JSON.parse(detail.process_permissions)
+                : detail.process_permissions;
+          }
+        } catch {
+          existingPp = [];
+          existingProcUnset = false;
+        }
+        const editorSeesAllProcesses =
+          currentUserRole === "owner" ||
+          currentUserRole === "partnership" ||
+          currentUserRole === "audit";
+        const grantableProcessIds = editorSeesAllProcesses ? null : modalProcesses.map((p) => Number(p.id));
+        const enrichProcessRows = (mergedRows) =>
+          mergedRows.map((row) => {
+            const fromModal = modalProcesses.find((x) => Number(x.id) === Number(row.id));
+            let process_id = fromModal?.process_id || "";
+            let description = fromModal?.description || "";
+            if ((!process_id || !description) && Array.isArray(existingPp)) {
+              const prev = existingPp.find((x) => Number(x?.id ?? x) === Number(row.id));
+              if (!process_id) process_id = prev?.process_id || "";
+              if (!description) description = prev?.description || "";
+            }
+            return { id: Number(row.id), process_id, description };
+          });
+        if (caps.isSelf) {
+          const heldIds = selfProcessHeldIdsRef.current;
+          const heldPerms =
+            heldIds instanceof Set
+              ? [...heldIds].map((id) => ({ id: Number(id) }))
+              : existingProcUnset
+                ? processPerms
+                : existingPp;
+          payload.process_permissions = enrichProcessRows(
+            shrinkAccountPermissionsForSelf(heldPerms, processPerms),
+          );
+        } else if (existingProcUnset) {
+          payload.process_permissions = processPerms;
+        } else {
+          payload.process_permissions = enrichProcessRows(
+            mergeAccountPermissionsForEditor(existingPp, processPerms, grantableProcessIds),
+          );
+        }
       }
       if ((currentUserRole === "admin" || currentUserRole === "owner") && !fieldLocks.company && !useDualTenantUserPicker) {
         payload.company_ids = shouldForceGroupScope ? saveCompanyIds : (groupOnlyUserList ? saveCompanyIds : selectedCompanyIds);
@@ -2880,7 +2958,7 @@ export default function UserListPage() {
             document.body
           )
         : null}
-      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} selfAccHeldIds={selfAccHeldIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
+      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} selfAccHeldIds={selfAccHeldIds} selfProcessHeldIds={selfProcessHeldIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
       <UserConfirmModal open={confirmOpen} message={confirmMessage} onConfirm={confirmDelete} onClose={() => setConfirmOpen(false)} confirmDisabled={userMutationsBlocked} t={t} />
     </>
   );
