@@ -3506,8 +3506,8 @@ body.process-page .custom-select-dropdown.custom-select-dropdown-portal .custom-
 
 /* modal-content 覆盖全局 88% 宽度：固定宽度填满弹窗，随行数增加高度自然增长 */
 #profitSharingModal .modal-content {
-    width: min(640px, 92vw) !important;
-    max-width: min(640px, 92vw) !important;
+    width: min(520px, 85vw) !important;
+    max-width: min(520px, 85vw) !important;
     max-height: none !important;
     height: auto !important;
     overflow: visible !important;
@@ -3638,9 +3638,9 @@ body.process-page .custom-select-dropdown.custom-select-dropdown-portal .custom-
 /* Profit Sharing 弹窗：Account 列略宽；Amount+删除铺满右侧 */
 #profitSharingModal #profitSharingRowsContainer .profit-sharing-row {
     display: grid;
-    grid-template-columns: minmax(0, 1.2fr) 15px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 0.8fr) 8px minmax(0, 0.6fr);
     grid-template-rows: auto auto;
-    column-gap: 8px;
+    column-gap: 0px;
     row-gap: 6px;
     align-items: center;
     margin-bottom: 15px;
