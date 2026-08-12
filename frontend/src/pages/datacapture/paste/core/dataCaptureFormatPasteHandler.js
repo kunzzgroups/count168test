@@ -20,6 +20,7 @@ import {
   plainTextLooksLikeAlignedTsv,
   sanitizePasteMatrix,
 } from "./dataCapturePasteMatrixSanitize.js";
+import { ensureTotalRowCodeColumnGap } from "./dataCaptureTotalRowAlign.js";
 import {
   applyDataMatrixToGrid,
   ensureGridFits,
@@ -295,6 +296,8 @@ export function processFormatDualSource(
     matrix.map((row) => (row || []).map((value) => ({ value: String(value ?? "") })));
   patches = splitStackedSubtotalGrandTotalRows(patches);
   patches = sanitizePasteMatrix(expandLabelColonMoneyCells(patches));
+  // Plain TSV may omit the blank under the code column on TOTAL BALANCE rows.
+  patches = ensureTotalRowCodeColumnGap(patches);
 
   if (formatBodyMatrixLooksCollapsed(patches, null)) {
     console.log("Format: Dual-source reshape still looks collapsed — abort");
@@ -396,11 +399,15 @@ function tryProcessFormatClipboard(html, text, options = {}) {
   // vertical dump with sparse tabs (`87\\tAgent\\t`) — never treat as aligned TSV.
   const directIsAlignedTsv = plainTextLooksLikeAlignedTsv(text);
   const directMatrix = directIsAlignedTsv && text?.trim() ? parsePlainTextMatrix(text) : null;
+  // 1.Text reuses this pipeline with formatShell:false — prefer HTML cell structure
+  // (TOTAL BALANCE gap + per-cell colors) over plain-TSV grill → dual-source.
+  const skipPlainGrill = options?.formatShell === false || options?.skipPlainGrill === true;
   const htmlFillOpts = {
     ...options,
     plainMatrix: matrixLooksMultiColumn(directMatrix) ? directMatrix : null,
+    skipPlainGrill,
   };
-  const dualOpts = { ...options, plainMatrix };
+  const dualOpts = { ...options, plainMatrix, skipPlainGrill };
 
   // agent_period / N×1 dumps: plain reshape FIRST (avoids Fig1 col1 stack).
   // Wide statement HTML (OB / 16-col) stays on HTML path below.
@@ -462,8 +469,21 @@ function tryProcessFormatClipboard(html, text, options = {}) {
  * Shared Format clipboard fill (dual-source / HTML table / TSV).
  * 1.Text should pass `{ formatShell: false }` so preview / formatGridReady /
  * #pasteAreaFormat are not touched. 2.Format callers keep the default shell.
+ *
+ * Text + wide Excel/HTML tables: return false so the org 1.Text HTML path keeps
+ * empty columns, yellow cell backgrounds, and action icons. Format's AWC-first /
+ * dual-source / class-stripping fill regresses those. Format reshape is only
+ * borrowed for vertical N×1 / plain dumps.
  */
 export function tryFillGridWithFormatClipboard(html, text, options = {}) {
+  if (options.formatShell === false) {
+    const normalized = resolveNormalizedHtml(html) || html || "";
+    const hasWideHtmlTable =
+      Boolean(normalized) &&
+      /<table\b/i.test(normalized) &&
+      !formatHtmlLooksLikeVerticalNx1(normalized);
+    if (hasWideHtmlTable) return false;
+  }
   return tryProcessFormatClipboard(html, text, options);
 }
 
