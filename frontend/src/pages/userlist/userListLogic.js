@@ -253,6 +253,26 @@ export function nextSelfAccountSelection(prevSelected, visibleIds, heldIds, mode
 }
 
 /**
+ * Owner (sees-all) Select All on the modal → send null (DB unset = see-all).
+ * Avoids materializing huge grant JSON and matches product intent.
+ * Self / restricted editors always send compact id rows.
+ * @param {{ isSelf: boolean, editorSeesAll: boolean, selectedIds: Set<number>|Iterable<number>, modalRows: Array<{id?: number}> }} args
+ * @param {Array<{id: number, self_hidden?: boolean}>} compactRows
+ * @returns {Array<{id: number, self_hidden?: boolean}>|null}
+ */
+export function resolveSeeAllOrCompactPermissions({ isSelf, editorSeesAll, selectedIds, modalRows }, compactRows) {
+  if (isSelf || !editorSeesAll) return compactRows;
+  const selected = selectedIds instanceof Set ? selectedIds : new Set([...selectedIds].map(Number));
+  const modalIds = (Array.isArray(modalRows) ? modalRows : [])
+    .map((r) => Number(r?.id ?? r))
+    .filter((id) => id > 0);
+  if (modalIds.length > 0 && modalIds.every((id) => selected.has(id))) {
+    return null;
+  }
+  return compactRows;
+}
+
+/**
  * Bulk select/clear in User Modal Acc column: only touch editor-visible ids,
  * keep selected ids outside that set (accounts the editor cannot see/grant).
  * @param {Iterable<number|string>} prevSelected

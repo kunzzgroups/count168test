@@ -537,9 +537,9 @@ function UserModal({
   const runBulkSelection = useCallback((variant, update) => {
     if (bulkSelectionTimerRef.current) clearTimeout(bulkSelectionTimerRef.current);
     setBulkSettlingVariant(variant);
-    startTransition(() => {
-      update();
-    });
+    // Sync update so Save immediately after Select All reads the new selection
+    // (startTransition previously deferred Set state and could persist []).
+    update();
     bulkSelectionTimerRef.current = setTimeout(() => setBulkSettlingVariant(null), 120);
   }, []);
 

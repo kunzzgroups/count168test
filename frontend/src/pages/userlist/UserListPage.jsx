@@ -90,6 +90,7 @@ import {
   mergeModalAccountsWithGranted,
   mergeModalProcessesWithGranted,
   shrinkAccountPermissionsForSelf,
+  resolveSeeAllOrCompactPermissions,
   isCompanyInUserListPicker,
   readUserListGroupFilterOptOut,
   resolveUserListFetchScopeKey,
@@ -2403,12 +2404,12 @@ export default function UserListPage() {
     }
     const emailCheck = validateEmail(form.email);
     if (!emailCheck.ok) { notify(t("invalidEmailFormat"), "danger"); return; }
-    const accountPerms = Array.from(selectedAccountIds).map(id => { const a = modalAccounts.find(x => Number(x.id) === Number(id)); return { id: Number(id), account_id: a?.account_id || "" }; });
+    const accountPerms = Array.from(selectedAccountIds).map((id) => ({ id: Number(id) }));
     // Group-only still has a scope company (group entity/anchor) for Process rows — allow save.
     const shouldSendProcessPermissions = useDualTenantUserPicker
       ? selectedCompanyIds.length > 0
       : (!groupOnlyUserList || (mutationScopeCompanyId != null && Number(mutationScopeCompanyId) > 0));
-    const processPerms = Array.from(selectedProcessIds).map(id => { const p = modalProcesses.find(x => Number(x.id) === Number(id)); return { id: Number(id), process_id: p?.process_id || "", description: p?.description || "" }; });
+    const processPerms = Array.from(selectedProcessIds).map((id) => ({ id: Number(id) }));
     let payload = { action: isEditMode ? "update" : "create", id: form.id || undefined, login_id: form.login_id.trim().toUpperCase(), name: form.name.trim().toUpperCase(), email: emailCheck.normalized, role: form.role, status: form.status };
     let saveGroupId = null;
     let saveCompanyIds = selectedCompanyIds;
@@ -2470,8 +2471,29 @@ export default function UserListPage() {
       payload.role = "owner";
     } else if (!isEditMode) {
       payload.permissions = getFinalPermissionsForCreation(form.role, Array.from(permSelected), currentUserRole);
-      payload.account_permissions = accountPerms;
-      if (shouldSendProcessPermissions) payload.process_permissions = processPerms;
+      // Owner Select All → null (see-all); otherwise compact id rows.
+      const editorSeesAllAccountsCreate = currentUserRole === "owner";
+      const editorSeesAllProcessesCreate = currentUserRole === "owner";
+      payload.account_permissions = resolveSeeAllOrCompactPermissions(
+        {
+          isSelf: false,
+          editorSeesAll: editorSeesAllAccountsCreate,
+          selectedIds: selectedAccountIds,
+          modalRows: modalAccounts,
+        },
+        accountPerms,
+      );
+      if (shouldSendProcessPermissions) {
+        payload.process_permissions = resolveSeeAllOrCompactPermissions(
+          {
+            isSelf: false,
+            editorSeesAll: editorSeesAllProcessesCreate,
+            selectedIds: selectedProcessIds,
+            modalRows: modalProcesses,
+          },
+          processPerms,
+        );
+      }
       if ((currentUserRole === "admin" || currentUserRole === "owner") && !useDualTenantUserPicker) {
         payload.company_ids = saveCompanyIds;
       }
@@ -2502,16 +2524,13 @@ export default function UserListPage() {
         // Only owner bypasses Acc whitelist when merging grants; partnership/audit grant within visible set.
         const editorSeesAllAccounts = currentUserRole === "owner";
         const grantableIds = editorSeesAllAccounts ? null : modalAccounts.map((a) => Number(a.id));
-        const enrichRows = (mergedRows) =>
+        const compactAccRows = (mergedRows) =>
           mergedRows.map((row) => {
-            const fromModal = modalAccounts.find((x) => Number(x.id) === Number(row.id));
-            let account_id = fromModal?.account_id || "";
-            if (!account_id && Array.isArray(existingAp)) {
-              const prev = existingAp.find((x) => Number(x?.id ?? x) === Number(row.id));
-              account_id = prev?.account_id || "";
-            }
-            return { id: Number(row.id), account_id };
+            const out = { id: Number(row.id) };
+            if (row?.self_hidden) out.self_hidden = true;
+            return out;
           });
+        let nextAccountPerms;
         if (caps.isSelf) {
           const heldIds = selfAccHeldIdsRef.current;
           const heldPerms =
@@ -2520,16 +2539,25 @@ export default function UserListPage() {
               : existingUnset
                 ? accountPerms
                 : existingAp;
-          payload.account_permissions = enrichRows(
+          nextAccountPerms = compactAccRows(
             shrinkAccountPermissionsForSelf(heldPerms, accountPerms),
           );
         } else if (existingUnset) {
-          payload.account_permissions = accountPerms;
+          nextAccountPerms = accountPerms;
         } else {
-          payload.account_permissions = enrichRows(
+          nextAccountPerms = compactAccRows(
             mergeAccountPermissionsForEditor(existingAp, accountPerms, grantableIds),
           );
         }
+        payload.account_permissions = resolveSeeAllOrCompactPermissions(
+          {
+            isSelf: !!caps.isSelf,
+            editorSeesAll: editorSeesAllAccounts,
+            selectedIds: selectedAccountIds,
+            modalRows: modalAccounts,
+          },
+          nextAccountPerms,
+        );
       }
       if (!processLocked && shouldSendProcessPermissions) {
         const detail = editUserDetailCacheRef.current.get(String(form.id || ""));
@@ -2550,18 +2578,13 @@ export default function UserListPage() {
         // Only owner bypasses Process whitelist when merging grants; partnership/audit grant within visible set.
         const editorSeesAllProcesses = currentUserRole === "owner";
         const grantableProcessIds = editorSeesAllProcesses ? null : modalProcesses.map((p) => Number(p.id));
-        const enrichProcessRows = (mergedRows) =>
+        const compactProcRows = (mergedRows) =>
           mergedRows.map((row) => {
-            const fromModal = modalProcesses.find((x) => Number(x.id) === Number(row.id));
-            let process_id = fromModal?.process_id || "";
-            let description = fromModal?.description || "";
-            if ((!process_id || !description) && Array.isArray(existingPp)) {
-              const prev = existingPp.find((x) => Number(x?.id ?? x) === Number(row.id));
-              if (!process_id) process_id = prev?.process_id || "";
-              if (!description) description = prev?.description || "";
-            }
-            return { id: Number(row.id), process_id, description };
+            const out = { id: Number(row.id) };
+            if (row?.self_hidden) out.self_hidden = true;
+            return out;
           });
+        let nextProcessPerms;
         if (caps.isSelf) {
           const heldIds = selfProcessHeldIdsRef.current;
           const heldPerms =
@@ -2570,16 +2593,25 @@ export default function UserListPage() {
               : existingProcUnset
                 ? processPerms
                 : existingPp;
-          payload.process_permissions = enrichProcessRows(
+          nextProcessPerms = compactProcRows(
             shrinkAccountPermissionsForSelf(heldPerms, processPerms),
           );
         } else if (existingProcUnset) {
-          payload.process_permissions = processPerms;
+          nextProcessPerms = processPerms;
         } else {
-          payload.process_permissions = enrichProcessRows(
+          nextProcessPerms = compactProcRows(
             mergeAccountPermissionsForEditor(existingPp, processPerms, grantableProcessIds),
           );
         }
+        payload.process_permissions = resolveSeeAllOrCompactPermissions(
+          {
+            isSelf: !!caps.isSelf,
+            editorSeesAll: editorSeesAllProcesses,
+            selectedIds: selectedProcessIds,
+            modalRows: modalProcesses,
+          },
+          nextProcessPerms,
+        );
       }
       if ((currentUserRole === "admin" || currentUserRole === "owner") && !fieldLocks.company && !useDualTenantUserPicker) {
         payload.company_ids = shouldForceGroupScope ? saveCompanyIds : (groupOnlyUserList ? saveCompanyIds : selectedCompanyIds);
