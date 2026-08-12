@@ -1861,6 +1861,32 @@ function userlist_company_ids_in_group_scope(array $accessibleCompanies, string 
 }
 
 /**
+ * Clear Acc/Process whitelist columns for every company row of a user.
+ * Used for Owner see-all (SQL NULL) so subsidiary leftovers cannot shadow entity grants.
+ */
+function userlist_clear_all_user_permission_columns(
+    PDO $pdo,
+    int $userId,
+    bool $clearAccount,
+    bool $clearProcess
+): void {
+    if ($userId <= 0 || (!$clearAccount && !$clearProcess)) {
+        return;
+    }
+    $sets = [];
+    if ($clearAccount) {
+        $sets[] = 'account_permissions = NULL';
+    }
+    if ($clearProcess) {
+        $sets[] = 'process_permissions = NULL';
+    }
+    $sql = 'UPDATE user_company_permissions SET ' . implode(', ', $sets)
+        . ', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$userId]);
+}
+
+/**
  * Group-only Acc/Process grants live on the group-entity company row.
  * Non-null subsidiary rows (esp. stale []) shadow entity null/grants in
  * permissions_load_*_decoded (fallback only when company column is SQL NULL).
@@ -3178,12 +3204,14 @@ try {
                     $processPerms = null;
                     
                     if (array_key_exists('account_permissions', $input)) {
-                        if ($input['account_permissions'] === null) {
-                            // Superior Select All → restore unset see-all. Self cannot escalate via null.
-                            if (!$isSelfAccessEdit) {
-                                $accountPerms = null;
-                                $accountPermsUpdated = true;
-                            }
+                        $wantAccountSeeAll = !$isSelfAccessEdit && (
+                            $input['account_permissions'] === null
+                            || !empty($input['account_permissions_see_all'])
+                        );
+                        if ($wantAccountSeeAll) {
+                            // Owner Select All → unset see-all on every company row for this user.
+                            $accountPerms = null;
+                            $accountPermsUpdated = true;
                         } else {
                             $existingDecoded = null;
                             $existingIsNull = true;
@@ -3224,11 +3252,13 @@ try {
                     }
                     
                     if (array_key_exists('process_permissions', $input)) {
-                        if ($input['process_permissions'] === null) {
-                            if (!$isSelfAccessEdit) {
-                                $processPerms = null;
-                                $processPermsUpdated = true;
-                            }
+                        $wantProcessSeeAll = !$isSelfAccessEdit && (
+                            $input['process_permissions'] === null
+                            || !empty($input['process_permissions_see_all'])
+                        );
+                        if ($wantProcessSeeAll) {
+                            $processPerms = null;
+                            $processPermsUpdated = true;
                         } else {
                             $existingProcDecoded = null;
                             $existingProcIsNull = true;
@@ -3269,29 +3299,51 @@ try {
                     }
                     
                     // Flag-driven UPDATE so SQL NULL (see-all) can be written; old IF(? IS NOT NULL) blocked it.
-                    $stmt = $pdo->prepare("
-                        INSERT INTO user_company_permissions (user_id, company_id, account_permissions, process_permissions) 
-                        VALUES (?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE 
-                            account_permissions = IF(? = 1, VALUES(account_permissions), account_permissions),
-                            process_permissions = IF(? = 1, VALUES(process_permissions), process_permissions),
-                            updated_at = CURRENT_TIMESTAMP
-                    ");
-                    $stmt->execute([
-                        $input['id'], 
-                        $scope_company_id, 
-                        $accountPerms, 
-                        $processPerms,
-                        $accountPermsUpdated ? 1 : 0,
-                        $processPermsUpdated ? 1 : 0,
-                    ]);
-                    // Group-only writes target entity; clear stale subsidiary [] that would shadow see-all/grants.
-                    if (
+                    if ((int) $scope_company_id > 0) {
+                        $stmt = $pdo->prepare("
+                            INSERT INTO user_company_permissions (user_id, company_id, account_permissions, process_permissions) 
+                            VALUES (?, ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE 
+                                account_permissions = IF(? = 1, VALUES(account_permissions), account_permissions),
+                                process_permissions = IF(? = 1, VALUES(process_permissions), process_permissions),
+                                updated_at = CURRENT_TIMESTAMP
+                        ");
+                        $stmt->execute([
+                            $input['id'], 
+                            $scope_company_id, 
+                            $accountPerms, 
+                            $processPerms,
+                            $accountPermsUpdated ? 1 : 0,
+                            $processPermsUpdated ? 1 : 0,
+                        ]);
+                    }
+                    // See-all: wipe every company row so stale domain whitelists cannot shadow.
+                    $accountSeeAllWritten = $accountPermsUpdated && $accountPerms === null
+                        && array_key_exists('account_permissions', $input)
+                        && (
+                            $input['account_permissions'] === null
+                            || !empty($input['account_permissions_see_all'])
+                        );
+                    $processSeeAllWritten = $processPermsUpdated && $processPerms === null
+                        && array_key_exists('process_permissions', $input)
+                        && (
+                            $input['process_permissions'] === null
+                            || !empty($input['process_permissions_see_all'])
+                        );
+                    if ($accountSeeAllWritten || $processSeeAllWritten) {
+                        userlist_clear_all_user_permission_columns(
+                            $pdo,
+                            (int) $input['id'],
+                            $accountSeeAllWritten,
+                            $processSeeAllWritten
+                        );
+                    } elseif (
                         $groupTenantWrite
                         && $groupScope !== null
                         && (int) $scope_company_id > 0
                         && ($accountPermsUpdated || $processPermsUpdated)
                     ) {
+                        // Partial grant/revoke on group entity: clear subsidiary shadows only.
                         userlist_clear_group_permission_shadows(
                             $pdo,
                             (int) $input['id'],

@@ -352,6 +352,28 @@ export default function UserListPage() {
   const [editReadyIds, setEditReadyIds] = useState(() => new Set());
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [selectedProcessIds, setSelectedProcessIds] = useState(new Set());
+  const selectedAccountIdsRef = useRef(selectedAccountIds);
+  const selectedProcessIdsRef = useRef(selectedProcessIds);
+  const modalAccountsRef = useRef(modalAccounts);
+  const modalProcessesRef = useRef(modalProcesses);
+  selectedAccountIdsRef.current = selectedAccountIds;
+  selectedProcessIdsRef.current = selectedProcessIds;
+  modalAccountsRef.current = modalAccounts;
+  modalProcessesRef.current = modalProcesses;
+  const setSelectedAccountIdsSynced = useCallback((updater) => {
+    setSelectedAccountIds((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      selectedAccountIdsRef.current = next instanceof Set ? next : new Set(next);
+      return selectedAccountIdsRef.current;
+    });
+  }, []);
+  const setSelectedProcessIdsSynced = useCallback((updater) => {
+    setSelectedProcessIds((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      selectedProcessIdsRef.current = next instanceof Set ? next : new Set(next);
+      return selectedProcessIdsRef.current;
+    });
+  }, []);
   /** Self-edit Acc held baseline (ids that may be re-checked). null = not self shrink mode */
   const [selfAccHeldIds, setSelfAccHeldIds] = useState(null);
   const selfAccHeldIdsRef = useRef(null);
@@ -2404,13 +2426,26 @@ export default function UserListPage() {
     }
     const emailCheck = validateEmail(form.email);
     if (!emailCheck.ok) { notify(t("invalidEmailFormat"), "danger"); return; }
-    const accountPerms = Array.from(selectedAccountIds).map((id) => ({ id: Number(id) }));
+    const selectedAccountIdsNow = selectedAccountIdsRef.current instanceof Set
+      ? selectedAccountIdsRef.current
+      : new Set(selectedAccountIds);
+    const selectedProcessIdsNow = selectedProcessIdsRef.current instanceof Set
+      ? selectedProcessIdsRef.current
+      : new Set(selectedProcessIds);
+    const modalAccountsNow = Array.isArray(modalAccountsRef.current) ? modalAccountsRef.current : modalAccounts;
+    const modalProcessesNow = Array.isArray(modalProcessesRef.current) ? modalProcessesRef.current : modalProcesses;
+    const accountPerms = Array.from(selectedAccountIdsNow).map((id) => ({ id: Number(id) }));
     // Group-only still has a scope company (group entity/anchor) for Process rows — allow save.
     const shouldSendProcessPermissions = useDualTenantUserPicker
       ? selectedCompanyIds.length > 0
       : (!groupOnlyUserList || (mutationScopeCompanyId != null && Number(mutationScopeCompanyId) > 0));
-    const processPerms = Array.from(selectedProcessIds).map((id) => ({ id: Number(id) }));
+    const processPerms = Array.from(selectedProcessIdsNow).map((id) => ({ id: Number(id) }));
     let payload = { action: isEditMode ? "update" : "create", id: form.id || undefined, login_id: form.login_id.trim().toUpperCase(), name: form.name.trim().toUpperCase(), email: emailCheck.normalized, role: form.role, status: form.status };
+    const assignAccessPayload = (key, seeAllKey, value) => {
+      payload[key] = value;
+      if (value === null) payload[seeAllKey] = 1;
+      else delete payload[seeAllKey];
+    };
     let saveGroupId = null;
     let saveCompanyIds = selectedCompanyIds;
     let saveGroupCodes = [];
@@ -2474,24 +2509,32 @@ export default function UserListPage() {
       // Owner Select All → null (see-all); otherwise compact id rows.
       const editorSeesAllAccountsCreate = currentUserRole === "owner";
       const editorSeesAllProcessesCreate = currentUserRole === "owner";
-      payload.account_permissions = resolveSeeAllOrCompactPermissions(
-        {
-          isSelf: false,
-          editorSeesAll: editorSeesAllAccountsCreate,
-          selectedIds: selectedAccountIds,
-          modalRows: modalAccounts,
-        },
-        accountPerms,
-      );
-      if (shouldSendProcessPermissions) {
-        payload.process_permissions = resolveSeeAllOrCompactPermissions(
+      assignAccessPayload(
+        "account_permissions",
+        "account_permissions_see_all",
+        resolveSeeAllOrCompactPermissions(
           {
             isSelf: false,
-            editorSeesAll: editorSeesAllProcessesCreate,
-            selectedIds: selectedProcessIds,
-            modalRows: modalProcesses,
+            editorSeesAll: editorSeesAllAccountsCreate,
+            selectedIds: selectedAccountIdsNow,
+            modalRows: modalAccountsNow,
           },
-          processPerms,
+          accountPerms,
+        ),
+      );
+      if (shouldSendProcessPermissions) {
+        assignAccessPayload(
+          "process_permissions",
+          "process_permissions_see_all",
+          resolveSeeAllOrCompactPermissions(
+            {
+              isSelf: false,
+              editorSeesAll: editorSeesAllProcessesCreate,
+              selectedIds: selectedProcessIdsNow,
+              modalRows: modalProcessesNow,
+            },
+            processPerms,
+          ),
         );
       }
       if ((currentUserRole === "admin" || currentUserRole === "owner") && !useDualTenantUserPicker) {
@@ -2523,7 +2566,7 @@ export default function UserListPage() {
         }
         // Only owner bypasses Acc whitelist when merging grants; partnership/audit grant within visible set.
         const editorSeesAllAccounts = currentUserRole === "owner";
-        const grantableIds = editorSeesAllAccounts ? null : modalAccounts.map((a) => Number(a.id));
+        const grantableIds = editorSeesAllAccounts ? null : modalAccountsNow.map((a) => Number(a.id));
         const compactAccRows = (mergedRows) =>
           mergedRows.map((row) => {
             const out = { id: Number(row.id) };
@@ -2549,14 +2592,18 @@ export default function UserListPage() {
             mergeAccountPermissionsForEditor(existingAp, accountPerms, grantableIds),
           );
         }
-        payload.account_permissions = resolveSeeAllOrCompactPermissions(
-          {
-            isSelf: !!caps.isSelf,
-            editorSeesAll: editorSeesAllAccounts,
-            selectedIds: selectedAccountIds,
-            modalRows: modalAccounts,
-          },
-          nextAccountPerms,
+        assignAccessPayload(
+          "account_permissions",
+          "account_permissions_see_all",
+          resolveSeeAllOrCompactPermissions(
+            {
+              isSelf: !!caps.isSelf,
+              editorSeesAll: editorSeesAllAccounts,
+              selectedIds: selectedAccountIdsNow,
+              modalRows: modalAccountsNow,
+            },
+            nextAccountPerms,
+          ),
         );
       }
       if (!processLocked && shouldSendProcessPermissions) {
@@ -2577,7 +2624,7 @@ export default function UserListPage() {
         }
         // Only owner bypasses Process whitelist when merging grants; partnership/audit grant within visible set.
         const editorSeesAllProcesses = currentUserRole === "owner";
-        const grantableProcessIds = editorSeesAllProcesses ? null : modalProcesses.map((p) => Number(p.id));
+        const grantableProcessIds = editorSeesAllProcesses ? null : modalProcessesNow.map((p) => Number(p.id));
         const compactProcRows = (mergedRows) =>
           mergedRows.map((row) => {
             const out = { id: Number(row.id) };
@@ -2603,14 +2650,18 @@ export default function UserListPage() {
             mergeAccountPermissionsForEditor(existingPp, processPerms, grantableProcessIds),
           );
         }
-        payload.process_permissions = resolveSeeAllOrCompactPermissions(
-          {
-            isSelf: !!caps.isSelf,
-            editorSeesAll: editorSeesAllProcesses,
-            selectedIds: selectedProcessIds,
-            modalRows: modalProcesses,
-          },
-          nextProcessPerms,
+        assignAccessPayload(
+          "process_permissions",
+          "process_permissions_see_all",
+          resolveSeeAllOrCompactPermissions(
+            {
+              isSelf: !!caps.isSelf,
+              editorSeesAll: editorSeesAllProcesses,
+              selectedIds: selectedProcessIdsNow,
+              modalRows: modalProcessesNow,
+            },
+            nextProcessPerms,
+          ),
         );
       }
       if ((currentUserRole === "admin" || currentUserRole === "owner") && !fieldLocks.company && !useDualTenantUserPicker) {
@@ -2995,7 +3046,7 @@ export default function UserListPage() {
             document.body
           )
         : null}
-      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} selfAccHeldIds={selfAccHeldIds} selfProcessHeldIds={selfProcessHeldIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
+      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIdsSynced} selfAccHeldIds={selfAccHeldIds} selfProcessHeldIds={selfProcessHeldIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIdsSynced} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
       <UserConfirmModal open={confirmOpen} message={confirmMessage} onConfirm={confirmDelete} onClose={() => setConfirmOpen(false)} confirmDisabled={userMutationsBlocked} t={t} />
     </>
   );
