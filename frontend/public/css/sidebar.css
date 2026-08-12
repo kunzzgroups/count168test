@@ -40,9 +40,9 @@
     transition: background-color 0.3s ease;
     text-align: center;
     color: white;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     flex-shrink: 1;
-    /* 优化渲染性能；允许长账号名在侧栏内收缩截断 */
+    /* 优化渲染性能；允许长账号名在侧栏内收缩并换行 */
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
@@ -428,11 +428,12 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    align-items: flex-start;
+    align-items: stretch;
     gap: 2px;
     margin-left: 10px;
+    /* basis 0：按剩余侧栏宽度分配，避免被无空格长名撑破 */
+    flex: 1 1 0;
     min-width: 0;
-    flex: 1 1 auto;
     max-width: 100%;
     overflow: hidden;
     text-align: center;
@@ -440,7 +441,10 @@
 
 .user-name {
     margin: 0;
+    width: 100%;
+    min-width: 0;
     max-width: 100%;
+    box-sizing: border-box;
     font-size: clamp(10px, 0.83vw, 16px);
     font-weight: 600;
     color: white;
@@ -448,7 +452,7 @@
     text-align: center;
     white-space: normal;
     overflow-wrap: anywhere;
-    word-break: break-word;
+    word-break: break-all;
     /* 侧栏内折行；极长名最多 2 行，避免头部撑太高 */
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -458,7 +462,10 @@
 }
 
 .user-role {
+    width: 100%;
+    min-width: 0;
     max-width: 100%;
+    box-sizing: border-box;
     font-size: clamp(9px, 0.57vw, 11px);
     font-weight: 500;
     color: rgba(255, 255, 255, 0.8);
@@ -466,7 +473,7 @@
     text-align: center;
     white-space: normal;
     overflow-wrap: anywhere;
-    word-break: break-word;
+    word-break: break-all;
 }
 
 /* 左边的选项bar */
