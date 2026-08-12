@@ -1555,6 +1555,10 @@ body.datacapture-summary-page .btn-cancel:hover {
     margin: 0 !important;
     border-radius: 0 !important;
     box-sizing: border-box;
+    /* Large Acc/Process grids: skip global premiumEntrance + transition:all jank */
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
 }
 
 /* Modal content: fills the full modal area */
@@ -4020,6 +4024,32 @@ body.user-page .pagination-container {
     grid-auto-rows: minmax(var(--user-modal-access-card-min-height, 38px), auto);
     gap: var(--user-modal-access-card-gap, 5px);
     padding: var(--user-modal-access-grid-pad-y, 4px) 0;
+}
+
+/* Row-windowed Acc/Process lists — scroll container is not itself a CSS grid */
+#userModal .account-grid.account-grid--virtual {
+    display: block !important;
+    position: relative;
+    grid-template-columns: none !important;
+    grid-auto-rows: auto;
+    contain: content;
+}
+
+#userModal .account-grid-virtual-spacer {
+    position: relative;
+    width: 100%;
+}
+
+#userModal .account-grid-virtual-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(var(--user-modal-access-grid-cols), minmax(0, 1fr));
+    gap: var(--user-modal-access-card-gap, 5px);
+    align-content: start;
 }
 
 #userModal .user-modal-select-card {

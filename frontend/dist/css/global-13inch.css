@@ -664,6 +664,14 @@ body.ec-auth-shell .datacapture-table tbody tr:hover td {
         animation: none !important;
     }
 
+    /* User edit modal mounts hundreds of Acc/Process cards — entrance fade feels frozen */
+    body.ec-auth-shell.user-page #userModal .modal-content,
+    body.ec-auth-shell.user-page #userModal .user-modal-content {
+        animation: none !important;
+        transition: none !important;
+        opacity: 1 !important;
+    }
+
     body.ec-auth-shell.user-page .search-container.userlist-search-bar,
     body.ec-auth-shell.user-page .search-container.userlist-search-bar .userlist-search-input,
     body.ec-auth-shell.user-page .search-container.userlist-search-bar .search-input,
