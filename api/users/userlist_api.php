@@ -215,6 +215,7 @@ function userlist_merge_account_permissions(
 
 /**
  * Whether current session may change target user's account_permissions (strict subordinate only).
+ * Callers that also change role must check both the existing and newly assigned roles.
  */
 function userlist_can_edit_target_account_permissions(int $editorUserId, string $editorRole, int $targetUserId, string $targetRole): bool
 {
@@ -2695,14 +2696,24 @@ try {
                 // 保存 Account 和 Process 权限到 user_company_permissions 表（按当前公司）
                 // 只有当提供了 account_permissions 或 process_permissions 时才更新
                 $editorUserId = (int) ($_SESSION['user_id'] ?? 0);
-                $targetRoleForAcc = (string) ($originalUser['role'] ?? ($input['role'] ?? ''));
-                $canEditTargetAcc = userlist_can_edit_target_account_permissions(
-                    $editorUserId,
-                    (string) $current_user_role,
-                    (int) $input['id'],
-                    $targetRoleForAcc
-                );
-                // 自己/同级/上级：忽略客户端提交的 account_permissions（防自开回）
+                // Must pass for BOTH DB role and assigned role — otherwise elevating role in the
+                // same request (e.g. supervisor → admin) would still allow account_permissions writes.
+                $originalRoleForAcc = (string) ($originalUser['role'] ?? '');
+                $assignedRoleForAcc = (string) ($input['role'] ?? $originalRoleForAcc);
+                $canEditTargetAcc =
+                    userlist_can_edit_target_account_permissions(
+                        $editorUserId,
+                        (string) $current_user_role,
+                        (int) $input['id'],
+                        $originalRoleForAcc
+                    )
+                    && userlist_can_edit_target_account_permissions(
+                        $editorUserId,
+                        (string) $current_user_role,
+                        (int) $input['id'],
+                        $assignedRoleForAcc
+                    );
+                // 自己/同级/上级（含提权后的新角色）：忽略客户端提交的 account_permissions
                 if (isset($input['account_permissions']) && !$canEditTargetAcc) {
                     unset($input['account_permissions']);
                 }
