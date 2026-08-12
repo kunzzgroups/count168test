@@ -201,8 +201,9 @@ function resolveFormatPlainText(html, text) {
  */
 export function formatHtmlLooksLikeVerticalNx1(html) {
   if (!html || !/<table\b/i.test(html)) return false;
+  let structure = null;
   try {
-    const structure = parseFormatHtmlTableStructure(html);
+    structure = parseFormatHtmlTableStructure(html);
     if (!structure) return true;
     const { dataRows, maxCols } = structure;
     if (maxCols >= 2) return false;
@@ -210,6 +211,8 @@ export function formatHtmlLooksLikeVerticalNx1(html) {
   } catch {
     // Fail closed: prefer plain dual-source reshape over applying a bad HTML body.
     return true;
+  } finally {
+    structure?.dispose?.();
   }
 }
 
@@ -470,10 +473,9 @@ function tryProcessFormatClipboard(html, text, options = {}) {
  * 1.Text should pass `{ formatShell: false }` so preview / formatGridReady /
  * #pasteAreaFormat are not touched. 2.Format callers keep the default shell.
  *
- * Text + wide Excel/HTML tables: return false so the org 1.Text HTML path keeps
- * empty columns, yellow cell backgrounds, and action icons. Format's AWC-first /
- * dual-source / class-stripping fill regresses those. Format reshape is only
- * borrowed for vertical N×1 / plain dumps.
+ * Text wide Excel/HTML: use Format HTML fill only (skipPlainGrill, no AWC /
+ * dual-source steal) so structure + yellow/bg/icons match org without shell.
+ * Vertical N×1 / plain dumps still use the full Format reshape pipeline.
  */
 export function tryFillGridWithFormatClipboard(html, text, options = {}) {
   if (options.formatShell === false) {
@@ -482,7 +484,19 @@ export function tryFillGridWithFormatClipboard(html, text, options = {}) {
       Boolean(normalized) &&
       /<table\b/i.test(normalized) &&
       !formatHtmlLooksLikeVerticalNx1(normalized);
-    if (hasWideHtmlTable) return false;
+    if (hasWideHtmlTable) {
+      return processFormatTableHtml(normalized, {
+        ...options,
+        formatShell: false,
+        skipPlainGrill: true,
+        plainMatrix: null,
+      });
+    }
+    return tryProcessFormatClipboard(html, text, {
+      ...options,
+      formatShell: false,
+      skipPlainGrill: true,
+    });
   }
   return tryProcessFormatClipboard(html, text, options);
 }

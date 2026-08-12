@@ -232,11 +232,17 @@ export function parseAndFillHtmlTableForFormat(htmlString, options = {}) {
       return false;
     }
 
-    const { headerRows, dataRows, maxCols } = structure;
+    const { headerRows, dataRows, maxCols, dispose } = structure;
+    let bodyMatrix;
+    try {
+      ensureGridFits(startRow, startCol, countFormatRequiredBodyRows(dataRows), maxCols);
 
-    ensureGridFits(startRow, startCol, countFormatRequiredBodyRows(dataRows), maxCols);
+      // Build patches while host is mounted so Excel class backgrounds resolve.
+      bodyMatrix = buildFormatBodyMatrix(dataRows, maxCols);
+    } finally {
+      dispose?.();
+    }
 
-    let bodyMatrix = buildFormatBodyMatrix(dataRows, maxCols);
     console.log(
       `Format: Applying ${bodyMatrix.length} body row(s) at row ${startRow} col ${startCol} (${dataRows.length} source data rows)`,
     );
