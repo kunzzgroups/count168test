@@ -44,20 +44,21 @@ function accountlist_user_sees_all_accounts(string $current_user_role): bool
 
 /**
  * 返回账户 ID 过滤：null = 不限制，[] = 不显示任何账户，[id,...] = 只显示这些账户。
+ * Company unset → fall back to group-entity grants (Owner group User List save target).
  */
 function getAccountPermissionFilterForCompany(PDO $pdo, int $company_id, string $current_user_role): ?array {
     $currentUserId = $_SESSION['user_id'] ?? null;
     if (!$currentUserId || accountlist_user_sees_all_accounts($current_user_role)) {
         return null;
     }
-    $stmt = $pdo->prepare("SELECT account_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
-    $stmt->execute([$currentUserId, $company_id]);
-    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$permission || $permission['account_permissions'] === null) {
+    if (!function_exists('permissions_load_account_permissions_decoded')) {
+        require_once __DIR__ . '/../../includes/permissions.php';
+    }
+    $userAccountPermissions = permissions_load_account_permissions_decoded($pdo, (int) $currentUserId, $company_id);
+    if ($userAccountPermissions === null) {
         return null;
     }
-    $userAccountPermissions = json_decode($permission['account_permissions'], true);
-    if (empty($userAccountPermissions) || !is_array($userAccountPermissions)) {
+    if ($userAccountPermissions === []) {
         return [];
     }
     // Exclude self_hidden: site lists hide Accs the user closed; grants remain for self re-open.
@@ -588,11 +589,16 @@ try {
     }
 
     $current_user_role = $_SESSION['role'] ?? '';
-    $accountIdFilter = $company_id > 0
-        ? getAccountPermissionFilterForCompany($pdo, $company_id, $current_user_role)
+    $permCompanyId = $company_id > 0 ? $company_id : 0;
+    if ($permCompanyId <= 0 && $groupOnlyLedger && $group_scope_id !== null) {
+        // Group ledger has no subsidiary company_id — read grants from group entity/anchor.
+        $permCompanyId = (int) gc_resolve_group_anchor_company_id($pdo, $group_scope_id);
+    }
+    $accountIdFilter = $permCompanyId > 0
+        ? getAccountPermissionFilterForCompany($pdo, $permCompanyId, $current_user_role)
         : null;
-    $userAccountPermissions = $company_id > 0
-        ? getCurrentUserAccountPermissions($pdo, $company_id)
+    $userAccountPermissions = $permCompanyId > 0
+        ? getCurrentUserAccountPermissions($pdo, $permCompanyId)
         : [];
 
     $accounts = [];

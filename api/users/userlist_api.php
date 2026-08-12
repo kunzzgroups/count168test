@@ -183,7 +183,8 @@ function userlist_merge_account_permissions(
     array $submittedRows,
     ?array $grantableIds
 ): array {
-    // Submitted checkboxes never carry self_hidden; preserve it from existing when id stays granted.
+    // Submitted checkboxes mean "visible grant". Clear self_hidden so superior Select All /
+    // re-check restores visibility (self_hidden is only set by the self-hide shrink path).
     $submitted = userlist_normalize_account_perm_rows($submittedRows, false);
     $submittedById = [];
     foreach ($submitted as $row) {
@@ -204,11 +205,7 @@ function userlist_merge_account_permissions(
     }
 
     $applySubmittedRow = static function (int $id, array $row, array $existingById): array {
-        if (isset($existingById[$id]) && !empty($existingById[$id]['self_hidden'])) {
-            $row['self_hidden'] = true;
-        } else {
-            unset($row['self_hidden']);
-        }
+        unset($row['self_hidden']);
         if (($row['account_id'] ?? '') === '' && isset($existingById[$id]['account_id'])) {
             $row['account_id'] = (string) $existingById[$id]['account_id'];
         }
@@ -456,12 +453,9 @@ function userlist_merge_process_permissions(
         }
     }
 
+    // Submitted checkboxes mean "visible grant". Clear self_hidden (mirror Acc merge).
     $applySubmittedRow = static function (int $id, array $row, array $existingById): array {
-        if (isset($existingById[$id]) && !empty($existingById[$id]['self_hidden'])) {
-            $row['self_hidden'] = true;
-        } else {
-            unset($row['self_hidden']);
-        }
+        unset($row['self_hidden']);
         if (($row['process_id'] ?? '') === '' && isset($existingById[$id]['process_id'])) {
             $row['process_id'] = (string) $existingById[$id]['process_id'];
         }

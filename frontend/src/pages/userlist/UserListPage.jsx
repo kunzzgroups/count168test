@@ -2404,9 +2404,10 @@ export default function UserListPage() {
     const emailCheck = validateEmail(form.email);
     if (!emailCheck.ok) { notify(t("invalidEmailFormat"), "danger"); return; }
     const accountPerms = Array.from(selectedAccountIds).map(id => { const a = modalAccounts.find(x => Number(x.id) === Number(id)); return { id: Number(id), account_id: a?.account_id || "" }; });
+    // Group-only still has a scope company (group entity/anchor) for Process rows — allow save.
     const shouldSendProcessPermissions = useDualTenantUserPicker
       ? selectedCompanyIds.length > 0
-      : !groupOnlyUserList;
+      : (!groupOnlyUserList || (mutationScopeCompanyId != null && Number(mutationScopeCompanyId) > 0));
     const processPerms = Array.from(selectedProcessIds).map(id => { const p = modalProcesses.find(x => Number(x.id) === Number(id)); return { id: Number(id), process_id: p?.process_id || "", description: p?.description || "" }; });
     let payload = { action: isEditMode ? "update" : "create", id: form.id || undefined, login_id: form.login_id.trim().toUpperCase(), name: form.name.trim().toUpperCase(), email: emailCheck.normalized, role: form.role, status: form.status };
     let saveGroupId = null;
