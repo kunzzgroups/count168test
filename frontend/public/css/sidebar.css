@@ -446,9 +446,15 @@
     color: white;
     line-height: 1.2;
     text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    /* 侧栏内折行；极长名最多 2 行，避免头部撑太高 */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .user-role {
@@ -458,9 +464,9 @@
     color: rgba(255, 255, 255, 0.8);
     line-height: 1.2;
     text-align: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 /* 左边的选项bar */
