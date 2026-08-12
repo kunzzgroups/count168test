@@ -2001,13 +2001,18 @@ export default function UserListPage() {
     const isSelfEdit = Number(row.id) === Number(currentUserId) && !row.is_owner_shadow;
     // Self: selected = not self_hidden; held = all still-granted (incl. self_hidden) so they can re-open.
     // Superior: selected = all granted (incl. self_hidden) so Save won't revoke self-hidden Accs.
+    // Do not merge full grants into the picker list (same-label / different-id ghosts).
+    // Self-edit only merges self_hidden rows so those tiles can be re-checked.
     let modalAccList = accList;
     if (!accUnset && Array.isArray(accRows)) {
-      modalAccList = mergeModalAccountsWithGranted(accList, accRows);
-      if (modalAccList.length !== accList.length) {
-        setModalAccounts(modalAccList);
-      }
       if (isSelfEdit) {
+        modalAccList = mergeModalAccountsWithGranted(
+          accList,
+          accRows.filter((x) => isAccountPermSelfHidden(x)),
+        );
+        if (modalAccList.length !== accList.length) {
+          setModalAccounts(modalAccList);
+        }
         setSelectedAccountIds(
           new Set(
             accRows
@@ -2026,11 +2031,14 @@ export default function UserListPage() {
     const procRows = procUnset ? null : Array.isArray(pp) ? pp : [];
     let modalProcList = procList;
     if (!procUnset && Array.isArray(procRows)) {
-      modalProcList = mergeModalProcessesWithGranted(procList, procRows);
-      if (modalProcList.length !== procList.length) {
-        setModalProcesses(modalProcList);
-      }
       if (isSelfEdit) {
+        modalProcList = mergeModalProcessesWithGranted(
+          procList,
+          procRows.filter((x) => isAccountPermSelfHidden(x)),
+        );
+        if (modalProcList.length !== procList.length) {
+          setModalProcesses(modalProcList);
+        }
         setSelectedProcessIds(
           new Set(
             procRows
