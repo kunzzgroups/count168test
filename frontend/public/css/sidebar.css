@@ -436,7 +436,7 @@
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
-    text-align: left;
+    text-align: left !important;
 }
 
 .user-name {
@@ -449,13 +449,14 @@
     font-weight: 600;
     color: white;
     line-height: 1.2;
-    text-align: left;
+    text-align: left !important;
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-all;
     /* 侧栏内折行；极长名最多 2 行，避免头部撑太高 */
     display: -webkit-box;
     -webkit-box-orient: vertical;
+    -webkit-box-align: start;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
@@ -470,7 +471,7 @@
     font-weight: 500;
     color: rgba(255, 255, 255, 0.8);
     line-height: 1.2;
-    text-align: left;
+    text-align: left !important;
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-all;
@@ -2136,14 +2137,21 @@ body.ec-auth-shell .informationmenu .current-avatar {
     height: var(--sidebar-avatar-lock, 4rem) !important;
 }
 
+body.ec-auth-shell .informationmenu .user-info {
+    text-align: left !important;
+}
+
 body.ec-auth-shell .informationmenu .user-name {
     font-size: var(--sidebar-user-name-size, 1.6rem) !important;
     line-height: 1.2 !important;
+    text-align: left !important;
+    -webkit-box-align: start !important;
 }
 
 body.ec-auth-shell .informationmenu .user-role {
     font-size: var(--sidebar-user-role-size, 1.1rem) !important;
     line-height: 1.2 !important;
+    text-align: left !important;
 }
 
 body.ec-auth-shell .informationmenu .sidebar-lang-switch {
