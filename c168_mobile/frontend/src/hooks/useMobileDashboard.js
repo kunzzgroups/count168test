@@ -40,7 +40,9 @@ import { loadMobileDashboardData, resolveMobileKpiOwnershipOpts } from "../lib/d
 import {
   computeDisplayConvertedAmount,
   fetchFrankfurterRates,
+  frankfurterRatesPartiallyUsable,
   resolveFrankfurterDate,
+  sumConvertedEarnings,
 } from "../lib/frankfurterRates.js";
 import { dashboardDataIsUsable } from "../lib/demoDashboard.js";
 import { assertApiOk, fetchJson } from "../lib/fetchJson.js";
@@ -411,7 +413,13 @@ export function useMobileDashboard() {
     me,
   ]);
 
-  const useConvertedEarnings = currencies.length > 1;
+  const needsMultiCurrencyFx = currencies.length > 1;
+  const useConvertedEarnings = useMemo(
+    () =>
+      needsMultiCurrencyFx &&
+      frankfurterRatesPartiallyUsable(currency, currencies, exchangeRates?.rates || {}),
+    [needsMultiCurrencyFx, currencies, currency, exchangeRates?.rates],
+  );
   const scopeStale = Boolean(bootstrap) && loadedScopeKey && loadedScopeKey !== scopeKey;
   // Skeleton on cold start or when switching Group/Company (never paint wrong-scope totals).
   const initialLoading = loading || scopeStale || (!bootstrap && (bootstrapping || !currenciesReady));
@@ -419,7 +427,7 @@ export function useMobileDashboard() {
   const showLoading = initialLoading;
 
   useEffect(() => {
-    if (!useConvertedEarnings || !currency) {
+    if (!needsMultiCurrencyFx || !currency) {
       setExchangeRates({ rates: { [currency]: 1 }, date: null });
       setExchangeRatesLoading(false);
       setExchangeRatesError(false);
@@ -454,7 +462,7 @@ export function useMobileDashboard() {
     })();
 
     return () => ac.abort();
-  }, [currency, currencies, useConvertedEarnings, dateTo]);
+  }, [currency, currencies, needsMultiCurrencyFx, dateTo]);
 
   const kpiOwnershipOpts = useMemo(
     () =>
@@ -609,13 +617,33 @@ export function useMobileDashboard() {
     });
   }, [earningsCurrencyRows, earningsPanelView, useConvertedEarnings, bootstrap]);
 
-  // Hero must match KPI Net Profit (selected company/currency) — never sum FX rows.
-  const summaryValue = panelMetric ?? 0;
+  // Desktop parity: multi-currency panel/hero total = FX-converted sum into display currency.
+  const convertedNetProfitTotal = useMemo(() => {
+    if (!useConvertedEarnings) return null;
+    const rows = earningsCurrencyRows.map((row) => ({
+      code: row.code,
+      earnings: row.netProfit,
+    }));
+    return sumConvertedEarnings(rows, currency, exchangeRates.rates).total;
+  }, [useConvertedEarnings, earningsCurrencyRows, currency, exchangeRates.rates]);
+
+  const convertedEarningsTotal = useMemo(() => {
+    if (!useConvertedEarnings) return null;
+    const rows = earningsCurrencyRows.map((row) => ({
+      code: row.code,
+      earnings: row.earnings,
+    }));
+    return sumConvertedEarnings(rows, currency, exchangeRates.rates).total;
+  }, [useConvertedEarnings, earningsCurrencyRows, currency, exchangeRates.rates]);
+
+  const summaryValue =
+    convertedNetProfitTotal != null ? convertedNetProfitTotal : (panelMetric ?? 0);
 
   const heroCompare = useMemo(() => kpi?.comparisons?.netProfit || null, [kpi?.comparisons?.netProfit]);
 
-  // Multi-currency note lives on the currency cards, not the Net Profit hero.
-  const showMultiCurrencyNote = false;
+  const showMultiCurrencyNote = Boolean(
+    useConvertedEarnings && convertedNetProfitTotal != null,
+  );
 
   const ratesWarning = useMemo(() => {
     if (earningsPanelView === "netProfitFor") return "";
@@ -1115,6 +1143,8 @@ export function useMobileDashboard() {
     ratesWarning,
     useConvertedEarnings,
     showMultiCurrencyNote,
+    convertedNetProfitTotal,
+    convertedEarningsTotal,
     heroCompare,
     dateFrom,
     dateTo,

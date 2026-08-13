@@ -118,6 +118,39 @@ export function convertToBaseAmount(amount, fromCode, baseCode, rates) {
   return n / rate;
 }
 
+/** True when base rate exists and at least one foreign quote can convert (partial OK). */
+export function frankfurterRatesPartiallyUsable(base, quoteCodes, rates) {
+  const baseCode = String(base || "").trim().toUpperCase();
+  if (!baseCode || !rates?.[baseCode] || rates[baseCode] <= 0) return false;
+  const quotes = [
+    ...new Set(
+      (quoteCodes || [])
+        .map((c) => String(c || "").trim().toUpperCase())
+        .filter((c) => c && c !== baseCode),
+    ),
+  ];
+  if (!quotes.length) return true;
+  return quotes.some((quote) => {
+    const rate = rates[quote];
+    return rate && rate > 0;
+  });
+}
+
+/** Sum row.earnings converted into base (desktop parity for multi-currency panel total). */
+export function sumConvertedEarnings(rows, baseCode, rates) {
+  let total = 0;
+  let hasMissing = false;
+  for (const row of rows || []) {
+    const converted = convertToBaseAmount(row.earnings, row.code, baseCode, rates);
+    if (converted == null && String(row.code).toUpperCase() !== String(baseCode).toUpperCase()) {
+      hasMissing = true;
+      continue;
+    }
+    total += converted ?? 0;
+  }
+  return { total, hasMissing };
+}
+
 function frankfurterUnitRate(fromCode, baseCode, rates) {
   const from = String(fromCode || "").trim().toUpperCase();
   const base = String(baseCode || "").trim().toUpperCase();

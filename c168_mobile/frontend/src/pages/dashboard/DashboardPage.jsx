@@ -79,8 +79,17 @@ export default function DashboardPage() {
 
   const heroCard = kpiCards.find((c) => c.variant === heroMetric) || kpiCards.find((c) => c.variant === "net");
   const heroLabel = heroCard?.label || i18n.netProfit;
-  const heroValue = heroCard?.value ?? dash.summaryValue;
+  // Multi-currency: Net / Earnings hero use FX-converted totals (desktop summaryEarningsValue).
+  // Overview KPI scroller stays single-currency.
+  const heroValue =
+    heroMetric === "net" && dash.convertedNetProfitTotal != null
+      ? dash.convertedNetProfitTotal
+      : heroMetric === "earnings" && dash.convertedEarningsTotal != null
+        ? dash.convertedEarningsTotal
+        : (heroCard?.value ?? dash.summaryValue);
   const heroCompare = heroCard?.compare ?? dash.heroCompare;
+  const heroMultiCurrency =
+    dash.showMultiCurrencyNote && (heroMetric === "net" || heroMetric === "earnings");
 
   const companyCode = String(dash.selectedCompany?.company_id || "").toUpperCase();
   const groupId = String(
@@ -197,7 +206,7 @@ export default function DashboardPage() {
             value={heroValue}
             compare={heroCompare}
             compareLabel={compareLabel}
-            multiCurrency={dash.showMultiCurrencyNote}
+            multiCurrency={heroMultiCurrency}
             loading={loading}
             empty={!loading && !dash.hasData}
             emptyLabel={false}
