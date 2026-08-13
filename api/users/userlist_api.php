@@ -1914,6 +1914,98 @@ function userlist_set_all_user_permission_columns_empty(
 }
 
 /**
+ * Owner partial Acc/Process grant → same JSON on every company row.
+ * After Clear All, leftover [] on the group-entity row would otherwise win GET
+ * while the one-id write landed on a mixed-tenant subsidiary.
+ */
+function userlist_set_all_user_permission_columns_json(
+    PDO $pdo,
+    int $userId,
+    ?string $accountJson,
+    ?string $processJson
+): void {
+    if ($userId <= 0 || ($accountJson === null && $processJson === null)) {
+        return;
+    }
+    $sets = [];
+    $params = [];
+    if ($accountJson !== null) {
+        $sets[] = 'account_permissions = ?';
+        $params[] = $accountJson;
+    }
+    if ($processJson !== null) {
+        $sets[] = 'process_permissions = ?';
+        $params[] = $processJson;
+    }
+    $params[] = $userId;
+    $sql = 'UPDATE user_company_permissions SET ' . implode(', ', $sets)
+        . ', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+}
+
+/**
+ * Company ids that must receive Acc/Process permission realtime.
+ * Group User List writes the entity row, but Partnership clients subscribe to
+ * the subsidiary they are logged into — entity-only publish never reaches them.
+ *
+ * @param list<int> $validatedScopeCompanyIds
+ * @return list<int>
+ */
+function userlist_access_realtime_company_ids(
+    PDO $pdo,
+    int $targetUserId,
+    int $scopeCompanyId,
+    array $validatedScopeCompanyIds,
+    ?string $groupScope
+): array {
+    $ids = [];
+    foreach ($validatedScopeCompanyIds as $cid) {
+        $id = (int) $cid;
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+    }
+    if ($scopeCompanyId > 0) {
+        $ids[] = $scopeCompanyId;
+    }
+    if ($targetUserId > 0) {
+        try {
+            $stmt = $pdo->prepare('SELECT DISTINCT company_id FROM user_company_permissions WHERE user_id = ?');
+            $stmt->execute([$targetUserId]);
+            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $cid) {
+                $id = (int) $cid;
+                if ($id > 0) {
+                    $ids[] = $id;
+                }
+            }
+        } catch (Throwable $e) {
+            // best-effort fan-out
+        }
+        foreach (userlist_fetch_user_subsidiary_company_ids($pdo, $targetUserId) as $cid) {
+            $id = (int) $cid;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+    }
+    if ($groupScope !== null) {
+        foreach (userlist_company_ids_in_group_scope(userlist_fetch_accessible_companies($pdo), $groupScope) as $cid) {
+            $id = (int) $cid;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+        $entityId = userlist_resolve_group_tenant_entity_company_id($pdo, $groupScope);
+        if ($entityId > 0) {
+            $ids[] = $entityId;
+        }
+    }
+
+    return array_values(array_unique($ids));
+}
+
+/**
  * Group-only Acc/Process grants live on the group-entity company row.
  * Non-null subsidiary rows (esp. stale []) shadow entity null/grants in
  * permissions_load_*_decoded (fallback only when company column is SQL NULL).
@@ -3200,6 +3292,8 @@ try {
                 $processPermsUpdated = false;
                 $accountClearedWritten = false;
                 $processClearedWritten = false;
+                $accountReplicateAllRows = false;
+                $processReplicateAllRows = false;
                 $isSelfAccessEdit = $editorUserId > 0 && $editorUserId === (int) $input['id'];
                 // Must pass for BOTH DB role and assigned role — otherwise elevating role in the
                 // same request (e.g. supervisor → admin) would still allow permission writes.
@@ -3288,6 +3382,9 @@ try {
                             }
                             $accountPerms = userlist_encode_account_permissions_json($mergedAccountRows);
                             $accountPermsUpdated = true;
+                            if (!$isSelfAccessEdit && $editorUnrestrictedAccounts) {
+                                $accountReplicateAllRows = true;
+                            }
                         }
                     }
                     
@@ -3345,6 +3442,9 @@ try {
                             }
                             $processPerms = userlist_encode_process_permissions_json($mergedProcessRows);
                             $processPermsUpdated = true;
+                            if (!$isSelfAccessEdit && $editorUnrestrictedProcesses) {
+                                $processReplicateAllRows = true;
+                            }
                         }
                     }
                     
@@ -3399,8 +3499,18 @@ try {
                             $processClearedWritten
                         );
                     }
-                    $shadowAccount = $accountPermsUpdated && !$accountSeeAllWritten && !$accountClearedWritten;
-                    $shadowProcess = $processPermsUpdated && !$processSeeAllWritten && !$processClearedWritten;
+                    if ($accountReplicateAllRows || $processReplicateAllRows) {
+                        // Owner checked a subset: copy that JSON onto every company row so
+                        // group GET (entity) and Partnership session (subsidiary) see the same grant.
+                        userlist_set_all_user_permission_columns_json(
+                            $pdo,
+                            (int) $input['id'],
+                            $accountReplicateAllRows ? $accountPerms : null,
+                            $processReplicateAllRows ? $processPerms : null
+                        );
+                    }
+                    $shadowAccount = $accountPermsUpdated && !$accountSeeAllWritten && !$accountClearedWritten && !$accountReplicateAllRows;
+                    $shadowProcess = $processPermsUpdated && !$processSeeAllWritten && !$processClearedWritten && !$processReplicateAllRows;
                     if (
                         $groupTenantWrite
                         && $groupScope !== null
@@ -3470,27 +3580,32 @@ try {
 
                 require_once __DIR__ . '/../includes/realtime.php';
                 require_once __DIR__ . '/../includes/ledger_realtime.php';
-                $publishIds = array_values(array_filter(array_map('intval', is_array($validatedScopeCompanyIds ?? null) ? $validatedScopeCompanyIds : [])));
-                if ($publishIds === [] && !empty($scope_company_id)) {
-                    $publishIds = [(int) $scope_company_id];
-                }
+                $publishIds = userlist_access_realtime_company_ids(
+                    $pdo,
+                    (int) $input['id'],
+                    (int) $scope_company_id,
+                    is_array($validatedScopeCompanyIds ?? null) ? $validatedScopeCompanyIds : [],
+                    $groupScope
+                );
                 if ($publishIds === [] && (int) $current_company_id > 0) {
                     $publishIds = [(int) $current_company_id];
                 }
-                if ($publishIds !== []) {
-                    realtime_publish_companies($publishIds, 'users', 'update');
+                $groupPk = ($groupScope !== null) ? userlist_resolve_group_pk_by_code($pdo, $groupScope) : 0;
+                $publishChannels = realtime_channels_from_company_ids($publishIds);
+                if ($groupPk > 0) {
+                    $publishChannels[] = 'tx:g:' . $groupPk;
+                    $publishChannels = array_values(array_unique($publishChannels));
+                }
+                if ($publishChannels !== []) {
+                    realtime_publish($publishChannels, 'users', 'update');
                     // Acc 白名单变更：Account / Transaction 账号下拉 + 报表/流水全站立刻按新权限重拉
+                    // Must include subsidiary + group channels — entity-only never reaches Partnership SSE.
                     if (!empty($accountPermsUpdated)) {
-                        realtime_publish_companies($publishIds, 'accounts', 'user_account_permissions');
-                        foreach ($publishIds as $pubCompanyId) {
-                            tx_ledger_realtime_publish_scope(
-                                ['mode' => 'company', 'company_id' => (int) $pubCompanyId],
-                                'user_account_permissions'
-                            );
-                        }
+                        realtime_publish($publishChannels, 'accounts', 'user_account_permissions');
+                        realtime_publish($publishChannels, 'ledger', 'user_account_permissions');
                     }
                     if (!empty($processPermsUpdated)) {
-                        realtime_publish_companies($publishIds, 'processes', 'user_process_permissions');
+                        realtime_publish($publishChannels, 'processes', 'user_process_permissions');
                     }
                 }
                 
