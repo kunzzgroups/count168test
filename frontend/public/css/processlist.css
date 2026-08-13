@@ -2667,6 +2667,12 @@ body.process-page.process-page--bank .bank-form-range-calendar .calendar-day {
     font-family: var(--font-heading-page);
 }
 
+/* Same today outline as the toolbar Period picker (#calendar-popup). */
+body.process-page.process-page--bank .bank-form-range-calendar .calendar-day.today:not(.start-date):not(.end-date):not(.selected) {
+    border-color: rgba(37, 99, 235, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.18);
+}
+
 body.process-page.process-page--bank .bank-form-range-calendar .calendar-month-year {
     border: none;
     background: transparent;
