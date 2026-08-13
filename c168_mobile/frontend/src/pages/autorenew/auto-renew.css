@@ -1,42 +1,42 @@
 .m-ar-sticky {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.55rem;
 }
 
 .m-ar-page {
   display: grid;
-  gap: 0.75rem;
-  padding-bottom: 1.5rem;
+  gap: 0.65rem;
+  padding: 0.75rem var(--m-page-gutter, 1rem) 6.5rem;
 }
 
 .m-ar-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.4rem;
 }
 
 .m-ar-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  min-height: 2rem;
-  padding: 0.3rem 0.75rem;
+  gap: 0.3rem;
+  min-height: 1.75rem;
+  padding: 0.25rem 0.65rem;
   border: 1px solid #d7deea;
   border-radius: 999px;
   background: #fff;
   color: #475569;
-  font-size: clamp(1.2rem, 0.15vw + 1rem, 1.3rem);
+  font-size: var(--m-text-secondary);
   font-weight: 600;
 }
 
 .m-ar-chip em {
   font-style: normal;
-  min-width: 1.1rem;
-  padding: 0.05rem 0.3rem;
+  min-width: 1rem;
+  padding: 0.05rem 0.28rem;
   border-radius: 999px;
   background: #e8efff;
   color: var(--m-color-primary, #2563eb);
-  font-size: 0.85em;
+  font-size: var(--m-text-caption);
   font-weight: 800;
   text-align: center;
 }
@@ -54,44 +54,44 @@
 .m-ar-seg-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .m-ar-seg-badge {
-  min-width: 1.1rem;
-  height: 1.1rem;
+  min-width: 1rem;
+  height: 1rem;
   display: inline-grid;
   place-items: center;
-  padding: 0 0.28rem;
+  padding: 0 0.25rem;
   border-radius: 999px;
   background: #e11d48;
   color: #fff;
-  font-size: 0.65rem;
+  font-size: var(--m-text-micro);
   font-weight: 800;
   line-height: 1;
 }
 
 .m-ar-readonly {
   margin: 0;
-  padding: 0.65rem 0.8rem;
+  padding: 0.55rem 0.7rem;
   border-radius: 0.75rem;
   background: #fff7ed;
   color: #9a3412;
-  font-size: clamp(1.2rem, 0.15vw + 1rem, 1.3rem);
+  font-size: var(--m-text-secondary);
 }
 
 .m-ar-list {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.55rem;
 }
 
 .m-ar-card {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.45rem;
   width: 100%;
-  padding: 0.9rem 1rem;
+  padding: 0.75rem 0.85rem;
   border: 1px solid #e2e8f0;
-  border-radius: 1rem;
+  border-radius: 0.9rem;
   background: #fff;
   text-align: left;
   color: inherit;
@@ -101,47 +101,47 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 
 .m-ar-card-titles {
   display: grid;
-  gap: 0.15rem;
+  gap: 0.1rem;
   min-width: 0;
 }
 
 .m-ar-card-titles strong {
-  font-size: clamp(1.6rem, 0.3125vw + 1.2rem, 1.8rem);
+  font-size: var(--m-text-title);
   font-weight: 800;
-  color: #0f172a;
+  color: var(--m-color-text, #0f172a);
 }
 
 .m-ar-card-titles small {
-  color: #64748b;
-  font-size: clamp(1.2rem, 0.15vw + 1rem, 1.3rem);
+  color: var(--m-color-label, #64748b);
+  font-size: var(--m-text-caption);
 }
 
 .m-ar-card-meta {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.15rem;
   color: #475569;
-  font-size: clamp(1.2rem, 0.15vw + 1rem, 1.3rem);
+  font-size: var(--m-text-secondary);
 }
 
 .m-ar-card-open {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
   color: var(--m-color-primary, #2563eb);
-  font-size: clamp(1.2rem, 0.15vw + 1rem, 1.3rem);
+  font-size: var(--m-text-secondary);
   font-weight: 700;
 }
 
 .m-ar-status {
   flex-shrink: 0;
-  padding: 0.18rem 0.5rem;
+  padding: 0.15rem 0.45rem;
   border-radius: 999px;
-  font-size: 1.1rem;
+  font-size: var(--m-text-caption);
   font-weight: 800;
   line-height: 1.2;
 }
@@ -163,63 +163,63 @@
 
 .m-ar-detail {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.75rem;
 }
 
 .m-ar-detail-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 
 .m-ar-detail-head strong {
-  font-size: clamp(1.8rem, 0.5vw + 1.4rem, 2.2rem);
+  font-size: var(--m-text-title);
   font-weight: 800;
 }
 
 .m-ar-detail-sub {
-  margin: -0.4rem 0 0;
-  color: #64748b;
-  font-size: clamp(1.2rem, 0.15vw + 1rem, 1.3rem);
+  margin: -0.35rem 0 0;
+  color: var(--m-color-label, #64748b);
+  font-size: var(--m-text-secondary);
 }
 
 .m-ar-meta {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.45rem;
   margin: 0;
 }
 
 .m-ar-meta > div {
   display: grid;
-  gap: 0.15rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.75rem;
+  gap: 0.1rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.7rem;
   background: #f8fafc;
 }
 
 .m-ar-meta dt {
   color: #64748b;
-  font-size: clamp(1.1rem, 0.1vw + 1rem, 1.2rem);
+  font-size: var(--m-text-caption);
   font-weight: 600;
 }
 
 .m-ar-meta dd {
   margin: 0;
   color: #0f172a;
-  font-size: clamp(1.4rem, 0.3125vw + 1rem, 1.6rem);
+  font-size: var(--m-text-body);
   font-weight: 700;
 }
 
 .m-ar-form {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 .m-ar-field {
   display: grid;
-  gap: 0.35rem;
-  font-size: clamp(1.2rem, 0.15vw + 1rem, 1.3rem);
+  gap: 0.3rem;
+  font-size: var(--m-text-secondary);
   font-weight: 600;
   color: #334155;
 }
@@ -227,13 +227,13 @@
 .m-ar-hint {
   margin: 0;
   color: #b45309;
-  font-size: clamp(1.2rem, 0.15vw + 1rem, 1.3rem);
+  font-size: var(--m-text-caption);
 }
 
 .m-ar-confirm-msg,
 .m-ar-muted {
   margin: 0;
   color: #334155;
-  font-size: clamp(1.4rem, 0.3125vw + 1rem, 1.6rem);
+  font-size: var(--m-text-body);
   line-height: 1.45;
 }
