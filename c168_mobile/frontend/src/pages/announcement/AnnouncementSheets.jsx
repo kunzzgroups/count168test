@@ -160,3 +160,80 @@ export function AnnouncementConfirmSheet({ open, onClose, message, onConfirm, t 
     </Sheet>
   );
 }
+
+export function MaintenanceFormSheet({ open, onClose, t, initial = null, onSubmit }) {
+  const isEdit = Boolean(initial?.id);
+  const [prefix, setPrefix] = useState("");
+  const [content, setContent] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setPrefix(initial?.prefix || "");
+    setContent(initial?.content || "");
+    setSubmitting(false);
+  }, [open, initial]);
+
+  const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const ok = await onSubmit?.({
+        id: initial?.id,
+        prefix,
+        content,
+      });
+      if (ok) onClose?.();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Sheet
+      open={open}
+      title={isEdit ? t("editMaintenanceContent") : t("createNewMaintenanceContent")}
+      onClose={onClose}
+      tall
+      footer={
+        <button
+          type="button"
+          className="m-account-primary-btn tap-scale"
+          disabled={submitting}
+          onClick={() => void handleSubmit()}
+        >
+          {submitting
+            ? isEdit
+              ? t("saving")
+              : t("publishing")
+            : isEdit
+              ? t("saveChanges")
+              : t("publishMaintenanceContent")}
+        </button>
+      }
+    >
+      <div className="m-ann-form">
+        <label className="m-ann-field">
+          <span>{t("prefixRequired")}</span>
+          <input
+            type="text"
+            maxLength={100}
+            value={prefix}
+            onChange={(e) => setPrefix(e.target.value)}
+            placeholder={t("enterMaintenancePrefix")}
+          />
+        </label>
+
+        <div className="m-ann-field">
+          <span>{t("contentRequired")}</span>
+          <RichTextEditor
+            value={content}
+            onChange={setContent}
+            placeholder={t("enterMaintenanceContent")}
+            disabled={submitting}
+          />
+        </div>
+      </div>
+    </Sheet>
+  );
+}
