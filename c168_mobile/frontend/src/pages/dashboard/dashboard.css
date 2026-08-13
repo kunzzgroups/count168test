@@ -690,20 +690,27 @@
   background: rgba(255, 255, 255, 0.9);
 }
 
+/* Kill Recharts / browser focus rect on tap (thick black plot outline). */
 .m-dash-trend-chart {
   height: 248px;
   min-width: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-/* Kill Recharts SVG focus/click ring (thick black outline around the plot). */
+.m-dash-trend-chart,
+.m-dash-trend-chart *,
 .m-dash-trend-chart .recharts-wrapper,
 .m-dash-trend-chart .recharts-wrapper:focus,
 .m-dash-trend-chart .recharts-wrapper:focus-visible,
 .m-dash-trend-chart .recharts-surface,
 .m-dash-trend-chart .recharts-surface:focus,
+.m-dash-trend-chart svg,
 .m-dash-trend-chart svg:focus {
   outline: none !important;
   box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .m-dash-trend-hint {
@@ -833,23 +840,24 @@
   padding: 0.875rem 1.25rem;
 }
 
-/* Grouped earnings panel — flatter than generic cards (desktop summary feel). */
+/* Grouped earnings panel — section layout (not a floating card). */
 .m-dash-earnings-panel.m-dash-card {
   overflow: hidden;
   box-shadow: none;
   outline: none;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  background: #fff;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .m-dash-earnings-panel-top {
-  padding: 1rem 1.05rem 0.95rem;
+  padding: 0.15rem 0 0.85rem;
 }
 
 /* Desktop-parity compact total above pie. */
 .m-dash-panel-summary {
-  margin: 0 0 1rem;
-  padding-bottom: 0.85rem;
+  margin: 0 0 0.85rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid rgba(226, 232, 240, 0.85);
 }
 
@@ -895,6 +903,7 @@
 .m-dash-earnings-panel-footer {
   border-top: 1px solid rgba(226, 232, 240, 0.9);
   background: transparent;
+  margin: 0 -0.05rem;
 }
 
 .m-dash-currency-list--embedded .m-dash-currency-rows > li + li {
@@ -902,7 +911,7 @@
 }
 
 .m-dash-currency-list--embedded .m-dash-currency-row {
-  padding: 0.8rem 1.15rem;
+  padding: 0.8rem 0;
 }
 
 /* iOS segmented control */
@@ -1054,11 +1063,22 @@
   gap: 1.1rem;
 }
 
+/* Desktop-like stack: summary → centered pie → list (footer). */
+.m-dash-pie-wrap--stacked {
+  justify-content: center;
+  gap: 0;
+}
+
 .m-dash-pie-chart {
   position: relative;
   width: 156px;
   height: 156px;
   flex-shrink: 0;
+}
+
+.m-dash-pie-wrap--stacked .m-dash-pie-chart {
+  width: 172px;
+  height: 172px;
 }
 
 .m-dash-pie-skeleton {
