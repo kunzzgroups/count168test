@@ -746,6 +746,7 @@ function dashboardBuildGroupProfitBucket(
               AND COALESCE(t.sms, '') NOT LIKE '[DOMAIN_SHARE_COMMISSION|%'
               AND COALESCE(t.sms, '') NOT LIKE '[DOMAIN_NET_PROFIT|%'
               AND COALESCE(t.sms, '') NOT LIKE '[DOMAIN_LIST_FEE|%'
+              AND COALESCE(t.sms, '') NOT LIKE '[AUTO_RENEW|%'
               AND UPPER(TRIM(COALESCE(t.description, ''))) NOT LIKE 'DOMAIN LIST FEE FROM %'";
 
     $kpiOnly = !empty($GLOBALS['DASHBOARD_KPI_ONLY']);
@@ -3344,10 +3345,10 @@ function dashboardExpensesBuildCrDrBundle(
         $toSql = "SELECT COALESCE(SUM(CASE
                          WHEN t.transaction_type IN ('RECEIVE', 'CLAIM') THEN -t.amount
                          WHEN t.transaction_type = 'CONTRA' THEN -t.amount
-                         WHEN t.transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN t.amount
-                         WHEN t.transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
+                         WHEN t.transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN t.amount
+                         WHEN t.transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_NET_PROFIT|%' OR t.sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
                          WHEN t.transaction_type = 'PAYMENT'
-                              AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN t.amount
+                              AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (t.sms LIKE '[AUTO_RENEW|%' AND t.sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND t.sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN t.amount
                          WHEN t.transaction_type = 'PAYMENT' THEN -t.amount
                          ELSE 0
                      END), 0) AS cr_dr
@@ -3363,10 +3364,10 @@ function dashboardExpensesBuildCrDrBundle(
         $periodCrDr = dashboardMoneyAdd($periodCrDr, $toStmt->fetchColumn());
 
         $fromSql = "SELECT COALESCE(SUM(CASE
-                           WHEN t.transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN 0
-                           WHEN t.transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
+                           WHEN t.transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN 0
+                           WHEN t.transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_NET_PROFIT|%' OR t.sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
                            WHEN t.transaction_type = 'PAYMENT'
-                                AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN -t.amount
+                                AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (t.sms LIKE '[AUTO_RENEW|%' AND t.sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND t.sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN -t.amount
                            WHEN t.transaction_type IN ('PAYMENT', 'RECEIVE', 'CLAIM') THEN t.amount
                            WHEN t.transaction_type = 'CONTRA' THEN t.amount
                            ELSE 0
@@ -3425,10 +3426,10 @@ function dashboardExpensesBuildCrDrBundle(
                      COALESCE(SUM(CASE
                          WHEN t.transaction_type IN ('RECEIVE', 'CLAIM') THEN -t.amount
                          WHEN t.transaction_type = 'CONTRA' THEN -t.amount
-                         WHEN t.transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN t.amount
-                         WHEN t.transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
+                         WHEN t.transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN t.amount
+                         WHEN t.transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_NET_PROFIT|%' OR t.sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
                          WHEN t.transaction_type = 'PAYMENT'
-                              AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN t.amount
+                              AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (t.sms LIKE '[AUTO_RENEW|%' AND t.sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND t.sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN t.amount
                          WHEN t.transaction_type = 'PAYMENT' THEN -t.amount
                          ELSE 0
                      END), 0) AS cr_dr
@@ -3448,10 +3449,10 @@ function dashboardExpensesBuildCrDrBundle(
 
     $fromSql = "SELECT IF(@c168_dash_month=1,LEFT(t.transaction_date,7),DATE(t.transaction_date)) AS date,
                        COALESCE(SUM(CASE
-                           WHEN t.transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN 0
-                           WHEN t.transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
+                           WHEN t.transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN 0
+                           WHEN t.transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_NET_PROFIT|%' OR t.sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
                            WHEN t.transaction_type = 'PAYMENT'
-                                AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN -t.amount
+                                AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (t.sms LIKE '[AUTO_RENEW|%' AND t.sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND t.sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN -t.amount
                            WHEN t.transaction_type IN ('PAYMENT', 'RECEIVE', 'CLAIM') THEN t.amount
                            WHEN t.transaction_type = 'CONTRA' THEN t.amount
                            ELSE 0
@@ -4081,7 +4082,9 @@ try {
             $contraApproval = dashboardContraApprovedWhere($pdo, 't');
             $fromDomainFilter = $useProfitTxnRules ? '' : "
                       AND COALESCE(t.sms, '') NOT LIKE '[DOMAIN_SHARE_COMMISSION|%'
-                      AND COALESCE(t.sms, '') NOT LIKE '[DOMAIN_NET_PROFIT|%'";
+                      AND COALESCE(t.sms, '') NOT LIKE '[DOMAIN_NET_PROFIT|%'
+                      AND COALESCE(t.sms, '') NOT LIKE '[AUTO_RENEW|COMMISSION|%'
+                      AND COALESCE(t.sms, '') NOT LIKE '[AUTO_RENEW|NET_PROFIT|%'";
             $bfTxnTypes = $useFullTxnTypes
                 ? "('PAYMENT', 'RECEIVE', 'CONTRA', 'CLEAR', 'CLAIM', 'RATE', 'WIN', 'LOSE', 'ADJUSTMENT')"
                 : "('PAYMENT', 'RECEIVE', 'CONTRA', 'CLEAR', 'CLAIM')";
@@ -4097,9 +4100,9 @@ try {
                         WHEN transaction_type IN ('RECEIVE', 'CLAIM') THEN -amount
                         WHEN transaction_type = 'CONTRA' THEN -amount
                         WHEN transaction_type = 'CLEAR' THEN -amount
-                        WHEN transaction_type = 'PAYMENT' AND sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN amount
-                        WHEN transaction_type = 'PAYMENT' AND sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
-                        WHEN transaction_type = 'PAYMENT' AND (sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN amount
+                        WHEN transaction_type = 'PAYMENT' AND (sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN amount
+                        WHEN transaction_type = 'PAYMENT' AND (sms LIKE '[DOMAIN_NET_PROFIT|%' OR sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
+                        WHEN transaction_type = 'PAYMENT' AND (sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (sms LIKE '[AUTO_RENEW|%' AND sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN amount
                         WHEN transaction_type = 'PAYMENT' THEN -amount
                         WHEN transaction_type = 'WIN' AND (description LIKE 'Process: %') THEN amount
                         WHEN transaction_type = 'LOSE' AND (description LIKE 'Process: %') THEN -amount
@@ -4121,9 +4124,9 @@ try {
             $sql = "SELECT COALESCE(SUM(CASE 
                         WHEN transaction_type IN ('PAYMENT', 'RECEIVE', 'CLAIM', 'CLEAR') THEN amount
                         WHEN transaction_type = 'CONTRA' THEN amount
-                        WHEN transaction_type = 'PAYMENT' AND sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN 0
-                        WHEN transaction_type = 'PAYMENT' AND sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
-                        WHEN transaction_type = 'PAYMENT' AND (sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN -amount
+                        WHEN transaction_type = 'PAYMENT' AND (sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN 0
+                        WHEN transaction_type = 'PAYMENT' AND (sms LIKE '[DOMAIN_NET_PROFIT|%' OR sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
+                        WHEN transaction_type = 'PAYMENT' AND (sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (sms LIKE '[AUTO_RENEW|%' AND sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN -amount
                         WHEN transaction_type = 'WIN' AND " . dashboardManualProfitDescSql('t') . " THEN amount
                         WHEN transaction_type = 'LOSE' AND " . dashboardManualProfitDescSql('t') . " THEN -amount
                         ELSE 0
@@ -4218,9 +4221,9 @@ try {
                                WHEN transaction_type IN ('RECEIVE', 'CLAIM', 'RATE') THEN -t.amount
                                WHEN transaction_type = 'CONTRA' THEN -t.amount
                                WHEN transaction_type = 'CLEAR' THEN -t.amount
-                               WHEN transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN t.amount
-                               WHEN transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
-                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN t.amount
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN t.amount
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_NET_PROFIT|%' OR t.sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (t.sms LIKE '[AUTO_RENEW|%' AND t.sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND t.sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN t.amount
                                WHEN transaction_type = 'PAYMENT' THEN -t.amount
                                WHEN t.transaction_type = 'WIN' AND (t.description LIKE 'Process: %') THEN t.amount
                                WHEN t.transaction_type = 'LOSE' AND (t.description LIKE 'Process: %') THEN -t.amount
@@ -4242,9 +4245,9 @@ try {
                 $sql = "SELECT COALESCE(SUM(CASE 
                                WHEN transaction_type = 'CONTRA' THEN t.amount
                                WHEN transaction_type = 'CLEAR' THEN t.amount
-                               WHEN transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN 0
-                               WHEN transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
-                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN -t.amount
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN 0
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_NET_PROFIT|%' OR t.sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (t.sms LIKE '[AUTO_RENEW|%' AND t.sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND t.sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN -t.amount
                                WHEN transaction_type IN ('PAYMENT', 'RECEIVE', 'CLAIM', 'RATE') THEN t.amount
                                WHEN t.transaction_type = 'WIN' AND " . dashboardManualProfitDescSql('t') . " THEN t.amount
                                WHEN t.transaction_type = 'LOSE' AND " . dashboardManualProfitDescSql('t') . " THEN -t.amount
@@ -4287,9 +4290,9 @@ try {
                                WHEN transaction_type IN ('RECEIVE', 'CLAIM', 'RATE') THEN -t.amount
                                WHEN transaction_type = 'CONTRA' THEN -t.amount
                                WHEN transaction_type = 'CLEAR' THEN -t.amount
-                               WHEN transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN t.amount
-                               WHEN transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
-                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN t.amount
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN t.amount
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_NET_PROFIT|%' OR t.sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (t.sms LIKE '[AUTO_RENEW|%' AND t.sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND t.sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN t.amount
                                WHEN transaction_type = 'PAYMENT' THEN -t.amount
                                WHEN t.transaction_type = 'WIN' AND (t.description LIKE 'Process: %') THEN t.amount
                                WHEN t.transaction_type = 'LOSE' AND (t.description LIKE 'Process: %') THEN -t.amount
@@ -4317,9 +4320,9 @@ try {
                            COALESCE(SUM(CASE 
                                WHEN transaction_type = 'CONTRA' THEN t.amount
                                WHEN transaction_type = 'CLEAR' THEN t.amount
-                               WHEN transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' THEN 0
-                               WHEN transaction_type = 'PAYMENT' AND t.sms LIKE '[DOMAIN_NET_PROFIT|%' THEN 0
-                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %') THEN -t.amount
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%') THEN 0
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_NET_PROFIT|%' OR t.sms LIKE '[AUTO_RENEW|NET_PROFIT|%') THEN 0
+                               WHEN transaction_type = 'PAYMENT' AND (t.sms LIKE '[DOMAIN_LIST_FEE|%' OR UPPER(TRIM(COALESCE(t.description, ''))) LIKE 'DOMAIN LIST FEE FROM %' OR (t.sms LIKE '[AUTO_RENEW|%' AND t.sms NOT LIKE '[AUTO_RENEW|COMMISSION|%' AND t.sms NOT LIKE '[AUTO_RENEW|NET_PROFIT|%')) THEN -t.amount
                                WHEN transaction_type IN ('PAYMENT', 'RECEIVE', 'CLAIM', 'RATE') THEN t.amount
                                WHEN t.transaction_type = 'WIN' AND " . dashboardManualProfitDescSql('t') . " THEN t.amount
                                WHEN t.transaction_type = 'LOSE' AND " . dashboardManualProfitDescSql('t') . " THEN -t.amount
@@ -4420,7 +4423,7 @@ try {
                            AND t.transaction_type = 'PAYMENT'
                            AND t.from_account_id IN ($profitIdsPlaceholder)
                            AND t.transaction_date < ?
-                           AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%'" . $profitAdjCurrencyFilter . $dashTxnSubSql;
+                           AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%')" . $profitAdjCurrencyFilter . $dashTxnSubSql;
             $adjBfStmt = $pdo->prepare($adjBfSql);
             $adjBfStmt->execute(array_merge([$company_id], $primaryAccountIds, [$date_from_db], $profitAdjCurrencyParams));
             $adjBf = $adjBfStmt->fetchColumn();
@@ -4436,7 +4439,7 @@ try {
                               AND t.transaction_type = 'PAYMENT'
                               AND t.from_account_id IN ($profitIdsPlaceholder)
                               AND t.transaction_date BETWEEN ? AND ?
-                              AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%'" . $profitAdjCurrencyFilter . $dashTxnSubSql;
+                              AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%')" . $profitAdjCurrencyFilter . $dashTxnSubSql;
                 $adjPeriodStmt = $pdo->prepare($adjPeriodSql);
                 $adjPeriodStmt->execute(array_merge([$company_id], $primaryAccountIds, [$date_from_db, $date_to_db], $profitAdjCurrencyParams));
                 $rolePeriodDelta = dashboardMoneySub($rolePeriodDelta, $adjPeriodStmt->fetchColumn() ?? '0');
@@ -4447,7 +4450,7 @@ try {
                               AND t.transaction_type = 'PAYMENT'
                               AND t.from_account_id IN ($profitIdsPlaceholder)
                               AND t.transaction_date BETWEEN ? AND ?
-                              AND t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%'" . $profitAdjCurrencyFilter . $dashTxnSubSql . "
+                              AND (t.sms LIKE '[DOMAIN_SHARE_COMMISSION|%' OR t.sms LIKE '[AUTO_RENEW|COMMISSION|%')" . $profitAdjCurrencyFilter . $dashTxnSubSql . "
                             GROUP BY IF(@c168_dash_month=1,LEFT(t.transaction_date,7),DATE(t.transaction_date))
                             ORDER BY IF(@c168_dash_month=1,LEFT(t.transaction_date,7),DATE(t.transaction_date))";
             $adjDailyStmt = $pdo->prepare($adjDailySql);
