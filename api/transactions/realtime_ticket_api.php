@@ -54,6 +54,9 @@ try {
         }
         $channels = tx_ledger_realtime_channels_from_scope($listScope);
     } catch (Throwable $scopeError) {
+        if (!realtime_ticket_is_scope_access_error($scopeError)) {
+            throw $scopeError;
+        }
         error_log('realtime_ticket_api scope fallback: ' . $scopeError->getMessage());
     }
 
