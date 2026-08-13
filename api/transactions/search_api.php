@@ -2763,11 +2763,10 @@ try {
     }
     $results = $deduplicated_results;
 
-    // 第一笔 Domain List Fee：以客户公司（如 LGA）展示在 Transaction Payment。
-    // 当分类仅选择 PROFIT 时，不追加 Domain 虚拟来源行，避免筛选结果混入非 PROFIT 行。
-    // Type Search（纯 CONTRA/PAYMENT 等）亦跳过：虚拟行非 type 筛选结果，会在 C168 等平台账误显客户公司代码。
-    $isProfitOnlyCategory = (count($category_filters) === 1 && strtoupper((string) $category_filters[0]) === 'PROFIT');
-    if (!$type_search_active && !$isProfitOnlyCategory) {
+    // 第一笔 Domain List Fee / Auto Renew：以客户公司（如 TTKK）展示付款方。
+    // 有 Category 时只显示该 role，不追加 MEMBER 付款行（避免混入 EXPENSES/PROFIT 等）。
+    // Type Search（纯 CONTRA/PAYMENT 等）亦跳过：虚拟行非 type 筛选结果。
+    if (!$type_search_active && empty($category_filters)) {
         searchApiAppendDomainListFeeVirtualRows(
             $pdo,
             $results,
