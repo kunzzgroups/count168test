@@ -1,5 +1,5 @@
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 import {
   buildEarningsPieSlices,
   buildEarningsShareByCode,
@@ -7,6 +7,17 @@ import {
   getCurrencyColor,
 } from "../../lib/dashboardEarnings.js";
 import { formatCurrency } from "../../lib/dashboardFormat.js";
+
+function stripRechartsFocus(root) {
+  if (!root) return;
+  root.querySelectorAll(".recharts-wrapper, .recharts-surface, svg").forEach((node) => {
+    if (node.hasAttribute("tabindex")) node.removeAttribute("tabindex");
+    if (node instanceof HTMLElement || node instanceof SVGElement) {
+      node.style.outline = "none";
+      node.style.webkitTapHighlightColor = "transparent";
+    }
+  });
+}
 
 const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
   i18n,
@@ -23,6 +34,7 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
   tabs = null,
   footer = null,
 }) {
+  const pieHostRef = useRef(null);
   const pieUseConverted = !isCompanyBreakdown && useConverted;
   const pieBaseCode = isCompanyBreakdown ? "" : currencyCode;
   const slices = buildEarningsPieSlices(rows, {
@@ -53,6 +65,15 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
   const headBadge = badgeLabel || i18n.currency;
   const showSummary = summaryValue != null && !empty;
   const caption = [summaryLabel || headTitle, currencyCode].filter(Boolean).join(" · ");
+
+  useEffect(() => {
+    const root = pieHostRef.current;
+    if (!root || loading || empty) return;
+    stripRechartsFocus(root);
+    const observer = new MutationObserver(() => stripRechartsFocus(root));
+    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["tabindex"] });
+    return () => observer.disconnect();
+  }, [loading, empty, slices.length, isCompanyBreakdown, currencyCode]);
 
   return (
     <section
@@ -90,13 +111,19 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
           </p>
         ) : (
           <div className="m-dash-pie-wrap">
-            <div className="m-dash-pie-chart">
+            <div
+              ref={pieHostRef}
+              className="m-dash-pie-chart"
+              onMouseDown={(e) => {
+                e.preventDefault();
+              }}
+            >
               {loading ? (
                 <div className="m-dash-pie-skeleton" />
               ) : (
                 <>
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+                    <PieChart margin={{ top: 2, right: 2, bottom: 2, left: 2 }} style={{ outline: "none" }}>
                       <Pie
                         key={isCompanyBreakdown ? "company" : "currency"}
                         data={slices.length ? slices : [{ code: "—", value: 1, fill: "#e2e8f0" }]}

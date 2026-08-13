@@ -1060,6 +1060,24 @@
   width: 148px;
   height: 148px;
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Same as trend: kill Recharts SVG focus rect on tap. */
+.m-dash-pie-chart,
+.m-dash-pie-chart *,
+.m-dash-pie-chart .recharts-wrapper,
+.m-dash-pie-chart .recharts-wrapper:focus,
+.m-dash-pie-chart .recharts-wrapper:focus-visible,
+.m-dash-pie-chart .recharts-surface,
+.m-dash-pie-chart .recharts-surface:focus,
+.m-dash-pie-chart svg,
+.m-dash-pie-chart svg:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .m-dash-pie-skeleton {
