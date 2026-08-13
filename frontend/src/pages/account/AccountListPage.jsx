@@ -713,14 +713,22 @@ export default function AccountListPage() {
       if (!scope?.isListScopeReady) return;
       const groupOnly = options.groupOnly ?? resolveGroupOnlyFetch(scope);
       invalidateAccountListCacheForScope(scope, { groupOnly });
-      void fetchAccounts(scope, { groupOnly, silent: options.silent ?? false });
+      void fetchAccounts(scope, {
+        groupOnly,
+        silent: options.silent ?? false,
+        // Realtime must apply even if live filter identity flickers during the fetch.
+        trustRequestScope: true,
+      });
     },
     [fetchAccounts, invalidateAccountListCacheForScope, resolveGroupOnlyFetch],
   );
 
-  useRealtimeDomain(REALTIME_DOMAINS.ACCOUNTS, () => {
-    refreshAccountList({ silent: true });
-  });
+  useRealtimeDomain(
+    [REALTIME_DOMAINS.ACCOUNTS, REALTIME_DOMAINS.USERS],
+    () => {
+      refreshAccountList({ silent: true });
+    },
+  );
 
   const sessionUserId = sessionMe?.user_id ?? sessionMe?.id ?? null;
 

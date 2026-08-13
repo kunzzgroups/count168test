@@ -33,7 +33,7 @@ if (!function_exists('realtime_ticket_is_scope_access_error')) {
             return false;
         }
         return (bool) preg_match(
-            '/无权|无权限|缺少公司|缺少 group|无效的 group|无效的 company|Group Ledger/iu',
+            '/无权|无权限|缺少公司|缺少 group|缺少 company|无效的 group|无效的 company|Group Ledger/iu',
             $msg
         );
     }
@@ -128,6 +128,51 @@ if (!function_exists('realtime_append_user_channel')) {
             array_map(static fn ($c) => trim((string) $c), $channels),
             static fn ($c) => $c !== ''
         )));
+    }
+}
+
+if (!function_exists('realtime_session_fallback_channels')) {
+    /**
+     * Channels the logged-in user may always subscribe to.
+     * Partnership dual-tenant tickets often fail company/group asserts while
+     * Acc/Process grant publishes still go to tx:u:{uid} — keep that channel.
+     *
+     * @return string[]
+     */
+    function realtime_session_fallback_channels(PDO $pdo, int $userId): array
+    {
+        $channels = [];
+        $cid = (int) ($_SESSION['company_id'] ?? 0);
+        if ($cid > 0) {
+            $channels[] = 'tx:c:' . $cid;
+        }
+        if (function_exists('gc_session_accessible_group_ids') && function_exists('gc_resolve_group_pk_by_code')) {
+            foreach (gc_session_accessible_group_ids() as $gid) {
+                $g = strtoupper(trim((string) $gid));
+                if ($g === '') {
+                    continue;
+                }
+                $pk = (int) gc_resolve_group_pk_by_code($pdo, $g);
+                if ($pk > 0) {
+                    $channels[] = 'tx:g:' . $pk;
+                }
+            }
+        } elseif (
+            function_exists('gc_is_group_login')
+            && gc_is_group_login()
+            && function_exists('gc_session_login_identifier')
+            && function_exists('gc_resolve_group_pk_by_code')
+        ) {
+            $g = strtoupper(trim((string) (gc_session_login_identifier() ?? '')));
+            if ($g !== '') {
+                $pk = (int) gc_resolve_group_pk_by_code($pdo, $g);
+                if ($pk > 0) {
+                    $channels[] = 'tx:g:' . $pk;
+                }
+            }
+        }
+
+        return realtime_append_user_channel($channels, $userId);
     }
 }
 
