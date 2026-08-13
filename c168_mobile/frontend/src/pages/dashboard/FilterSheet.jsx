@@ -10,6 +10,7 @@ import {
   periodPresetRange,
   todayYmd,
 } from "../../lib/dashboardDateUtils.js";
+import { fetchMobileCurrencyCodes } from "../../lib/dashboardCurrencies.js";
 import { companiesForPicker as resolveCompaniesForPicker, pickCompany, resolveCompanyPickForGroup } from "../../lib/dashboardScope.js";
 import {
   companyLoginCanUseGroupsAllLedger,
@@ -17,6 +18,17 @@ import {
   isGroupLogin,
 } from "../../lib/loginScope.js";
 import { dashboardLabel } from "../../translateFile/dashboardTranslate.js";
+
+/** Group/Company/All identity — detect draft scope switches for currency reset. */
+function buildGcScopeIdentity({ companyId, selectedGroup, groupAllMode, groupsAllMode }) {
+  const cid = Number.isFinite(Number(companyId)) && Number(companyId) > 0 ? String(Number(companyId)) : "";
+  return [
+    cid,
+    String(selectedGroup || "").toUpperCase(),
+    groupAllMode ? "1" : "0",
+    groupsAllMode ? "1" : "0",
+  ].join("|");
+}
 
 /** Mirror useMobileDashboard.pickAllGroups for Filter draft. */
 function resolveGroupsAllDraft(dash, prev) {
@@ -366,8 +378,12 @@ export function DateRangeCalendarSheet({ open, onClose, dateFrom, dateTo, maxYmd
 export default function FilterSheet({ open, onClose, dash }) {
   const { i18n } = dash;
   const bodyRef = useRef(null);
+  const appliedGcIdentityRef = useRef("");
   const [rangeOpen, setRangeOpen] = useState(false);
   const [draft, setDraft] = useState(() => buildDraftFromDash(dash));
+  const [draftCurrencies, setDraftCurrencies] = useState(() =>
+    Array.isArray(dash.currencies) && dash.currencies.length ? [...dash.currencies] : ["MYR"],
+  );
   useOverlayLock(open, onClose);
 
   useEffect(() => {
@@ -375,9 +391,90 @@ export default function FilterSheet({ open, onClose, dash }) {
       setRangeOpen(false);
       return;
     }
-    setDraft(buildDraftFromDash(dash));
+    const next = buildDraftFromDash(dash);
+    setDraft(next);
+    appliedGcIdentityRef.current = buildGcScopeIdentity(next);
+    setDraftCurrencies(
+      Array.isArray(dash.currencies) && dash.currencies.length ? [...dash.currencies] : ["MYR"],
+    );
     bodyRef.current?.scrollTo?.({ top: 0 });
   }, [open]);
+
+  // Desktop parity: currency pills follow draft Group/Company (not only applied dash.currencies).
+  useEffect(() => {
+    if (!open) return undefined;
+    const companies = Array.isArray(dash.companies) ? dash.companies : [];
+    if (!companies.length) return undefined;
+
+    const hasCompany = Number.isFinite(Number(draft.companyId)) && Number(draft.companyId) > 0;
+    const groupOnly = Boolean(
+      draft.selectedGroup && !draft.groupAllMode && !draft.groupsAllMode && !hasCompany,
+    );
+    if (!hasCompany && !groupOnly && !draft.groupsAllMode && !draft.groupAllMode) {
+      return undefined;
+    }
+
+    const draftIdentity = buildGcScopeIdentity(draft);
+    const scopeChanged =
+      Boolean(appliedGcIdentityRef.current) && appliedGcIdentityRef.current !== draftIdentity;
+    const txMode = Array.isArray(dash.categories);
+    const ac = new AbortController();
+
+    (async () => {
+      try {
+        const codes = await fetchMobileCurrencyCodes({
+          companyId: draft.companyId,
+          selectedGroup: draft.selectedGroup,
+          groupAllMode: draft.groupAllMode,
+          groupsAllMode: draft.groupsAllMode,
+          companies,
+          signal: ac.signal,
+        });
+        if (ac.signal.aborted) return;
+        const next = codes.length ? codes : ["MYR"];
+        setDraftCurrencies(next);
+        setDraft((prev) => {
+          if (scopeChanged) {
+            const first = next[0] || "MYR";
+            return {
+              ...prev,
+              currency: first,
+              selectedCurrencies: txMode ? [first] : prev.selectedCurrencies,
+            };
+          }
+          const prevCode = String(prev.currency || "").toUpperCase();
+          if (txMode) {
+            const kept = (prev.selectedCurrencies || [])
+              .map((c) => String(c || "").toUpperCase())
+              .filter((c) => next.includes(c));
+            const selectedCurrencies = kept.length ? kept : [next[0] || "MYR"];
+            return {
+              ...prev,
+              selectedCurrencies,
+              currency: selectedCurrencies[0] || next[0] || "MYR",
+            };
+          }
+          return {
+            ...prev,
+            currency: next.includes(prevCode) ? prevCode : next[0] || "MYR",
+          };
+        });
+      } catch (e) {
+        if (ac.signal.aborted || e?.name === "AbortError") return;
+        setDraftCurrencies((prev) => (prev.length ? prev : ["MYR"]));
+      }
+    })();
+
+    return () => ac.abort();
+  }, [
+    open,
+    dash.companies,
+    dash.categories,
+    draft.companyId,
+    draft.selectedGroup,
+    draft.groupAllMode,
+    draft.groupsAllMode,
+  ]);
 
   const canUseGroupOnly = dash.canUseGroupOnlyForGroup || (() => false);
 
@@ -599,12 +696,12 @@ export default function FilterSheet({ open, onClose, dash }) {
             </div>
           </Section>
 
-          {dash.currencies.length > 0 && (
+          {draftCurrencies.length > 0 && (
             <Section title={i18n.currency}>
               <div className="m-filter-pill-scroll">
                 {Array.isArray(dash.categories) ? (
                   <>
-                    {dash.currencies.map((code) => {
+                    {draftCurrencies.map((code) => {
                       const active = draft.selectedCurrencies.includes(code);
                       return (
                         <Pill
@@ -634,7 +731,7 @@ export default function FilterSheet({ open, onClose, dash }) {
                     })}
                   </>
                 ) : (
-                  dash.currencies.map((code) => (
+                  draftCurrencies.map((code) => (
                     <Pill
                       key={code}
                       active={draft.currency === code}
