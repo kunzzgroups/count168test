@@ -2441,10 +2441,18 @@ export default function UserListPage() {
       : (!groupOnlyUserList || (mutationScopeCompanyId != null && Number(mutationScopeCompanyId) > 0));
     const processPerms = Array.from(selectedProcessIdsNow).map((id) => ({ id: Number(id) }));
     let payload = { action: isEditMode ? "update" : "create", id: form.id || undefined, login_id: form.login_id.trim().toUpperCase(), name: form.name.trim().toUpperCase(), email: emailCheck.normalized, role: form.role, status: form.status };
-    const assignAccessPayload = (key, seeAllKey, value) => {
+    const assignAccessPayload = (key, seeAllKey, clearedKey, value) => {
       payload[key] = value;
-      if (value === null) payload[seeAllKey] = 1;
-      else delete payload[seeAllKey];
+      if (value === null) {
+        payload[seeAllKey] = 1;
+        delete payload[clearedKey];
+      } else if (Array.isArray(value) && value.length === 0) {
+        payload[clearedKey] = 1;
+        delete payload[seeAllKey];
+      } else {
+        delete payload[seeAllKey];
+        delete payload[clearedKey];
+      }
     };
     let saveGroupId = null;
     let saveCompanyIds = selectedCompanyIds;
@@ -2512,6 +2520,7 @@ export default function UserListPage() {
       assignAccessPayload(
         "account_permissions",
         "account_permissions_see_all",
+        "account_permissions_cleared",
         resolveSeeAllOrCompactPermissions(
           {
             isSelf: false,
@@ -2526,6 +2535,7 @@ export default function UserListPage() {
         assignAccessPayload(
           "process_permissions",
           "process_permissions_see_all",
+          "process_permissions_cleared",
           resolveSeeAllOrCompactPermissions(
             {
               isSelf: false,
@@ -2595,6 +2605,7 @@ export default function UserListPage() {
         assignAccessPayload(
           "account_permissions",
           "account_permissions_see_all",
+          "account_permissions_cleared",
           resolveSeeAllOrCompactPermissions(
             {
               isSelf: !!caps.isSelf,
@@ -2653,6 +2664,7 @@ export default function UserListPage() {
         assignAccessPayload(
           "process_permissions",
           "process_permissions_see_all",
+          "process_permissions_cleared",
           resolveSeeAllOrCompactPermissions(
             {
               isSelf: !!caps.isSelf,

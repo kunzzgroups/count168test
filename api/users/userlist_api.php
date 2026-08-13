@@ -1887,6 +1887,33 @@ function userlist_clear_all_user_permission_columns(
 }
 
 /**
+ * Owner Clear All → JSON [] on every company row (explicit empty whitelist).
+ * Must not use SQL NULL: NULL means see-all, and leftover NULL siblings would
+ * keep Partnership Acc/Process lists visible after a single-company [] write.
+ */
+function userlist_set_all_user_permission_columns_empty(
+    PDO $pdo,
+    int $userId,
+    bool $clearAccount,
+    bool $clearProcess
+): void {
+    if ($userId <= 0 || (!$clearAccount && !$clearProcess)) {
+        return;
+    }
+    $sets = [];
+    if ($clearAccount) {
+        $sets[] = "account_permissions = '[]'";
+    }
+    if ($clearProcess) {
+        $sets[] = "process_permissions = '[]'";
+    }
+    $sql = 'UPDATE user_company_permissions SET ' . implode(', ', $sets)
+        . ', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$userId]);
+}
+
+/**
  * Group-only Acc/Process grants live on the group-entity company row.
  * Non-null subsidiary rows (esp. stale []) shadow entity null/grants in
  * permissions_load_*_decoded (fallback only when company column is SQL NULL).
@@ -3171,6 +3198,8 @@ try {
                 $editorUserId = (int) ($_SESSION['user_id'] ?? 0);
                 $accountPermsUpdated = false;
                 $processPermsUpdated = false;
+                $accountClearedWritten = false;
+                $processClearedWritten = false;
                 $isSelfAccessEdit = $editorUserId > 0 && $editorUserId === (int) $input['id'];
                 // Must pass for BOTH DB role and assigned role — otherwise elevating role in the
                 // same request (e.g. supervisor → admin) would still allow permission writes.
@@ -3204,7 +3233,13 @@ try {
                     $processPerms = null;
                     
                     if (array_key_exists('account_permissions', $input)) {
-                        $wantAccountSeeAll = !$isSelfAccessEdit && (
+                        $submittedAccountEmpty = is_array($input['account_permissions'])
+                            && $input['account_permissions'] === [];
+                        $editorUnrestrictedAccounts = permissions_user_sees_all_accounts((string) $current_user_role);
+                        $wantAccountCleared = !$isSelfAccessEdit && $editorUnrestrictedAccounts && (
+                            $submittedAccountEmpty || !empty($input['account_permissions_cleared'])
+                        );
+                        $wantAccountSeeAll = !$isSelfAccessEdit && !$wantAccountCleared && (
                             $input['account_permissions'] === null
                             || !empty($input['account_permissions_see_all'])
                         );
@@ -3212,6 +3247,11 @@ try {
                             // Owner Select All → unset see-all on every company row for this user.
                             $accountPerms = null;
                             $accountPermsUpdated = true;
+                        } elseif ($wantAccountCleared) {
+                            // Owner Clear All → explicit [] on every company row (not SQL NULL).
+                            $accountPerms = '[]';
+                            $accountPermsUpdated = true;
+                            $accountClearedWritten = true;
                         } else {
                             $existingDecoded = null;
                             $existingIsNull = true;
@@ -3252,13 +3292,23 @@ try {
                     }
                     
                     if (array_key_exists('process_permissions', $input)) {
-                        $wantProcessSeeAll = !$isSelfAccessEdit && (
+                        $submittedProcessEmpty = is_array($input['process_permissions'])
+                            && $input['process_permissions'] === [];
+                        $editorUnrestrictedProcesses = permissions_user_sees_all_processes((string) $current_user_role);
+                        $wantProcessCleared = !$isSelfAccessEdit && $editorUnrestrictedProcesses && (
+                            $submittedProcessEmpty || !empty($input['process_permissions_cleared'])
+                        );
+                        $wantProcessSeeAll = !$isSelfAccessEdit && !$wantProcessCleared && (
                             $input['process_permissions'] === null
                             || !empty($input['process_permissions_see_all'])
                         );
                         if ($wantProcessSeeAll) {
                             $processPerms = null;
                             $processPermsUpdated = true;
+                        } elseif ($wantProcessCleared) {
+                            $processPerms = '[]';
+                            $processPermsUpdated = true;
+                            $processClearedWritten = true;
                         } else {
                             $existingProcDecoded = null;
                             $existingProcIsNull = true;
@@ -3320,12 +3370,14 @@ try {
                     // See-all: wipe every company row so stale domain whitelists cannot shadow.
                     $accountSeeAllWritten = $accountPermsUpdated && $accountPerms === null
                         && array_key_exists('account_permissions', $input)
+                        && empty($input['account_permissions_cleared'])
                         && (
                             $input['account_permissions'] === null
                             || !empty($input['account_permissions_see_all'])
                         );
                     $processSeeAllWritten = $processPermsUpdated && $processPerms === null
                         && array_key_exists('process_permissions', $input)
+                        && empty($input['process_permissions_cleared'])
                         && (
                             $input['process_permissions'] === null
                             || !empty($input['process_permissions_see_all'])
@@ -3337,11 +3389,23 @@ try {
                             $accountSeeAllWritten,
                             $processSeeAllWritten
                         );
-                    } elseif (
+                    }
+                    if ($accountClearedWritten || $processClearedWritten) {
+                        // Clear All: [] on every row. Do not NULL siblings (NULL = see-all).
+                        userlist_set_all_user_permission_columns_empty(
+                            $pdo,
+                            (int) $input['id'],
+                            $accountClearedWritten,
+                            $processClearedWritten
+                        );
+                    }
+                    $shadowAccount = $accountPermsUpdated && !$accountSeeAllWritten && !$accountClearedWritten;
+                    $shadowProcess = $processPermsUpdated && !$processSeeAllWritten && !$processClearedWritten;
+                    if (
                         $groupTenantWrite
                         && $groupScope !== null
                         && (int) $scope_company_id > 0
-                        && ($accountPermsUpdated || $processPermsUpdated)
+                        && ($shadowAccount || $shadowProcess)
                     ) {
                         // Partial grant/revoke on group entity: clear subsidiary shadows only.
                         userlist_clear_group_permission_shadows(
@@ -3349,8 +3413,8 @@ try {
                             (int) $input['id'],
                             (int) $scope_company_id,
                             $groupScope,
-                            !empty($accountPermsUpdated),
-                            !empty($processPermsUpdated)
+                            $shadowAccount,
+                            $shadowProcess
                         );
                     }
                 }

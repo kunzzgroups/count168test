@@ -263,6 +263,11 @@ export function nextSelfAccountSelection(prevSelected, visibleIds, heldIds, mode
 export function resolveSeeAllOrCompactPermissions({ isSelf, editorSeesAll, selectedIds, modalRows }, compactRows) {
   if (isSelf || !editorSeesAll) return compactRows;
   const selected = selectedIds instanceof Set ? selectedIds : new Set([...selectedIds].map(Number));
+  const selectedCount = [...selected].filter((id) => Number(id) > 0).length;
+  // Clear All / nothing checked → always persist [] (never SQL NULL see-all).
+  if (selectedCount === 0) {
+    return Array.isArray(compactRows) ? compactRows : [];
+  }
   const modalIds = (Array.isArray(modalRows) ? modalRows : [])
     .map((r) => Number(r?.id ?? r))
     .filter((id) => id > 0);
