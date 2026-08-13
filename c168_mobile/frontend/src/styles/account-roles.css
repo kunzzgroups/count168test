@@ -28,8 +28,9 @@
 }
 
 .m-account-role.transaction-role-expenses {
-  background: var(--m-grad-brand);
-  color: #fff;
+  /* Desktop parity: frontend/public/css/transaction.css */
+  background-color: #f0e1ff;
+  color: #4f148f;
 }
 
 .m-account-role.transaction-role-company {

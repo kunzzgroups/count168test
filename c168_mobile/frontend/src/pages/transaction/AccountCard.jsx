@@ -6,7 +6,7 @@ const ROLE_COLORS = {
   "transaction-role-bank": "border-l-sky-500",
   "transaction-role-cash": "border-l-emerald-500",
   "transaction-role-profit": "border-l-amber-500",
-  "transaction-role-expenses": "border-l-blue-600",
+  "transaction-role-expenses": "border-l-violet-600",
   "transaction-role-company": "border-l-sky-600",
   "transaction-role-member": "border-l-teal-500",
   "transaction-role-agent": "border-l-cyan-500",
