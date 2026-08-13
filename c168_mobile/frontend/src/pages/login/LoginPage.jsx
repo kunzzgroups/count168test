@@ -6,6 +6,7 @@ import { buildApiUrl } from "../../utils/apiUrl.js";
 import { resolveMobileLandingPath } from "../../utils/mobilePermissions.js";
 import { useAuthBackground } from "./useAuthBackground.js";
 import PasswordInput from "../../components/PasswordInput.jsx";
+import { extractPlainTextFromRichText } from "../../utils/content/richTextSanitizer.js";
 
 const LOGIN_ASSET_RETRY_KEY = "ec_mobile_login_asset_retry";
 
@@ -54,12 +55,6 @@ function tryLoginPageReloadOnce() {
   url.searchParams.set("_", String(Date.now()));
   window.location.replace(url.toString());
   return true;
-}
-
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text ?? "";
-  return div.innerHTML;
 }
 
 function resolvePostLoginPath(data, role, me) {
@@ -400,7 +395,7 @@ export default function LoginPage() {
                   <div className="sc-login-maintenance-item" key={`${item.id}-${index}`}>
                     <span className="sc-login-maintenance-dot" />
                     <span className="sc-login-maintenance-label">{item.prefix || i18n.maintenanceLabel}</span>
-                    <span dangerouslySetInnerHTML={{ __html: escapeHtml(item.content) }} />
+                    <span>{extractPlainTextFromRichText(item.content)}</span>
                   </div>
                 ))}
               </div>
