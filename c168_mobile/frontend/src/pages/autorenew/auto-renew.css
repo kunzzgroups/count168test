@@ -237,3 +237,17 @@
   font-size: var(--m-text-body);
   line-height: 1.45;
 }
+
+/* Sheet footer CTAs — match mobile tokens (not desktop 0.875rem CTA scale). */
+.m-account-sheet-footer .m-account-footer-actions .m-account-primary-btn,
+.m-account-sheet-footer .m-account-footer-actions .m-account-danger-btn,
+.m-account-sheet-footer .m-account-footer-actions .m-account-secondary-btn,
+.m-account-sheet-footer > .m-account-primary-btn,
+.m-account-sheet-footer > .m-account-danger-btn {
+  margin-top: 0;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.75rem;
+  font-size: var(--m-text-body);
+  font-weight: 700;
+  line-height: 1.2;
+}
