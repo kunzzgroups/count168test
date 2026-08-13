@@ -39,29 +39,25 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
     useConverted: pieUseConverted,
   });
 
-  // Compact side legend only when there is no footer list below (desktop stacks list under pie).
-  const legend = footer
-    ? []
-    : rows
-        .map((row, index) => ({
-          code: String(row.code).toUpperCase(),
-          color: getCurrencyColor(row.code, index),
-          pct: shareByCode[String(row.code).toUpperCase()],
-        }))
-        .filter((item) => item.pct != null && Number(item.pct) >= 0.05)
-        .sort((a, b) => Number(b.pct) - Number(a.pct));
+  const legend = rows
+    .map((row, index) => ({
+      code: String(row.code).toUpperCase(),
+      color: getCurrencyColor(row.code, index),
+      pct: shareByCode[String(row.code).toUpperCase()],
+    }))
+    .filter((item) => item.pct != null && Number(item.pct) >= 0.05)
+    .sort((a, b) => Number(b.pct) - Number(a.pct));
 
   const empty = !loading && slices.length === 0;
   const headTitle = title || i18n.currencyDistribution;
   const headBadge = badgeLabel || i18n.currency;
   const showSummary = summaryValue != null && !empty;
   const caption = [summaryLabel || headTitle, currencyCode].filter(Boolean).join(" · ");
-  const stacked = Boolean(footer);
 
   return (
     <section
       className={`m-dash-card m-dash-earnings-panel${tabs ? " m-dash-earnings-panel--segmented" : ""}${
-        stacked ? " m-dash-earnings-panel--grouped" : ""
+        footer ? " m-dash-earnings-panel--grouped" : ""
       }`}
     >
       <div className="m-dash-earnings-panel-top">
@@ -93,7 +89,7 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
             {i18n.noData}
           </p>
         ) : (
-          <div className={`m-dash-pie-wrap${stacked ? " m-dash-pie-wrap--stacked" : ""}`}>
+          <div className="m-dash-pie-wrap">
             <div className="m-dash-pie-chart">
               {loading ? (
                 <div className="m-dash-pie-skeleton" />
@@ -108,15 +104,17 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                         nameKey="code"
                         cx="50%"
                         cy="50%"
-                        innerRadius="62%"
-                        outerRadius="92%"
-                        paddingAngle={0}
-                        stroke="none"
+                        innerRadius="66%"
+                        outerRadius="88%"
+                        paddingAngle={slices.length > 3 ? 2 : 3}
+                        stroke="#fff"
+                        strokeWidth={2}
+                        activeShape={false}
                         isAnimationActive
                         label={false}
                       >
                         {(slices.length ? slices : [{ code: "empty", fill: "#e2e8f0" }]).map((entry, index) => (
-                          <Cell key={entry.code || index} fill={entry.fill} stroke="none" />
+                          <Cell key={entry.code || index} fill={entry.fill} stroke="#fff" strokeWidth={2} />
                         ))}
                       </Pie>
                     </PieChart>
@@ -133,31 +131,29 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
               )}
             </div>
 
-            {!stacked ? (
-              <ul className="m-dash-pie-legend">
-                {(loading
-                  ? Array.from({ length: 4 }, (_, i) => ({ code: `s${i}`, pct: 0, color: "#e2e8f0" }))
-                  : legend
-                ).map((item) => (
-                  <li key={item.code} className="m-dash-pie-legend-item">
-                    <span className="m-dash-pie-legend-dot" style={{ backgroundColor: item.color }} aria-hidden="true" />
-                    <span className="m-dash-pie-legend-code">
-                      {loading ? (
-                        <span className="inline-block h-3 w-8 animate-pulse rounded bg-slate-100" />
-                      ) : (
-                        item.code
-                      )}
-                    </span>
-                    <span className="m-dash-pie-legend-pct">
-                      {loading ? "—" : `${Number(item.pct).toFixed(1)}%`}
-                    </span>
-                  </li>
-                ))}
-                {!loading && legend.length === 0 && (
-                  <li className="text-[12px] font-semibold text-slate-400">{i18n.noData}</li>
-                )}
-              </ul>
-            ) : null}
+            <ul className="m-dash-pie-legend">
+              {(loading
+                ? Array.from({ length: 4 }, (_, i) => ({ code: `s${i}`, pct: 0, color: "#e2e8f0" }))
+                : legend
+              ).map((item) => (
+                <li key={item.code} className="m-dash-pie-legend-item">
+                  <span className="m-dash-pie-legend-dot" style={{ backgroundColor: item.color }} aria-hidden="true" />
+                  <span className="m-dash-pie-legend-code">
+                    {loading ? (
+                      <span className="inline-block h-3 w-8 animate-pulse rounded bg-slate-100" />
+                    ) : (
+                      item.code
+                    )}
+                  </span>
+                  <span className="m-dash-pie-legend-pct">
+                    {loading ? "—" : `${Number(item.pct).toFixed(1)}%`}
+                  </span>
+                </li>
+              ))}
+              {!loading && legend.length === 0 && (
+                <li className="text-[12px] font-semibold text-slate-400">{i18n.noData}</li>
+              )}
+            </ul>
           </div>
         )}
       </div>
