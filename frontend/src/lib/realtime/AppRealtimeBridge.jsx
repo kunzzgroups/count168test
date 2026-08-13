@@ -16,7 +16,7 @@ import { clearAccountListRouteWarmCache } from "../../pages/account/accountRoute
 import { clearProcessListRouteWarmCaches } from "../../pages/processlist/processRoutePrefetch.js";
 import { clearAllOwnershipCompaniesCache } from "../../pages/ownership/ownershipRoutePrefetch.js";
 import { clearAllAutoRenewListCache } from "../../pages/autorenew/autoRenewRoutePrefetch.js";
-import { onRealtimeInvalidate, REALTIME_DOMAINS } from "./realtimeEvents.js";
+import { onRealtimeInvalidate, REALTIME_DOMAINS, REALTIME_RECONNECT_EVENT } from "./realtimeEvents.js";
 import { subscribeAppRealtime } from "./subscribeAppRealtime.js";
 
 /** Fallback when accessible_group_ids not hydrated yet (never usernames like JK). */
@@ -75,9 +75,12 @@ export default function AppRealtimeBridge() {
       }, 300);
     };
     window.addEventListener(DASHBOARD_GROUP_FILTER_EVENT, onFilter);
+    const onForceReconnect = () => ctl.reconnect({ force: true });
+    window.addEventListener(REALTIME_RECONNECT_EVENT, onForceReconnect);
 
     return () => {
       window.removeEventListener(DASHBOARD_GROUP_FILTER_EVENT, onFilter);
+      window.removeEventListener(REALTIME_RECONNECT_EVENT, onForceReconnect);
       if (filterTimer) clearTimeout(filterTimer);
       ctl.stop();
       ctlRef.current = null;

@@ -57,9 +57,7 @@ export function subscribeAppRealtime({ getScopeParams, onError } = {}) {
     }, delayMs);
   };
 
-  const fetchTicket = async () => {
-    const scope = typeof getScopeParams === "function" ? getScopeParams() || {} : {};
-    lastScopeKey = scopeKeyFromParams(scope);
+  const fetchTicketOnce = async (scope) => {
     const params = new URLSearchParams();
     if (scope.companyId != null && scope.companyId !== "") {
       params.set("company_id", String(scope.companyId));
@@ -69,12 +67,30 @@ export function subscribeAppRealtime({ getScopeParams, onError } = {}) {
     if (scope.groupAggregate) params.set("group_aggregate", "1");
     if (scope.subsidiaryAccountsOnly) params.set("subsidiary_accounts_only", "1");
 
-    const res = await fetch(buildApiUrl(`api/realtime/ticket_api.php?${params}`), {
+    const qs = params.toString();
+    const res = await fetch(buildApiUrl(`api/realtime/ticket_api.php${qs ? `?${qs}` : ""}`), {
       credentials: "include",
       cache: "no-cache",
       headers: { "Cache-Control": "no-cache" },
     });
-    return res.json();
+    try {
+      return await res.json();
+    } catch {
+      return { success: false, message: `ticket http ${res.status}` };
+    }
+  };
+
+  const fetchTicket = async () => {
+    const scope = typeof getScopeParams === "function" ? getScopeParams() || {} : {};
+    lastScopeKey = scopeKeyFromParams(scope);
+    let ticketRes = await fetchTicketOnce(scope);
+    const enabled = Boolean(ticketRes?.success && ticketRes?.data?.enabled && ticketRes?.data?.ticket);
+    if (!enabled) {
+      // Partnership dual-tenant: company/group assert can 500/disable the scoped
+      // ticket. Session+user channels are enough for Acc/Process grant sync.
+      ticketRes = await fetchTicketOnce({});
+    }
+    return ticketRes;
   };
 
   const onPayload = (type, data) => {
@@ -130,6 +146,8 @@ export function subscribeAppRealtime({ getScopeParams, onError } = {}) {
 
       es.addEventListener("ledger_changed", (ev) => onPayload("ledger_changed", ev.data));
       es.addEventListener("domain_changed", (ev) => onPayload("domain_changed", ev.data));
+      // Proxies sometimes strip named SSE events; default `message` still carries JSON.
+      es.addEventListener("message", (ev) => onPayload("domain_changed", ev.data));
 
       // Never let the browser retry the same (possibly expired) ticket URL.
       // Take ownership: close → mint a fresh ticket → reconnect.

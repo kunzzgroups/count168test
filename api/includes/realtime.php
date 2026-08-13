@@ -33,7 +33,7 @@ if (!function_exists('realtime_ticket_is_scope_access_error')) {
             return false;
         }
         return (bool) preg_match(
-            '/无权|无权限|缺少公司|缺少 group|缺少 company|无效的 group|无效的 company|Group Ledger/iu',
+            '/无权|无权限|缺少公司|缺少 group|缺少 company|无效的 group|无效的 company|Group Ledger|No permission|not allowed|用户未登录/iu',
             $msg
         );
     }
@@ -285,18 +285,30 @@ if (!function_exists('realtime_publish')) {
                 if ($ch === false) {
                     return;
                 }
-                curl_setopt_array($ch, [
-                    CURLOPT_POST => true,
-                    CURLOPT_HTTPHEADER => [
-                        'Content-Type: application/json',
-                        'X-Realtime-Secret: ' . $secret,
-                    ],
-                    CURLOPT_POSTFIELDS => $body,
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_CONNECTTIMEOUT_MS => 400,
-                    CURLOPT_TIMEOUT_MS => 800,
-                ]);
-                curl_exec($ch);
+                $ok = false;
+                for ($attempt = 0; $attempt < 2; $attempt++) {
+                    curl_setopt_array($ch, [
+                        CURLOPT_POST => true,
+                        CURLOPT_HTTPHEADER => [
+                            'Content-Type: application/json',
+                            'X-Realtime-Secret: ' . $secret,
+                        ],
+                        CURLOPT_POSTFIELDS => $body,
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_CONNECTTIMEOUT_MS => 600,
+                        CURLOPT_TIMEOUT_MS => 2000,
+                    ]);
+                    curl_exec($ch);
+                    $errno = curl_errno($ch);
+                    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    if ($errno === 0 && $code >= 200 && $code < 300) {
+                        $ok = true;
+                        break;
+                    }
+                }
+                if (!$ok) {
+                    error_log('realtime_publish failed: errno=' . curl_errno($ch) . ' http=' . (int) curl_getinfo($ch, CURLINFO_HTTP_CODE));
+                }
                 curl_close($ch);
                 return;
             }
