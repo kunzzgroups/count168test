@@ -156,8 +156,7 @@ export function useMobileAutoRenew() {
 
   useEffect(() => {
     if (!me || blocked) return;
-    setRefreshing(true);
-    void loadList().finally(() => setRefreshing(false));
+    void loadList({ silent: true });
   }, [entityTab, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = useCallback(async () => {

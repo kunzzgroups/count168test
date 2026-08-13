@@ -61,6 +61,8 @@ export default function MobileShell({
     enabled: typeof onRefresh === "function",
     refreshing,
   });
+  /** Only gesture-driven pull refresh should show chrome loading UI. */
+  const gestureRefreshing = phase === "refreshing";
 
   const floatingIdleVisible = useScrollIdleVisible(mainRef, {
     idleMs: 320,
@@ -83,10 +85,10 @@ export default function MobileShell({
       ro?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [stickyBar, refreshing]);
+  }, [stickyBar, gestureRefreshing]);
 
   const forceChrome =
-    active || isAnimating || overlayOpen || sidebarOpen || notifyOpen || refreshing;
+    active || isAnimating || overlayOpen || sidebarOpen || notifyOpen || gestureRefreshing;
 
   useDirectScrollChrome({
     scrollRef: mainRef,
@@ -157,7 +159,7 @@ export default function MobileShell({
           onOpenSidebar={openSidebar}
           onOpenNotifications={openNotifications}
           onRefresh={typeof onRefresh === "function" ? refreshPage : undefined}
-          refreshing={refreshing}
+          refreshing={gestureRefreshing}
         />
 
         {stickyBar ? (
@@ -184,7 +186,7 @@ export default function MobileShell({
           }}
         >
           <PullRefreshIndicator pullPx={pullPx} progress={progress} phase={phase} labels={labels} />
-          <div className={refreshing ? "m-shell-main--refreshing" : ""}>{children}</div>
+          <div className={gestureRefreshing ? "m-shell-main--refreshing" : ""}>{children}</div>
         </div>
       </main>
 

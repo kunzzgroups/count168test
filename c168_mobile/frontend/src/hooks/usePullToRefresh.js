@@ -29,6 +29,10 @@ export function usePullToRefresh(scrollRef, { onRefresh, enabled = true, refresh
   const axisLocked = useRef(null);
   const locked = useRef(false);
   const sawRefreshing = useRef(false);
+  /** True only when a pull/release (or in-flight gesture phase) owns the refresh UI. */
+  const gestureRefreshRef = useRef(false);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
   const pullPxRef = useRef(0);
   const animRef = useRef(0);
   const fallbackTimer = useRef(0);
@@ -80,23 +84,41 @@ export function usePullToRefresh(scrollRef, { onRefresh, enabled = true, refresh
     tracking.current = false;
     axisLocked.current = null;
     sawRefreshing.current = false;
+    gestureRefreshRef.current = false;
     setPhase("idle");
     animatePull(0, { duration: 260 });
   }, [animatePull]);
 
   useEffect(() => {
     if (refreshing) {
-      sawRefreshing.current = true;
       locked.current = true;
-      refreshStartedAt.current = Date.now();
       window.clearTimeout(fallbackTimer.current);
+
+      const inGestureUi =
+        gestureRefreshRef.current ||
+        phaseRef.current === "pulling" ||
+        phaseRef.current === "armed" ||
+        phaseRef.current === "refreshing";
+
+      // Programmatic loads (tab/filter/nav): keep data fetch, skip pull indicator UI.
+      if (!inGestureUi) return;
+
+      sawRefreshing.current = true;
+      gestureRefreshRef.current = true;
+      refreshStartedAt.current = Date.now();
       window.clearTimeout(minHoldTimer.current);
       cancelAnim();
       setPhase("refreshing");
       animatePull(Math.max(pullPxRef.current, REFRESH_HOLD), { duration: 180 });
       return;
     }
-    if (!sawRefreshing.current) return;
+
+    if (!sawRefreshing.current) {
+      locked.current = false;
+      gestureRefreshRef.current = false;
+      return;
+    }
+
     const held = Date.now() - (refreshStartedAt.current || Date.now());
     const wait = Math.max(0, MIN_SPIN_MS - held);
     window.clearTimeout(minHoldTimer.current);
@@ -109,6 +131,7 @@ export function usePullToRefresh(scrollRef, { onRefresh, enabled = true, refresh
           tracking.current = false;
           axisLocked.current = null;
           sawRefreshing.current = false;
+          gestureRefreshRef.current = false;
           setPhase("idle");
         },
       });
@@ -193,6 +216,7 @@ export function usePullToRefresh(scrollRef, { onRefresh, enabled = true, refresh
       }
 
       locked.current = true;
+      gestureRefreshRef.current = true;
       setPhase("refreshing");
       animatePull(REFRESH_HOLD, { duration: 160 });
       Promise.resolve(onRefreshRef.current()).catch(() => {});
