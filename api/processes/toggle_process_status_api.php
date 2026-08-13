@@ -4,6 +4,7 @@ session_write_close(); // 释放 session 锁，允许并发 AJAX 请求并行执
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../includes/partnership_audit_readonly.php';
 require_once __DIR__ . '/../includes/process_modified_by.php';
+require_once __DIR__ . '/../includes/ensure_bank_process_billing_extension_columns.php';
 require_once __DIR__ . '/../api_response.php';
 
 header('Content-Type: application/json');
@@ -109,6 +110,17 @@ try {
                 $del->execute([$companyId, $id]);
             } catch (Throwable $e) {
                 // 删除失败不影响状态切换本身
+            }
+
+            // Feature 3：inactive 期间跳过的账期不补，重新激活后直接从「本月 1 号」起算，
+            // 一直出账到下一次被设为 inactive。用重新激活当月 1 号覆盖 accounting_reactivated_floor_ymd。
+            try {
+                ensureBankProcessBillingExtensionColumns($pdo);
+                $reactivatedFloor = date('Y-m-01');
+                $floorStmt = $pdo->prepare("UPDATE bank_process SET accounting_reactivated_floor_ymd = ? WHERE id = ? AND company_id = ?");
+                $floorStmt->execute([$reactivatedFloor, $id, $companyId]);
+            } catch (Throwable $e) {
+                // 写入失败不影响状态切换本身（旧库未迁移时退化为原有行为）
             }
         }
 

@@ -3,6 +3,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/permissions.php';
+require_once __DIR__ . '/../includes/ensure_bank_process_billing_extension_columns.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -80,8 +81,24 @@ try {
     $setClauses = array_map(function ($column) {
         return "`$column` = ?";
     }, $issueFlagColumns);
-    $stmt = $pdo->prepare("UPDATE bank_process SET " . implode(', ', $setClauses) . ", dts_modified = NOW() WHERE id = ? AND company_id = ?");
     $params = array_fill(0, count($issueFlagColumns), $valueToSave);
+
+    // Feature 1：切回 ACTIVE/INACTIVE（issue_flag 清空）时，一并清掉到期冻结日，
+    // 该 process 重新回到 Feature 2/3 的一般规则，不应继续被旧的冻结日限制。
+    ensureBankProcessBillingExtensionColumns($pdo);
+    if ($valueToSave === null) {
+        try {
+            $lockColStmt = $pdo->prepare("SHOW COLUMNS FROM bank_process LIKE 'issue_flag_locked_end_ymd'");
+            $lockColStmt->execute();
+            if ($lockColStmt->rowCount() > 0) {
+                $setClauses[] = '`issue_flag_locked_end_ymd` = NULL';
+            }
+        } catch (Throwable $e) {
+            // 检测失败不影响本次状态切换本身
+        }
+    }
+
+    $stmt = $pdo->prepare("UPDATE bank_process SET " . implode(', ', $setClauses) . ", dts_modified = NOW() WHERE id = ? AND company_id = ?");
     $params[] = $id;
     $params[] = $companyId;
     $stmt->execute($params);

@@ -15,11 +15,13 @@ require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../bankprocess_maintenance/maintenance_accounting_resend_lib.php';
 require_once __DIR__ . '/../includes/money_decimal.php';
 require_once __DIR__ . '/../includes/ensure_bank_process_day_end_monthly_cap_column.php';
+require_once __DIR__ . '/../includes/ensure_bank_process_billing_extension_columns.php';
 require_once __DIR__ . '/../includes/transaction_approval.php';
 require_once __DIR__ . '/contract_billing_addon.php';
 
 if (isset($pdo) && $pdo instanceof PDO) {
     ensureBankProcessDayEndMonthlyCapEnabledColumn($pdo);
+    ensureBankProcessBillingExtensionColumns($pdo);
 }
 
 /** 统一 JSON 响应 */
@@ -397,6 +399,143 @@ function txnAnchorMonthCapAfterPartialFirst(?string $contract, int $startDayOfMo
     return max(0, $term);
 }
 
+/** 与 process_accounting_inbox_api::inboxDayEndTailSwitchOn 一致 */
+function txnDayEndMonthlyCapOn(bool $hasDayEndMonthlyCapCol, array $row): bool
+{
+    if (!$hasDayEndMonthlyCapCol) {
+        return true;
+    }
+    $raw = $row['day_end_monthly_cap_enabled'] ?? null;
+    return in_array((string) $raw, ['1', 'true', 'TRUE'], true) || $raw === 1 || $raw === true;
+}
+
+/** 与 process_accounting_inbox_api::normalizeBankIssueFlagValueForInbox 一致 */
+function normalizeBankIssueFlagValueForTxn($raw): string
+{
+    $s = strtolower(trim((string) $raw));
+    $s = str_replace([' ', '-'], '_', $s);
+    if ($s === '') {
+        return '';
+    }
+    if (strpos($s, 'e_invoice') !== false) {
+        return 'e_invoice';
+    }
+    if (strpos($s, 'official') !== false) {
+        return 'official';
+    }
+    if (strpos($s, 'block') !== false) {
+        return 'block';
+    }
+    return '';
+}
+
+/** 与 process_accounting_inbox_api::bmpIssueFlagIsLocking 一致 */
+function bmpIssueFlagIsLockingForTxn(?string $normalizedFlag): bool
+{
+    return in_array($normalizedFlag, ['official', 'e_invoice', 'block'], true);
+}
+
+/** 与 process_accounting_inbox_api::bmpRowUnlimitedWindow 一致（Feature 2） */
+function bmpRowUnlimitedWindowForTxn(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row): bool
+{
+    if (bmpIssueFlagIsLockingForTxn($normalizedFlag)) {
+        return false;
+    }
+    return !txnDayEndMonthlyCapOn($hasDayEndMonthlyCapCol, $row);
+}
+
+/** 与 process_accounting_inbox_api::bmpRecurringBillingWindowEndYmd 一致 */
+function bmpRecurringBillingWindowEndYmdForTxn(?string $dayStartYmd, ?string $contract, ?string $dayEndYmd, ?string $frequency): ?string
+{
+    if ($dayStartYmd === null || trim($dayStartYmd) === '') {
+        return null;
+    }
+    $normStart = bankProcessDateFieldToYmd($dayStartYmd);
+    if ($normStart === null) {
+        $ts0 = strtotime($dayStartYmd);
+        if ($ts0 === false) {
+            return null;
+        }
+        $normStart = date('Y-m-d', $ts0);
+    }
+    $freq = ($frequency === 'monthly') ? 'monthly' : '1st_of_every_month';
+    $exclusiveFirstDayAfter = contractExclusiveEndYmdForFrequency($normStart, $contract, $freq);
+    $contractLastInclusive = null;
+    if ($exclusiveFirstDayAfter !== null) {
+        try {
+            $contractLastInclusive = (new DateTimeImmutable($exclusiveFirstDayAfter))->modify('-1 day')->format('Y-m-d');
+        } catch (Throwable $e) {
+            $contractLastInclusive = null;
+        }
+    }
+    $dayEndInc = null;
+    if ($dayEndYmd !== null && $dayEndYmd !== '' && strtotime($dayEndYmd) !== false) {
+        $dayEndInc = date('Y-m-d', strtotime($dayEndYmd));
+    }
+    if ($contractLastInclusive === null && $dayEndInc === null) {
+        return null;
+    }
+    if ($contractLastInclusive !== null && $dayEndInc === null) {
+        return $contractLastInclusive;
+    }
+    if ($contractLastInclusive === null) {
+        return $dayEndInc;
+    }
+    return max($contractLastInclusive, $dayEndInc);
+}
+
+/**
+ * 与 process_accounting_inbox_api::bmpApplyIssueFlagBillingLock 一致（Feature 1）。
+ * 入账端与 Inbox 各自独立冻结（幂等，取相同算法与相同截止日，UPDATE 互不冲突）。
+ */
+function bmpApplyIssueFlagBillingLockForTxn(PDO $pdo, array &$row, int $companyId, string $today, bool $hasLockCol): void
+{
+    if (!$hasLockCol) {
+        return;
+    }
+    $normalizedFlag = normalizeBankIssueFlagValueForTxn($row['issue_flag'] ?? null);
+    if (!bmpIssueFlagIsLockingForTxn($normalizedFlag)) {
+        return;
+    }
+    $existingLock = $row['issue_flag_locked_end_ymd'] ?? null;
+    if ($existingLock !== null && trim((string) $existingLock) !== '') {
+        $lockTs = strtotime((string) $existingLock);
+        if ($lockTs !== false) {
+            $row['day_end'] = date('Y-m-d', $lockTs);
+        }
+        return;
+    }
+    $frequency = $row['day_start_frequency'] ?? '1st_of_every_month';
+    $cutoff = bmpRecurringBillingWindowEndYmdForTxn($row['day_start'] ?? null, $row['contract'] ?? null, $row['day_end'] ?? null, $frequency);
+    if ($cutoff === null || $today <= $cutoff) {
+        return;
+    }
+    try {
+        $stmt = $pdo->prepare('UPDATE bank_process SET issue_flag_locked_end_ymd = ? WHERE id = ? AND company_id = ?');
+        $stmt->execute([$cutoff, (int) ($row['id'] ?? 0), $companyId]);
+    } catch (Throwable $e) {
+        // 冻结失败不影响本次仍按已算出的截止日出最后一笔尾款
+    }
+    $row['day_end'] = $cutoff;
+}
+
+/** Feature 3：与 process_accounting_inbox_api::createdYmdOrFallbackToday 的重新激活门槛一致。 */
+function txnCreatedYmdWithReactivationFloor(array $p, string $baseYmd): string
+{
+    $base = $baseYmd;
+    $floorRaw = $p['accounting_reactivated_floor_ymd'] ?? null;
+    if ($floorRaw !== null && trim((string) $floorRaw) !== '') {
+        $floorTs = strtotime((string) $floorRaw);
+        if ($floorTs !== false) {
+            $floorYmd = date('Y-m-d', $floorTs);
+            if ($floorYmd > $base) {
+                $base = $floorYmd;
+            }
+        }
+    }
+    return $base;
+}
+
 function contractExclusiveEndYmdForFrequency(string $startYmd, ?string $contract, string $frequency): ?string
 {
     $term = getBillingTermMonthsFromContract($contract);
@@ -525,8 +664,11 @@ function txnHasMonthlyPeriodPosted(
     return hasMonthlyPostedOrSkippedInCalendarMonthForTxn($pdo, $companyId, $processId, $year, $month);
 }
 
-/** 与 process_accounting_inbox_api 的 isWithinRecurringBillingWindow 一致 */
-function isWithinRecurringBillingWindowForTxn(string $todayYmd, ?string $dayStartYmd, ?string $contract, ?string $dayEndYmd, ?string $frequency = null, bool $bypassPreStartGate = false, bool $ignoreContractEndForResendSingle = false): bool
+/**
+ * 与 process_accounting_inbox_api 的 isWithinRecurringBillingWindow 一致
+ * @param bool $unlimitedWindow Feature 2：纯 Active 且 day_end 旁开关 OFF 时不再受合同/day_end 截止。见 bmpRowUnlimitedWindowForTxn()。
+ */
+function isWithinRecurringBillingWindowForTxn(string $todayYmd, ?string $dayStartYmd, ?string $contract, ?string $dayEndYmd, ?string $frequency = null, bool $bypassPreStartGate = false, bool $ignoreContractEndForResendSingle = false, bool $unlimitedWindow = false): bool
 {
     if ($dayStartYmd === null || $dayStartYmd === '' || strtotime($dayStartYmd) === false) {
         return true;
@@ -536,6 +678,9 @@ function isWithinRecurringBillingWindowForTxn(string $todayYmd, ?string $dayStar
         return false;
     }
     if ($ignoreContractEndForResendSingle) {
+        return true;
+    }
+    if ($unlimitedWindow) {
         return true;
     }
 
@@ -602,9 +747,12 @@ function inferOpenMonthlyBillingMonthYn(PDO $pdo, int $companyId, array $r, stri
     if ($processId <= 0) {
         return null;
     }
-    $createdYmd = ymdFromNullableDateTime($r['dts_created'] ?? null, $today);
+    $createdYmd = txnCreatedYmdWithReactivationFloor($r, ymdFromNullableDateTime($r['dts_created'] ?? null, $today));
     $createdYmd = bmp_inboxEffectiveCreatedYmd($createdYmd, $startDate, !empty($r['accounting_resend_relax_created_floor']));
     $resendSinglePeriod = !empty($r['accounting_resend_single_period_from_schedule']);
+    $hasDayEndMonthlyCapColForRow = array_key_exists('day_end_monthly_cap_enabled', $r);
+    $normalizedFlagForRow = normalizeBankIssueFlagValueForTxn($r['issue_flag'] ?? null);
+    $unlimitedWindow = bmpRowUnlimitedWindowForTxn($normalizedFlagForRow, $hasDayEndMonthlyCapColForRow, $r);
 
     if ($frequency === '1st_of_every_month') {
         $resendRelax = !empty($r['accounting_resend_relax_created_floor']);
@@ -625,7 +773,7 @@ function inferOpenMonthlyBillingMonthYn(PDO $pdo, int $companyId, array $r, stri
                 && ($todayYm === $startYm || $resendSinglePeriod)
                 && $today >= $startDate
                 && !hasMonthlyPostedOrSkippedInCalendarMonthForTxn($pdo, $companyId, $processId, $billYear, $billMonth)
-                && isWithinRecurringBillingWindowForTxn($today, $dayStart, $contract, $dayEnd, '1st_of_every_month', $resendRelax, $resendSinglePeriod)) {
+                && isWithinRecurringBillingWindowForTxn($today, $dayStart, $contract, $dayEnd, '1st_of_every_month', $resendRelax, $resendSinglePeriod, $unlimitedWindow)) {
                 return $startYm;
             }
         } catch (Throwable $e) {
@@ -636,7 +784,7 @@ function inferOpenMonthlyBillingMonthYn(PDO $pdo, int $companyId, array $r, stri
         if ($firstAccountingDate === '' || (!$resendRelax && $today < $firstAccountingDate)) {
             return null;
         }
-        if (!isWithinRecurringBillingWindowForTxn($today, $dayStart, $contract, $dayEnd, '1st_of_every_month', $resendRelax, $resendSinglePeriod)) {
+        if (!isWithinRecurringBillingWindowForTxn($today, $dayStart, $contract, $dayEnd, '1st_of_every_month', $resendRelax, $resendSinglePeriod, $unlimitedWindow)) {
             return null;
         }
         try {
@@ -646,9 +794,9 @@ function inferOpenMonthlyBillingMonthYn(PDO $pdo, int $companyId, array $r, stri
             if ($resendRelax && $iter > $endCap) {
                 $endCap = $iter;
             }
-            $term = getBillingTermMonthsFromContract($contract);
+            $term = $unlimitedWindow ? null : getBillingTermMonthsFromContract($contract);
             $exclusiveEnd = ($term !== null && $term >= 1) ? billingContractExclusiveEndYmdFirstOfMonth($startDate, $term) : null;
-            $anchorMonthCap = txnAnchorMonthCapAfterPartialFirst($contract, (int) date('j', $startTs));
+            $anchorMonthCap = $unlimitedWindow ? null : txnAnchorMonthCapAfterPartialFirst($contract, (int) date('j', $startTs));
             $anchorSlotIndex = 0;
             $onlyAnchorYmFirstOfMonth = null;
             if ($resendSinglePeriod && $startDate !== '') {
@@ -710,7 +858,7 @@ function inferOpenMonthlyBillingMonthYn(PDO $pdo, int $companyId, array $r, stri
     }
 
     $resendRelaxMonthly = !empty($r['accounting_resend_relax_created_floor']);
-    if (!isWithinRecurringBillingWindowForTxn($today, $dayStart, $contract, $dayEnd, 'monthly', $resendRelaxMonthly, $resendSinglePeriod)) {
+    if (!isWithinRecurringBillingWindowForTxn($today, $dayStart, $contract, $dayEnd, 'monthly', $resendRelaxMonthly, $resendSinglePeriod, $unlimitedWindow)) {
         return null;
     }
     $onlyAnchorYmMonthly = null;
@@ -722,7 +870,7 @@ function inferOpenMonthlyBillingMonthYn(PDO $pdo, int $companyId, array $r, stri
         }
     }
     if ($startDate !== '' && ($resendRelaxMonthly || $today >= $createdYmd)) {
-        $term = getBillingTermMonthsFromContract($contract);
+        $term = $unlimitedWindow ? null : getBillingTermMonthsFromContract($contract);
         $exclusiveEnd = ($term !== null && $term >= 1) ? billingContractExclusiveEndYmdMonthlyAfterPartialFirst($startDate, $term) : null;
         $anchors = billingCollectMonthlyChainedDueAnchors(
             $startDate,
@@ -759,13 +907,19 @@ function fetchBankProcessesByIds(PDO $pdo, array $ids, int $companyId): array
     $hasDayEndTailCol = tableHasColumn($pdo, 'bank_process', 'day_end_monthly_cap_enabled');
     $hasSchedCols = bmp_bankProcessHasResendScheduleColumns($pdo);
     $hasOpenAnchorsCol = bmp_resend_tableHasColumn($pdo, 'bank_process', 'accounting_resend_open_anchors');
+    $hasLockCol = tableHasColumn($pdo, 'bank_process', 'issue_flag_locked_end_ymd');
+    $hasFloorCol = tableHasColumn($pdo, 'bank_process', 'accounting_reactivated_floor_ymd');
     $issueFlagSql = getBankProcessIssueFlagSql('bp', $hasIssueFlagColumn, $hasFlagColumn);
+    $issueFlagSelect = ($hasIssueFlagColumn || $hasFlagColumn) ? ", $issueFlagSql AS issue_flag" : "";
     $sql = "SELECT bp.id, bp.name, bp.bank, bp.country, bp.cost, bp.price, bp.profit, bp.day_start, bp.day_end, bp.contract, bp.status,
             bp.dts_created" . ($hasFrequency ? ", bp.day_start_frequency" : "") .
         ($hasResendRelax ? ", bp.accounting_resend_relax_created_floor" : "") .
         ($hasDayEndTailCol ? ", bp.day_end_monthly_cap_enabled" : "") .
         ($hasSchedCols ? ", bp.accounting_resend_schedule_day_start, bp.accounting_resend_schedule_day_end, bp.accounting_resend_schedule_frequency" : "") .
-        ($hasOpenAnchorsCol ? ", bp.accounting_resend_open_anchors" : "") . ",
+        ($hasOpenAnchorsCol ? ", bp.accounting_resend_open_anchors" : "") .
+        ($hasLockCol ? ", bp.issue_flag_locked_end_ymd" : "") .
+        ($hasFloorCol ? ", bp.accounting_reactivated_floor_ymd" : "") .
+        $issueFlagSelect . ",
             bp.card_merchant_id, bp.customer_id, bp.profit_account_id, bp.company_id, bp.profit_sharing, c.owner_id
             FROM bank_process bp
             LEFT JOIN company c ON bp.company_id = c.id
@@ -777,8 +931,11 @@ function fetchBankProcessesByIds(PDO $pdo, array $ids, int $companyId): array
     $stmt = $pdo->prepare($sql);
     $stmt->execute(array_merge($ids, [$companyId]));
     $byId = [];
+    $today = date('Y-m-d');
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $merged = bmp_mergeResendScheduleIntoBankProcessRowForAccounting($row);
+        // Feature 1：与 Inbox 用同一套算法独立冻结/覆盖 day_end，两端各自幂等，互不依赖调用顺序。
+        bmpApplyIssueFlagBillingLockForTxn($pdo, $merged, $companyId, $today, $hasLockCol);
         $byId[(int) $merged['id']] = $merged;
     }
     return $byId;
@@ -1265,7 +1422,7 @@ try {
             $relaxCreatedFloor = false;
         }
         $createdYmd = bmp_inboxEffectiveCreatedYmd(
-            ymdFromNullableDateTime($p['dts_created'] ?? null, $fallbackDate),
+            txnCreatedYmdWithReactivationFloor($p, ymdFromNullableDateTime($p['dts_created'] ?? null, $fallbackDate)),
             $dayStartYmd,
             $relaxCreatedFloor
         );
@@ -1309,6 +1466,14 @@ try {
                 $raw = $p['day_end_monthly_cap_enabled'] ?? null;
                 $tailOn = in_array((string) $raw, ['1', 'true', 'TRUE'], true) || $raw === 1 || $raw === true;
                 if (!$tailOn) {
+                    continue;
+                }
+            }
+            // Feature 2：与 Inbox 一致——到期不再停的 process，regular monthly 已延续覆盖 day_end 之后，
+            // 尾段概念不再适用，防止与继续出的整月账重复。仅两种会被 unlimitedWindow 影响的 frequency 生效。
+            if (in_array($frequency, ['1st_of_every_month', 'monthly'], true)) {
+                $normalizedFlagTail = normalizeBankIssueFlagValueForTxn($p['issue_flag'] ?? null);
+                if (bmpRowUnlimitedWindowForTxn($normalizedFlagTail, $has_day_end_tail_switch_col, $p)) {
                     continue;
                 }
             }
