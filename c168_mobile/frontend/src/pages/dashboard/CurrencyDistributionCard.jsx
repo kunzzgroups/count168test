@@ -104,16 +104,15 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                         nameKey="code"
                         cx="50%"
                         cy="50%"
-                        innerRadius="66%"
-                        outerRadius="88%"
-                        paddingAngle={slices.length > 3 ? 2 : 3}
-                        stroke="#fff"
-                        strokeWidth={2}
+                        innerRadius="62%"
+                        outerRadius="92%"
+                        paddingAngle={0}
+                        stroke="none"
                         isAnimationActive
                         label={false}
                       >
                         {(slices.length ? slices : [{ code: "empty", fill: "#e2e8f0" }]).map((entry, index) => (
-                          <Cell key={entry.code || index} fill={entry.fill} stroke="#fff" strokeWidth={2} />
+                          <Cell key={entry.code || index} fill={entry.fill} stroke="none" />
                         ))}
                       </Pie>
                     </PieChart>

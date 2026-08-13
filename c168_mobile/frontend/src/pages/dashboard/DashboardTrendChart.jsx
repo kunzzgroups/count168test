@@ -84,6 +84,7 @@ const DashboardTrendChart = memo(function DashboardTrendChart({
                 bottom: xAxisLayout.marginBottom ?? 10,
               }}
               onClick={handleChartClick}
+              style={{ outline: "none" }}
             >
               <defs>
                 <linearGradient id="mGProfit" x1="0" y1="0" x2="0" y2="1">
