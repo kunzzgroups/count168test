@@ -165,11 +165,19 @@ export function mergeModalAccountsWithGranted(accList, grantedRows) {
   const byId = new Map((Array.isArray(accList) ? accList : []).map((a) => [Number(a.id), a]));
   for (const row of Array.isArray(grantedRows) ? grantedRows : []) {
     const id = Number(row?.id ?? row);
-    if (!(id > 0) || byId.has(id)) continue;
+    if (!(id > 0)) continue;
+    const grantCode = typeof row === "object" && row ? String(row.account_id || "") : "";
+    const grantName = typeof row === "object" && row ? String(row.name || "").trim() : "";
+    const existing = byId.get(id);
+    if (existing) {
+      if (!String(existing.account_id || "") && grantCode) existing.account_id = grantCode;
+      if (!String(existing.name || "").trim() && grantName) existing.name = grantName;
+      continue;
+    }
     byId.set(id, {
       id,
-      account_id: typeof row === "object" && row ? String(row.account_id || "") : "",
-      name: typeof row === "object" && row ? String(row.name || "").trim() : "",
+      account_id: grantCode,
+      name: grantName,
     });
   }
   return [...byId.values()];
@@ -184,11 +192,19 @@ export function mergeModalProcessesWithGranted(procList, grantedRows) {
   const byId = new Map((Array.isArray(procList) ? procList : []).map((p) => [Number(p.id), p]));
   for (const row of Array.isArray(grantedRows) ? grantedRows : []) {
     const id = Number(row?.id ?? row);
-    if (!(id > 0) || byId.has(id)) continue;
+    if (!(id > 0)) continue;
+    const grantCode = typeof row === "object" && row ? String(row.process_id || "") : "";
+    const grantDesc = typeof row === "object" && row ? String(row.description || "").trim() : "";
+    const existing = byId.get(id);
+    if (existing) {
+      if (!String(existing.process_id || "") && grantCode) existing.process_id = grantCode;
+      if (!String(existing.description || "").trim() && grantDesc) existing.description = grantDesc;
+      continue;
+    }
     byId.set(id, {
       id,
-      process_id: typeof row === "object" && row ? String(row.process_id || "") : "",
-      description: typeof row === "object" && row ? String(row.description || "").trim() : "",
+      process_id: grantCode,
+      description: grantDesc,
     });
   }
   return [...byId.values()];

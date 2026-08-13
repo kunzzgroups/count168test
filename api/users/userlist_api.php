@@ -94,28 +94,62 @@ function userlist_normalize_account_perm_rows($perms, bool $preserveSelfHidden =
     return array_values($byId);
 }
 
-/** @param array<int, array{id:int,account_id?:string,self_hidden?:bool}> $mergedById */
+/** @param array<int, array{id:int,account_id?:string,name?:string,self_hidden?:bool}> $mergedById */
 function userlist_fill_account_perm_labels(PDO $pdo, array $mergedById): array
 {
-    $missing = [];
+    $ids = [];
     foreach ($mergedById as $id => $row) {
-        if (($row['account_id'] ?? '') === '') {
-            $missing[] = (int) $id;
+        $id = (int) $id;
+        if ($id <= 0) {
+            continue;
+        }
+        $needsCode = ($row['account_id'] ?? '') === '';
+        $needsName = trim((string) ($row['name'] ?? '')) === '';
+        if ($needsCode || $needsName) {
+            $ids[] = $id;
         }
     }
-    if ($missing !== []) {
-        $ph = implode(',', array_fill(0, count($missing), '?'));
-        $stmt = $pdo->prepare("SELECT id, account_id FROM account WHERE id IN ($ph)");
-        $stmt->execute($missing);
+    if ($ids !== []) {
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("SELECT id, account_id, name FROM account WHERE id IN ($ph)");
+        $stmt->execute($ids);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $acc) {
             $aid = (int) ($acc['id'] ?? 0);
-            if ($aid > 0 && isset($mergedById[$aid]) && ($mergedById[$aid]['account_id'] ?? '') === '') {
+            if ($aid <= 0 || !isset($mergedById[$aid])) {
+                continue;
+            }
+            if (($mergedById[$aid]['account_id'] ?? '') === '') {
                 $mergedById[$aid]['account_id'] = (string) ($acc['account_id'] ?? '');
+            }
+            if (trim((string) ($mergedById[$aid]['name'] ?? '')) === '') {
+                $mergedById[$aid]['name'] = trim((string) ($acc['name'] ?? ''));
             }
         }
     }
     ksort($mergedById);
     return array_values($mergedById);
+}
+
+/**
+ * DB compact JSON → client rows with labels. SQL NULL stays null (see-all).
+ *
+ * @param mixed $raw
+ * @return array<int, array{id:int,account_id?:string,name?:string,self_hidden?:bool}>|null
+ */
+function userlist_client_account_permissions(PDO $pdo, $raw)
+{
+    if ($raw === null) {
+        return null;
+    }
+    $decoded = is_array($raw) ? $raw : json_decode((string) $raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    $byId = [];
+    foreach (userlist_normalize_account_perm_rows($decoded, true) as $row) {
+        $byId[(int) $row['id']] = $row;
+    }
+    return userlist_fill_account_perm_labels($pdo, $byId);
 }
 
 /**
@@ -378,28 +412,67 @@ function userlist_normalize_process_perm_rows($perms, bool $preserveSelfHidden =
     return array_values($byId);
 }
 
-/** @param array<int, array{id:int,process_id?:string,self_hidden?:bool}> $mergedById */
+/** @param array<int, array{id:int,process_id?:string,description?:string,self_hidden?:bool}> $mergedById */
 function userlist_fill_process_perm_labels(PDO $pdo, array $mergedById): array
 {
-    $missing = [];
+    $ids = [];
     foreach ($mergedById as $id => $row) {
-        if (($row['process_id'] ?? '') === '') {
-            $missing[] = (int) $id;
+        $id = (int) $id;
+        if ($id <= 0) {
+            continue;
+        }
+        $needsCode = ($row['process_id'] ?? '') === '';
+        $needsDesc = trim((string) ($row['description'] ?? '')) === '';
+        if ($needsCode || $needsDesc) {
+            $ids[] = $id;
         }
     }
-    if ($missing !== []) {
-        $ph = implode(',', array_fill(0, count($missing), '?'));
-        $stmt = $pdo->prepare("SELECT id, process_id FROM process WHERE id IN ($ph)");
-        $stmt->execute($missing);
+    if ($ids !== []) {
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare(
+            "SELECT p.id, p.process_id, d.name AS description
+             FROM process p
+             LEFT JOIN description d ON p.description_id = d.id
+             WHERE p.id IN ($ph)"
+        );
+        $stmt->execute($ids);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $proc) {
             $pid = (int) ($proc['id'] ?? 0);
-            if ($pid > 0 && isset($mergedById[$pid]) && ($mergedById[$pid]['process_id'] ?? '') === '') {
+            if ($pid <= 0 || !isset($mergedById[$pid])) {
+                continue;
+            }
+            if (($mergedById[$pid]['process_id'] ?? '') === '') {
                 $mergedById[$pid]['process_id'] = (string) ($proc['process_id'] ?? '');
+            }
+            if (trim((string) ($mergedById[$pid]['description'] ?? '')) === '') {
+                $mergedById[$pid]['description'] = trim((string) ($proc['description'] ?? ''));
             }
         }
     }
     ksort($mergedById);
     return array_values($mergedById);
+}
+
+/**
+ * DB compact JSON → client rows with labels. SQL NULL stays null (see-all).
+ *
+ * @param mixed $raw
+ * @return array<int, array{id:int,process_id?:string,description?:string,self_hidden?:bool}>|null
+ */
+function userlist_client_process_permissions(PDO $pdo, $raw)
+{
+    if ($raw === null) {
+        return null;
+    }
+    $decoded = is_array($raw) ? $raw : json_decode((string) $raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    $byId = [];
+    foreach (userlist_normalize_process_perm_rows($decoded, true) as $row) {
+        $byId[(int) $row['id']] = $row;
+    }
+    return userlist_fill_process_perm_labels($pdo, $byId);
 }
 
 /** Compact process grant JSON for DB (id + self_hidden only). */
@@ -2904,8 +2977,14 @@ try {
                     $stmt->execute([$newUserId, $scope_company_id]);
                     $companyPermissions = $stmt->fetch(PDO::FETCH_ASSOC);
                     if ($companyPermissions) {
-                        $newUser['account_permissions'] = $companyPermissions['account_permissions'];
-                        $newUser['process_permissions'] = $companyPermissions['process_permissions'];
+                        $newUser['account_permissions'] = userlist_client_account_permissions(
+                            $pdo,
+                            $companyPermissions['account_permissions']
+                        );
+                        $newUser['process_permissions'] = userlist_client_process_permissions(
+                            $pdo,
+                            $companyPermissions['process_permissions']
+                        );
                     }
                 } catch (Throwable $postCommitReadError) {
                     error_log("Create user post-commit read error: " . $postCommitReadError->getMessage());
@@ -3558,8 +3637,14 @@ try {
                     $stmt->execute([$input['id'], $scope_company_id]);
                     $companyPermissions = $stmt->fetch(PDO::FETCH_ASSOC);
                     if ($companyPermissions) {
-                        $updatedUser['account_permissions'] = $companyPermissions['account_permissions'];
-                        $updatedUser['process_permissions'] = $companyPermissions['process_permissions'];
+                        $updatedUser['account_permissions'] = userlist_client_account_permissions(
+                            $pdo,
+                            $companyPermissions['account_permissions']
+                        );
+                        $updatedUser['process_permissions'] = userlist_client_process_permissions(
+                            $pdo,
+                            $companyPermissions['process_permissions']
+                        );
                     }
                 } catch (Throwable $postCommitReadError) {
                     error_log("Update user post-commit read error: " . $postCommitReadError->getMessage());
@@ -4080,9 +4165,16 @@ try {
                     }
                     
                     if ($companyPermissions) {
-                        // 使用公司特定的权限
-                        $user['account_permissions'] = $companyPermissions['account_permissions'];
-                        $user['process_permissions'] = $companyPermissions['process_permissions'];
+                        // Compact DB JSON → labeled rows so User Modal can re-show
+                        // self_hidden Acc/Process after the list APIs hide them.
+                        $user['account_permissions'] = userlist_client_account_permissions(
+                            $pdo,
+                            $companyPermissions['account_permissions']
+                        );
+                        $user['process_permissions'] = userlist_client_process_permissions(
+                            $pdo,
+                            $companyPermissions['process_permissions']
+                        );
                     } else {
                         // 如果公司特定的权限不存在，设置为 null（表示未设置，默认可以看到所有）
                         $user['account_permissions'] = null;
