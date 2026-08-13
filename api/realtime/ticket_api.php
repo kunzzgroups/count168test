@@ -56,12 +56,8 @@ try {
         }
         $channels = realtime_channels_from_scope($listScope);
     } catch (Throwable $scopeError) {
-        // Partnership dual-tenant: dashboard company/group can fail the TX assert
-        // while Account List still loads. Keep tx:u:{uid} so Acc/Process grants sync.
-        // English "No permission..." is classified as scope-access; DB/other errors rethrow.
-        if (!realtime_ticket_is_scope_access_error($scopeError)) {
-            throw $scopeError;
-        }
+        // Never fail closed: Acc/Process grants publish to tx:u:{uid}. English
+        // "No permission to access this company" must not 500-disable SSE.
         error_log('realtime/ticket_api scope fallback: ' . $scopeError->getMessage());
     }
 
