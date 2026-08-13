@@ -51,6 +51,7 @@ try {
     }
 
     $channels = tx_ledger_realtime_channels_from_scope($listScope);
+    $channels = realtime_append_user_channel($channels, (int) ($_SESSION['user_id'] ?? 0));
     if ($channels === []) {
         api_success(realtime_ticket_disabled_payload(), 'No realtime channels for scope');
         exit;

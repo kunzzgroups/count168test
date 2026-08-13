@@ -104,6 +104,33 @@ if (!function_exists('realtime_channels_from_company_ids')) {
     }
 }
 
+if (!function_exists('realtime_user_channel')) {
+    /** Per-login invalidate channel — Acc/Process grants must reach the target user regardless of company filter. */
+    function realtime_user_channel(int $userId): string
+    {
+        return $userId > 0 ? ('tx:u:' . $userId) : '';
+    }
+}
+
+if (!function_exists('realtime_append_user_channel')) {
+    /**
+     * @param string[] $channels
+     * @return string[]
+     */
+    function realtime_append_user_channel(array $channels, int $userId): array
+    {
+        $ch = realtime_user_channel($userId);
+        if ($ch !== '') {
+            $channels[] = $ch;
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map(static fn ($c) => trim((string) $c), $channels),
+            static fn ($c) => $c !== ''
+        )));
+    }
+}
+
 if (!function_exists('realtime_sign_ticket')) {
     /**
      * @param array<string, mixed> $payload

@@ -232,14 +232,14 @@ try {
                     require_once __DIR__ . '/../includes/realtime.php';
                     require_once __DIR__ . '/../includes/ledger_realtime.php';
                     $pubCompanyId = (int) $current_company_id;
-                    realtime_publish_companies([$pubCompanyId], 'users', 'update_permissions');
-                    // Acc 权限批量变更：同步 Account / Transaction / 报表可见范围
-                    realtime_publish_companies([$pubCompanyId], 'accounts', 'user_account_permissions');
-                    if ($pubCompanyId > 0) {
-                        tx_ledger_realtime_publish_scope(
-                            ['mode' => 'company', 'company_id' => $pubCompanyId],
-                            'user_account_permissions'
-                        );
+                    $pubChannels = realtime_channels_from_company_ids($pubCompanyId > 0 ? [$pubCompanyId] : []);
+                    foreach ($affectedUserIds as $uid) {
+                        $pubChannels = realtime_append_user_channel($pubChannels, (int) $uid);
+                    }
+                    if ($pubChannels !== []) {
+                        realtime_publish($pubChannels, 'users', 'update_permissions');
+                        realtime_publish($pubChannels, 'accounts', 'user_account_permissions');
+                        realtime_publish($pubChannels, 'ledger', 'user_account_permissions');
                     }
                     $msg = $input['source_type'] === 'template'
                         ? "Successfully updated permissions for $successCount user(s) based on template: {$templateUser['name']} ({$templateUser['login_id']})"

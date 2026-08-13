@@ -3594,8 +3594,8 @@ try {
                 $publishChannels = realtime_channels_from_company_ids($publishIds);
                 if ($groupPk > 0) {
                     $publishChannels[] = 'tx:g:' . $groupPk;
-                    $publishChannels = array_values(array_unique($publishChannels));
                 }
+                $publishChannels = realtime_append_user_channel($publishChannels, (int) $input['id']);
                 if ($publishChannels !== []) {
                     realtime_publish($publishChannels, 'users', 'update');
                     // Acc 白名单变更：Account / Transaction 账号下拉 + 报表/流水全站立刻按新权限重拉
