@@ -85,6 +85,12 @@ export default function MorePage() {
       title: i18n.domain,
       description: i18n.domainDescription,
     });
+    tools.push({
+      to: "/more/announcement",
+      icon: "fa-bullhorn",
+      title: i18n.announcement,
+      description: i18n.announcementDescription,
+    });
   }
 
   return (
