@@ -73,8 +73,8 @@
 }
 
 .m-scope-glyph--blue {
-  background: rgba(13, 96, 255, 0.12);
-  color: var(--m-color-primary);
+  background: var(--m-grad-brand);
+  color: #fff;
 }
 
 .m-scope-glyph i {

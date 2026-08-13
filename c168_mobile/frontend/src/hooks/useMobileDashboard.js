@@ -76,6 +76,17 @@ function buildDashboardScopeKey({
   ].join("|");
 }
 
+/** Group/Company/All modes only — used to force currency reset on scope switch. */
+function buildGcScopeIdentity({ companyId, selectedGroup, groupAllMode, groupsAllMode }) {
+  const cid = Number.isFinite(Number(companyId)) && Number(companyId) > 0 ? String(Number(companyId)) : "";
+  return [
+    cid,
+    String(selectedGroup || "").toUpperCase(),
+    groupAllMode ? "1" : "0",
+    groupsAllMode ? "1" : "0",
+  ].join("|");
+}
+
 function earningsRowsFromBootstrap(
   bootstrap,
   { panelNetProfit = null, panelEarnings = null, primaryCurrency, kpiOpts = {} } = {},
@@ -155,6 +166,9 @@ export function useMobileDashboard() {
   const scopeAbortRef = useRef(null);
   /** Small in-memory bootstrap cache for snappier back-navigation (cap ~32). */
   const bootstrapCacheRef = useRef(new Map());
+  /** Desktop parity: after Group/Company switch, force first currency of new scope. */
+  const preferFirstCurrencyRef = useRef(false);
+  const gcScopeIdentityRef = useRef("");
 
   const groupIds = useMemo(() => resolveMobileGroupIds(companies, me), [companies, me]);
 
@@ -252,6 +266,17 @@ export function useMobileDashboard() {
     if (!companies.length || (!hasCompany && !groupOnly && !groupsAllMode && !groupAllMode)) {
       return undefined;
     }
+    const nextIdentity = buildGcScopeIdentity({
+      companyId,
+      selectedGroup,
+      groupAllMode,
+      groupsAllMode,
+    });
+    if (gcScopeIdentityRef.current && gcScopeIdentityRef.current !== nextIdentity) {
+      preferFirstCurrencyRef.current = true;
+    }
+    gcScopeIdentityRef.current = nextIdentity;
+
     const ac = new AbortController();
     // Soft refresh: don't flip currenciesReady false if we already have data (avoids full-page spinner flash).
     setCurrenciesReady((ready) => (ready ? ready : false));
@@ -268,7 +293,13 @@ export function useMobileDashboard() {
         if (ac.signal.aborted) return;
         const next = codes.length ? codes : ["MYR"];
         setCurrencies((prev) => (sameStringList(prev, next) ? prev : next));
-        setCurrency((prev) => (next.includes(prev) ? prev : next[0] || "MYR"));
+        setCurrency((prev) => {
+          if (preferFirstCurrencyRef.current) {
+            preferFirstCurrencyRef.current = false;
+            return next[0] || "MYR";
+          }
+          return next.includes(prev) ? prev : next[0] || "MYR";
+        });
       } catch (e) {
         if (ac.signal.aborted || e?.name === "AbortError") return;
         setCurrencies((prev) => (prev.length ? prev : ["MYR"]));
@@ -857,7 +888,20 @@ export function useMobileDashboard() {
         setCustomDateRange(draft.dateFrom, draft.dateTo);
       }
 
-      if (draft.currency) setCurrency(draft.currency);
+      const nextIdentity = buildGcScopeIdentity({
+        companyId: draft.companyId,
+        selectedGroup: draft.selectedGroup,
+        groupAllMode: draft.groupAllMode,
+        groupsAllMode: draft.groupsAllMode,
+      });
+      const scopeChanged =
+        Boolean(gcScopeIdentityRef.current) && gcScopeIdentityRef.current !== nextIdentity;
+      if (scopeChanged) {
+        // Match desktop resetCurrencyForCompanySwitch — re-pick first currency for new scope.
+        preferFirstCurrencyRef.current = true;
+      } else if (draft.currency) {
+        setCurrency(String(draft.currency).toUpperCase());
+      }
 
       if (draft.groupsAllMode) {
         setGroupsAllMode(true);

@@ -165,7 +165,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.875rem;
+  font-size: var(--m-text-body);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--m-color-text);

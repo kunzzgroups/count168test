@@ -40,10 +40,10 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
     .map((row, index) => ({
       code: String(row.code).toUpperCase(),
       color: getCurrencyColor(row.code, index),
-      pct: shareByCode[String(row.code).toUpperCase()] ?? 0,
+      pct: shareByCode[String(row.code).toUpperCase()],
     }))
-    .filter((item) => item.pct >= 0.05)
-    .sort((a, b) => b.pct - a.pct);
+    .filter((item) => item.pct != null && Number(item.pct) >= 0.05)
+    .sort((a, b) => Number(b.pct) - Number(a.pct));
 
   const empty = !loading && slices.length === 0;
   const headTitle = title || i18n.currencyDistribution;
@@ -103,7 +103,9 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                   </ResponsiveContainer>
                   {slices.length > 0 && (
                     <div className="m-dash-pie-center" aria-hidden="true">
-                      <span className="m-dash-pie-center-pct">{Number(center.pct).toFixed(1)}%</span>
+                      <span className="m-dash-pie-center-pct">
+                        {center.pct != null ? `${Number(center.pct).toFixed(1)}%` : "—"}
+                      </span>
                       <span className="m-dash-pie-center-code">{center.code}</span>
                     </div>
                   )}
@@ -125,7 +127,9 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                       item.code
                     )}
                   </span>
-                  <span className="m-dash-pie-legend-pct">{loading ? "—" : `${item.pct.toFixed(1)}%`}</span>
+                  <span className="m-dash-pie-legend-pct">
+                    {loading ? "—" : `${Number(item.pct).toFixed(1)}%`}
+                  </span>
                 </li>
               ))}
               {!loading && legend.length === 0 && (

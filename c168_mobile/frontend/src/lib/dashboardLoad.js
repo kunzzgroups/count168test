@@ -477,21 +477,69 @@ export async function loadMobileDashboardData(scopeState, { signal, loadError } 
     if (!viewGroup) {
       viewGroup = resolveViewGroupForCompany(row, null);
     }
+    const scopedViewGroup = viewGroup && !isGroupEntityRow(row, viewGroup) ? viewGroup : null;
+    const primaryCode = String(currency || (currencies && currencies[0]) || "MYR").toUpperCase();
+    // Desktop parity: primary KPI/chart bootstrap is single-currency only.
+    // Secondary pie currencies fan out with bootstrap_scope=kpi (not serial currencies=).
     const q = buildSingleCompanyBootstrapQuery({
       dateFrom,
       dateTo,
-      currency,
-      currencies,
+      currency: primaryCode,
+      currencies: [primaryCode],
       companyId: cid,
-      viewGroup: viewGroup && !isGroupEntityRow(row, viewGroup) ? viewGroup : null,
+      viewGroup: scopedViewGroup,
       bootstrapScope: "full",
     });
     const data = await fetchBootstrapData(q, signal, loadError);
+    const current = applyLinkMultiplier(data.current, row, viewGroup, dateTo);
+    const previous = applyLinkMultiplier(data.previous, row, viewGroup, dateTo);
+
+    const codes = [
+      ...new Set(
+        [primaryCode, ...(currencies || [])]
+          .map((c) => String(c || "").trim().toUpperCase())
+          .filter((c) => /^[A-Z]{3}$/.test(c)),
+      ),
+    ];
+    let earnings = { current: [{ code: primaryCode, payload: current }], previous: [] };
+    if (codes.length > 1) {
+      const entries = await mapPool(codes, CURRENCY_FANOUT_POOL, async (code) => {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        if (code === primaryCode) return { code, payload: current };
+        try {
+          const cq = buildSingleCompanyBootstrapQuery({
+            dateFrom,
+            dateTo,
+            currency: code,
+            currencies: [code],
+            companyId: cid,
+            viewGroup: scopedViewGroup,
+            bootstrapScope: "kpi",
+          });
+          const cur = await fetchBootstrapData(cq, signal, loadError);
+          return {
+            code,
+            payload: applyLinkMultiplier(cur.current, row, viewGroup, dateTo),
+          };
+        } catch (e) {
+          if (e?.name === "AbortError") throw e;
+          return { code, payload: null };
+        }
+      });
+      earnings = { current: entries.filter((e) => e?.code), previous: [] };
+    }
+
     return {
       ...data,
-      current: applyLinkMultiplier(data.current, row, viewGroup, dateTo),
-      previous: applyLinkMultiplier(data.previous, row, viewGroup, dateTo),
-      _mobile_scope: { mode: "single", companyId: cid, viewGroup },
+      current,
+      previous,
+      earnings,
+      _mobile_scope: {
+        mode: "single",
+        companyId: cid,
+        viewGroup,
+        currencies: (earnings?.current || []).map((e) => e.code),
+      },
     };
   }
 

@@ -76,8 +76,32 @@ function resolveRowShareAmount(row, useConverted) {
   return parseFloat(row.earnings) || 0;
 }
 
+/**
+ * Share % by currency code (desktop parity).
+ * When conversion is off and multiple natives exist: only base is 100%, others null.
+ */
 export function buildEarningsShareByCode(rows, baseCode, { useConverted = false } = {}) {
   const base = String(baseCode || "").toUpperCase();
+  const shareByCode = {};
+  for (const row of rows || []) {
+    shareByCode[String(row.code || "").toUpperCase()] = 0;
+  }
+
+  const codes = Object.keys(shareByCode).filter(Boolean);
+  if (!useConverted && base && codes.length > 1 && codes.includes(base)) {
+    const baseAmount = resolveRowShareAmount(
+      (rows || []).find((row) => String(row.code || "").toUpperCase() === base),
+      false,
+    );
+    for (const code of codes) {
+      shareByCode[code] = null;
+    }
+    if (baseAmount != null) {
+      shareByCode[base] = 100;
+    }
+    return shareByCode;
+  }
+
   const entries = (rows || [])
     .map((row) => {
       const code = String(row.code || "").toUpperCase();
@@ -86,11 +110,6 @@ export function buildEarningsShareByCode(rows, baseCode, { useConverted = false 
       return { code, abs: Math.abs(amount) };
     })
     .filter(Boolean);
-
-  const shareByCode = {};
-  for (const row of rows || []) {
-    shareByCode[String(row.code || "").toUpperCase()] = 0;
-  }
 
   const absTotal = entries.reduce((sum, entry) => sum + entry.abs, 0);
   if (!absTotal) return shareByCode;
@@ -112,9 +131,13 @@ export function buildEarningsShareByCode(rows, baseCode, { useConverted = false 
 
 export function computePieCenterMetrics(rows, selectedCode, { useConverted = false } = {}) {
   const selected = String(selectedCode || "").toUpperCase();
+  const match = (rows || []).find((row) => String(row.code || "").toUpperCase() === selected);
   const shareByCode = buildEarningsShareByCode(rows, selectedCode, { useConverted });
-  const pct = (shareByCode[selected] ?? 0).toFixed(1);
-  return { pct, code: selected || "—" };
+  const raw = shareByCode[selected];
+  if (raw == null) {
+    return { pct: null, code: selected || match?.code || "—" };
+  }
+  return { pct: Number(raw).toFixed(1), code: selected || match?.code || "—" };
 }
 
 export function resolveEarningsRowDisplayAmounts(row, baseCode, rates, useConverted) {
