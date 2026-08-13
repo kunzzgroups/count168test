@@ -16,8 +16,15 @@ const C168_DOMAIN_PAGE_ROLES = new Set([
   "company",
 ]);
 
+const C168_AUTO_RENEW_ROLES = new Set(["owner", "admin", "partnership"]);
+
 export function userRoleAllowsC168Domain(role) {
   return C168_DOMAIN_PAGE_ROLES.has(String(role || "").trim().toLowerCase());
+}
+
+export function userRoleAllowsC168AutoRenew(role, userType) {
+  if (String(userType || "").trim().toLowerCase() === "member") return false;
+  return C168_AUTO_RENEW_ROLES.has(String(role || "").trim().toLowerCase());
 }
 
 export function isActiveCompanyContextC168(me) {
@@ -33,6 +40,13 @@ export function canAccessC168DomainPages(me) {
   if (String(me.user_type || "").toLowerCase() === "member") return false;
   if (!isActiveCompanyContextC168(me)) return false;
   return userRoleAllowsC168Domain(me.role) || Boolean(me.has_c168_domain_page_access);
+}
+
+/** Auto Renew — owner/admin/partnership (or session flag), C168 context. */
+export function canAccessC168AutoRenew(me) {
+  if (!me) return false;
+  if (!isActiveCompanyContextC168(me)) return false;
+  return userRoleAllowsC168AutoRenew(me.role, me.user_type) || Boolean(me.has_c168_auto_renew_access);
 }
 
 /**

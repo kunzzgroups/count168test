@@ -1,0 +1,68 @@
+import { fetchJson } from "./fetchJson.js";
+import { buildApiUrl } from "../utils/apiUrl.js";
+
+export const AUTO_RENEW_PERIODS = [
+  { value: "7days", labelKey: "period7days" },
+  { value: "1month", labelKey: "period1month" },
+  { value: "3months", labelKey: "period3months" },
+  { value: "6months", labelKey: "period6months" },
+  { value: "1year", labelKey: "period1year" },
+];
+
+async function postAutoRenew(body, { signal } = {}) {
+  const { res, json } = await fetchJson(buildApiUrl("api/subscription/auto_renew_api.php"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !json?.success) {
+    throw new Error(json?.message || "Auto renew request failed");
+  }
+  return json.data;
+}
+
+export async function fetchAutoRenewPendingCount({ signal } = {}) {
+  const data = await postAutoRenew({ action: "pending_count" }, { signal });
+  return Number(data?.pending_count) || 0;
+}
+
+export async function fetchAutoRenewApprovals(
+  status = "pending",
+  { dateFrom, dateTo, entityType = "company", signal } = {},
+) {
+  const body = {
+    action: "list",
+    status,
+    entity_type: entityType === "group" ? "group" : "company",
+  };
+  if (dateFrom) body.date_from = dateFrom;
+  if (dateTo) body.date_to = dateTo;
+  return postAutoRenew(body, { signal });
+}
+
+export async function approveAutoRenew({ requestId, period, fromAccountId, toAccountId }) {
+  return postAutoRenew({
+    action: "approve",
+    request_id: requestId,
+    period,
+    from_account_id: fromAccountId,
+    to_account_id: toAccountId,
+  });
+}
+
+export async function rejectAutoRenew({ requestId }) {
+  return postAutoRenew({
+    action: "reject",
+    request_id: requestId,
+  });
+}
+
+export async function deleteAutoRenew({ requestId, transactionId, entityType }) {
+  return postAutoRenew({
+    action: "delete",
+    request_id: requestId,
+    transaction_id: transactionId || null,
+    entity_type: entityType === "group" ? "group" : "company",
+  });
+}

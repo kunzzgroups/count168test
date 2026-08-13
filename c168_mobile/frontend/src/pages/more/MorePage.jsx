@@ -5,7 +5,13 @@ import { fetchJson } from "../../lib/fetchJson.js";
 import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { MORE_I18N } from "../../translateFile/moreTranslate.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
-import { canAccessC168DomainPages } from "../../lib/c168DomainAccess.js";
+import {
+  canAccessC168AutoRenew,
+  canAccessC168DomainPages,
+  ensureC168DomainApiSession,
+  fetchOwnerCompaniesForDomain,
+} from "../../lib/c168DomainAccess.js";
+import { fetchAutoRenewPendingCount } from "../../lib/autoRenewApi.js";
 import { canAccessAdmin, canAccessMaintenance, canShowReportEntry } from "../../utils/mobilePermissions.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import "./more.css";
@@ -14,6 +20,7 @@ export default function MorePage() {
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [autoRenewPending, setAutoRenewPending] = useState(0);
   const [lang, setLangState] = useState(() => readLoginLang());
   const i18n = useMemo(() => MORE_I18N[lang] || MORE_I18N.en, [lang]);
 
@@ -32,7 +39,19 @@ export default function MorePage() {
           navigate("/login", { replace: true });
           return;
         }
-        setMe(json.data);
+        const user = json.data;
+        setMe(user);
+        if (canAccessC168AutoRenew(user)) {
+          try {
+            const companies = await fetchOwnerCompaniesForDomain(ac.signal);
+            if (ac.signal.aborted) return;
+            await ensureC168DomainApiSession(user, companies);
+            const count = await fetchAutoRenewPendingCount({ signal: ac.signal });
+            if (!ac.signal.aborted) setAutoRenewPending(count);
+          } catch {
+            /* badge is optional */
+          }
+        }
       } catch (error) {
         if (error?.name !== "AbortError") navigate("/login", { replace: true });
       } finally {
@@ -92,6 +111,15 @@ export default function MorePage() {
       description: i18n.announcementDescription,
     });
   }
+  if (canAccessC168AutoRenew(me)) {
+    tools.push({
+      to: "/more/auto-renew",
+      icon: "fa-arrows-rotate",
+      title: i18n.autoRenew,
+      description: i18n.autoRenewDescription,
+      badge: autoRenewPending > 0 ? autoRenewPending : null,
+    });
+  }
 
   return (
     <MobileShell
@@ -120,6 +148,11 @@ export default function MorePage() {
               <Link key={tool.to} to={tool.to} className="m-more-card tap-scale">
                 <span className="m-more-icon">
                   <i className={`fas ${tool.icon}`} aria-hidden="true" />
+                  {tool.badge != null ? (
+                    <span className="m-more-badge" aria-label={String(tool.badge)}>
+                      {tool.badge > 99 ? "99+" : tool.badge}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="m-more-copy">
                   <strong>{tool.title}</strong>
