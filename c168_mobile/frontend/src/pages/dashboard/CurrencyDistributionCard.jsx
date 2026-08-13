@@ -6,6 +6,7 @@ import {
   computePieCenterMetrics,
   getCurrencyColor,
 } from "../../lib/dashboardEarnings.js";
+import { formatCurrency } from "../../lib/dashboardFormat.js";
 
 const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
   i18n,
@@ -13,7 +14,9 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
   rows,
   useConverted,
   loading,
-  note = "",
+  summaryValue = null,
+  summaryLabel = "",
+  conversionNote = "",
   title,
   badgeLabel,
   isCompanyBreakdown = false,
@@ -48,6 +51,8 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
   const empty = !loading && slices.length === 0;
   const headTitle = title || i18n.currencyDistribution;
   const headBadge = badgeLabel || i18n.currency;
+  const showSummary = summaryValue != null && !empty;
+  const caption = [summaryLabel || headTitle, currencyCode].filter(Boolean).join(" · ");
 
   return (
     <section
@@ -58,14 +63,26 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
       <div className="m-dash-earnings-panel-top">
         {tabs}
 
-        <div className="m-dash-card-head m-dash-card-head--spaced">
-          <h2 className="m-dash-card-title">{headTitle}</h2>
-          {legend.length > 0 && (
-            <span className="m-dash-card-badge">
-              {legend.length} {headBadge}
-            </span>
-          )}
-        </div>
+        {showSummary ? (
+          <div className="m-dash-panel-summary">
+            <p className="m-dash-panel-summary-caption">{caption}</p>
+            <p className="m-dash-panel-summary-value">
+              {loading ? <span className="m-dash-panel-summary-skeleton" /> : formatCurrency(summaryValue)}
+            </p>
+            {conversionNote ? (
+              <p className="m-dash-panel-summary-note">{conversionNote}</p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="m-dash-card-head m-dash-card-head--spaced">
+            <h2 className="m-dash-card-title">{headTitle}</h2>
+            {legend.length > 0 && (
+              <span className="m-dash-card-badge">
+                {legend.length} {headBadge}
+              </span>
+            )}
+          </div>
+        )}
 
         {empty ? (
           <p className="m-dash-card-empty" style={{ height: "8.75rem" }}>
@@ -138,7 +155,6 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
             </ul>
           </div>
         )}
-        {note && !empty ? <p className="m-dash-pie-note">{note}</p> : null}
       </div>
 
       {footer ? <div className="m-dash-earnings-panel-footer">{footer}</div> : null}

@@ -636,8 +636,8 @@ export function useMobileDashboard() {
     return sumConvertedEarnings(rows, currency, exchangeRates.rates).total;
   }, [useConvertedEarnings, earningsCurrencyRows, currency, exchangeRates.rates]);
 
-  const summaryValue =
-    convertedNetProfitTotal != null ? convertedNetProfitTotal : (panelMetric ?? 0);
+  // Top blue hero stays single-currency; converted totals feed the pie panel only.
+  const summaryValue = panelMetric ?? 0;
 
   const heroCompare = useMemo(() => kpi?.comparisons?.netProfit || null, [kpi?.comparisons?.netProfit]);
 

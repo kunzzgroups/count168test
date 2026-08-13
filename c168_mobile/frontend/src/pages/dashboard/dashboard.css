@@ -831,6 +831,46 @@
   padding: 1rem 1.15rem 1.1rem;
 }
 
+/* Desktop-parity compact total above pie (not a separate blue hero card). */
+.m-dash-panel-summary {
+  margin: 0 0 0.85rem;
+}
+
+.m-dash-panel-summary-caption {
+  margin: 0;
+  font-size: var(--m-text-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--m-color-label);
+}
+
+.m-dash-panel-summary-value {
+  margin: 0.2rem 0 0;
+  font-size: clamp(1.8rem, 1vw + 1.4rem, 2.2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--m-color-text);
+  line-height: 1.15;
+}
+
+.m-dash-panel-summary-skeleton {
+  display: inline-block;
+  width: 8.5rem;
+  height: 1.6rem;
+  border-radius: 0.4rem;
+  background: rgba(118, 118, 128, 0.16);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.m-dash-panel-summary-note {
+  margin: 0.3rem 0 0;
+  font-size: var(--m-text-secondary);
+  font-weight: 600;
+  color: var(--m-color-label);
+}
+
 .m-dash-earnings-panel--segmented .m-dash-earnings-panel-top {
   padding-top: 0.85rem;
 }
