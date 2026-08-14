@@ -4176,9 +4176,6 @@ body.user-page .pagination-container {
 #userModal .user-modal-select-card.is-closed:not(.is-selected) .account-label.account-label--process,
 #userModal .user-modal-select-card.is-closed:not(.is-selected) .account-label-desc {
     color: var(--account-select-label-closed, #64748b);
-    text-decoration: line-through;
-    text-decoration-color: var(--account-select-card-border-closed, #94a3b8);
-    text-decoration-thickness: 1.5px;
 }
 
 #userModal .user-modal-select-card.is-closed:not(.is-selected):hover:not(.is-disabled) {
