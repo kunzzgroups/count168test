@@ -127,12 +127,12 @@ export function getUserEditFieldLocks(row, currentUserId, currentUserRole) {
     password: false,
     sidebar: isSelf || isSame || isLower,
     company: isSelf || isSame || isLower || !canPickCompany,
-    // Process stays locked for self. Acc self-toggle is gated by canSelfEditAccountAccess.
+    // Process stays locked for self unless canSelfEditAccountAccess unlocks Acc/Process columns.
     accountProcess: isSelf,
   };
 }
 
-/** Non-owner editing themselves may hide/unhide Acc (not Process). Owner / owner-shadow cannot. */
+/** Non-owner editing themselves may hide/unhide Acc and Process. Owner / owner-shadow cannot. */
 export function canSelfEditAccountAccess(row, currentUserId, currentUserRole) {
   if (!row || row.is_owner_shadow) return false;
   if (normRole(currentUserRole) === "owner") return false;
@@ -633,21 +633,22 @@ export function partitionAccessRows(raw, accList) {
 }
 
 /**
- * Persist Acc rows with flags. Only selected / superior-closed / self-hidden toggleable
- * items are written — never the whole company catalog.
+ * Persist Acc/Process rows with flags. Only selected / superior-closed / self-hidden
+ * toggleable items are written — never the whole company catalog.
  */
-export function buildAccountPermissionPayload(accounts, selectedIds, superiorClosedIds, options = {}) {
-  const { isSelf = false, toggleableIds = null } = options;
+export function buildAccessPermissionPayload(items, selectedIds, superiorClosedIds, options = {}) {
+  const { isSelf = false, toggleableIds = null, extraFields } = options;
   const selected = selectedIds instanceof Set ? selectedIds : new Set();
   const closed = superiorClosedIds instanceof Set ? superiorClosedIds : new Set();
   const out = [];
-  for (const a of accounts || []) {
-    const id = Number(a.id);
+  for (const item of items || []) {
+    const id = Number(item.id);
     if (!(id > 0)) continue;
     const inSelected = selected.has(id);
     const inClosed = closed.has(id);
     const inToggle = toggleableIds == null || toggleableIds.has(id);
-    const row = { id, account_id: a.account_id || "" };
+    const extra = typeof extraFields === "function" ? extraFields(item) : {};
+    const row = { id, ...extra };
     if (isSelf) {
       if (!inToggle && !inSelected && !inClosed) continue;
       if (inClosed) {
@@ -671,6 +672,20 @@ export function buildAccountPermissionPayload(accounts, selectedIds, superiorClo
     }
   }
   return out;
+}
+
+export function buildAccountPermissionPayload(accounts, selectedIds, superiorClosedIds, options = {}) {
+  return buildAccessPermissionPayload(accounts, selectedIds, superiorClosedIds, {
+    ...options,
+    extraFields: (a) => ({ account_id: a.account_id || "" }),
+  });
+}
+
+export function buildProcessPermissionPayload(processes, selectedIds, superiorClosedIds, options = {}) {
+  return buildAccessPermissionPayload(processes, selectedIds, superiorClosedIds, {
+    ...options,
+    extraFields: (p) => ({ process_id: p.process_id || "", description: p.description || "" }),
+  });
 }
 
 export function resolveUserListFetchScopeKey({

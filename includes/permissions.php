@@ -185,6 +185,27 @@ function permissions_process_whitelist_ids(PDO $pdo, int $userId, int $companyId
 }
 
 /**
+ * @return null unrestricted, int[] toggleable ids (empty = none)
+ */
+function permissions_process_toggleable_ids(PDO $pdo, int $userId, int $companyId, ?string $role = null): ?array
+{
+    if ($userId <= 0 || $companyId <= 0) {
+        return [];
+    }
+    if (permissions_user_sees_all_processes($role)) {
+        return null;
+    }
+    $stmt = $pdo->prepare("SELECT process_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
+    $stmt->execute([$userId, $companyId]);
+    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$permission || $permission['process_permissions'] === null) {
+        return null;
+    }
+    $ids = permissions_toggleable_ids_from_json($permission['process_permissions']);
+    return $ids === null ? [] : $ids;
+}
+
+/**
  * Process visibility follows the same top-level read-only policy as accounts.
  * Keep Partnership/Audit aligned with owner-level read visibility.
  */

@@ -339,6 +339,12 @@ function getProcesses() {
             (int) $targetCompanyId,
             $_SESSION['role'] ?? ''
         );
+        $toggleableIds = permissions_process_toggleable_ids(
+            $pdo,
+            (int) ($_SESSION['user_id'] ?? 0),
+            (int) $targetCompanyId,
+            $_SESSION['role'] ?? ''
+        );
         
         $hasTxnProcessId = false;
         try {
@@ -445,6 +451,7 @@ function getProcesses() {
             jsonResponse(true, '', [
                 'processes' => $formattedProcesses,
                 'assignable_ids' => $assignableIds,
+                'toggleable_ids' => $toggleableIds,
             ]);
         } else {
             jsonResponse(true, '', $formattedProcesses);

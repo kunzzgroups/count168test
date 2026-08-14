@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildAccountPermissionPayload,
+  buildProcessPermissionPayload,
   canSelfEditAccountAccess,
   compareAccessCode,
   parseAssignableIds,
@@ -86,6 +87,23 @@ test("buildAccountPermissionPayload superior uncheck writes superior_closed only
   assert.deepEqual(payload, [
     { id: 1, account_id: "A" },
     { id: 2, account_id: "B", superior_closed: 1 },
+  ]);
+});
+
+test("buildProcessPermissionPayload self-hide is re-openable and preserves superior_closed", () => {
+  const processes = [
+    { id: 1, process_id: "P1", description: "A" },
+    { id: 2, process_id: "P2", description: "B" },
+    { id: 3, process_id: "P3", description: "C" },
+  ];
+  const payload = buildProcessPermissionPayload(processes, new Set([1]), new Set([3]), {
+    isSelf: true,
+    toggleableIds: new Set([1, 2]),
+  });
+  assert.deepEqual(payload, [
+    { id: 1, process_id: "P1", description: "A" },
+    { id: 2, process_id: "P2", description: "B", self_hidden: 1 },
+    { id: 3, process_id: "P3", description: "C", superior_closed: 1 },
   ]);
 });
 

@@ -214,7 +214,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
   toggleableIds = null,
   superiorClosedIds = null,
   setSuperiorClosedIds = null,
-  selfAccountToggle = false,
+  selfToggle = false,
   enabled = true,
   bulkSelectionSettling,
   runBulkSelection,
@@ -232,13 +232,13 @@ const SelectionColumn = React.memo(function SelectionColumn({
     [items, selectedIds, codeKey],
   );
   const bulkIdList = useMemo(() => {
-    if (selfAccountToggle) {
+    if (selfToggle) {
       const source = toggleableIds == null ? idList : idList.filter((id) => toggleableIds.has(Number(id)));
       return source.filter((id) => !closedIds.has(Number(id)));
     }
     if (assignableIds == null) return idList;
     return idList.filter((id) => assignableIds.has(Number(id)));
-  }, [assignableIds, closedIds, idList, selfAccountToggle, toggleableIds]);
+  }, [assignableIds, closedIds, idList, selfToggle, toggleableIds]);
   const [gridCols, setGridCols] = useState(4);
 
   useLayoutEffect(() => {
@@ -258,13 +258,13 @@ const SelectionColumn = React.memo(function SelectionColumn({
   const isItemLocked = useCallback(
     (id) => {
       if (locked) return true;
-      if (selfAccountToggle) {
+      if (selfToggle) {
         if (closedIds.has(id)) return true;
         return toggleableIds != null && !toggleableIds.has(id);
       }
       return assignableIds != null && !assignableIds.has(id);
     },
-    [assignableIds, closedIds, locked, selfAccountToggle, toggleableIds],
+    [assignableIds, closedIds, locked, selfToggle, toggleableIds],
   );
 
   const onToggle = useCallback(
@@ -277,7 +277,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
         else n.delete(nid);
         return n;
       });
-      if (variant === "account" && typeof setSuperiorClosedIds === "function" && !selfAccountToggle) {
+      if (typeof setSuperiorClosedIds === "function" && !selfToggle) {
         setSuperiorClosedIds((prev) => {
           const n = new Set(prev);
           if (checked) n.delete(nid);
@@ -286,7 +286,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
         });
       }
     },
-    [isItemLocked, selfAccountToggle, setSelectedIds, setSuperiorClosedIds, variant],
+    [isItemLocked, selfToggle, setSelectedIds, setSuperiorClosedIds],
   );
 
   const rowCount = Math.ceil(sortedItems.length / gridCols) || 0;
@@ -350,7 +350,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
               bulkIdList.forEach((id) => n.add(Number(id)));
               return n;
             });
-            if (variant === "account" && typeof setSuperiorClosedIds === "function" && !selfAccountToggle) {
+            if (typeof setSuperiorClosedIds === "function" && !selfToggle) {
               setSuperiorClosedIds((prev) => {
                 const n = new Set(prev);
                 bulkIdList.forEach((id) => n.delete(Number(id)));
@@ -371,7 +371,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
               bulkIdList.forEach((id) => n.delete(Number(id)));
               return n;
             });
-            if (variant === "account" && typeof setSuperiorClosedIds === "function" && !selfAccountToggle) {
+            if (typeof setSuperiorClosedIds === "function" && !selfToggle) {
               setSuperiorClosedIds((prev) => {
                 const n = new Set(prev);
                 bulkIdList.forEach((id) => n.add(Number(id)));
@@ -423,6 +423,9 @@ function UserModal({
   selectedProcessIds,
   setSelectedProcessIds,
   assignableProcessIds = null,
+  toggleableProcessIds = null,
+  superiorClosedProcessIds = null,
+  setSuperiorClosedProcessIds,
   applyPermTemplate,
   onSave,
   sessionMutationsBlocked = false,
@@ -615,9 +618,9 @@ function UserModal({
   }, [open, pageReadOnlyLock]);
 
   const permissionsLocked = fieldLocks.sidebar || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
-  const processLocked = !!fieldLocks.accountProcess || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
-  const selfAccountToggle = canSelfEditAccountAccess(editingRow, currentUserId, currentUserRole);
-  const accountLocked = !!editingRow?.is_owner_shadow || pageReadOnlyLock || (!!fieldLocks.accountProcess && !selfAccountToggle);
+  const selfToggle = canSelfEditAccountAccess(editingRow, currentUserId, currentUserRole);
+  const accountLocked = !!editingRow?.is_owner_shadow || pageReadOnlyLock || (!!fieldLocks.accountProcess && !selfToggle);
+  const processLocked = !!editingRow?.is_owner_shadow || pageReadOnlyLock || (!!fieldLocks.accountProcess && !selfToggle);
   const showSecondaryPassword = isC168Company || !!editingRow?.is_owner_shadow;
 
   const userModalShell = (
@@ -863,7 +866,7 @@ function UserModal({
               toggleableIds={toggleableAccountIds}
               superiorClosedIds={superiorClosedAccountIds}
               setSuperiorClosedIds={setSuperiorClosedAccountIds}
-              selfAccountToggle={selfAccountToggle}
+              selfToggle={selfToggle}
               enabled={open}
               bulkSelectionSettling={bulkSettlingVariant === "account"}
               runBulkSelection={runBulkSelection}
@@ -881,6 +884,10 @@ function UserModal({
                 idList={processIdList}
                 locked={processLocked}
                 assignableIds={assignableProcessIds}
+                toggleableIds={toggleableProcessIds}
+                superiorClosedIds={superiorClosedProcessIds}
+                setSuperiorClosedIds={setSuperiorClosedProcessIds}
+                selfToggle={selfToggle}
                 enabled={open}
                 bulkSelectionSettling={bulkSettlingVariant === "process"}
                 runBulkSelection={runBulkSelection}
