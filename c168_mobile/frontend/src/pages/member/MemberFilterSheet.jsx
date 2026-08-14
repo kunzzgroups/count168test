@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { useOverlayLock } from "../../hooks/useOverlayLock.js";
-import { PERIOD_PRESET_KEYS, periodPresetRange } from "../../lib/dashboardDateUtils.js";
+import {
+  PERIOD_PRESET_KEYS,
+  daysInclusive,
+  periodPresetRange,
+  todayYmd,
+} from "../../lib/dashboardDateUtils.js";
+import {
+  DateRangeCalendarSheet,
+  DateRangeRow,
+  Pill,
+  Section,
+} from "../dashboard/FilterSheet.jsx";
 import "../transaction/add-transaction-sheet.css";
 import "../account/account.css";
 import "./member.css";
@@ -37,7 +48,7 @@ function Sheet({ open, title, onClose, children, footer = null }) {
             <i className="fas fa-xmark" aria-hidden="true" />
           </button>
         </header>
-        <div className="m-sheet-body m-account-sheet-body">{children}</div>
+        <div className="m-sheet-body m-sheet-body--spaced">{children}</div>
         {footer ? <footer className="m-account-sheet-footer">{footer}</footer> : null}
       </section>
     </div>
@@ -66,41 +77,68 @@ export default function MemberFilterSheet({
   const [from, setFrom] = useState(dateFromYmd);
   const [to, setTo] = useState(dateToYmd);
   const [activePreset, setActivePreset] = useState(() => matchPreset(dateFromYmd, dateToYmd));
+  const [rangeOpen, setRangeOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setFrom(dateFromYmd);
     setTo(dateToYmd);
     setActivePreset(matchPreset(dateFromYmd, dateToYmd));
+    setRangeOpen(false);
   }, [open, dateFromYmd, dateToYmd]);
 
+  const span = daysInclusive(from, to);
+  const daysLabel = (t("daysCount") || "{n} days").replace("{n}", String(span));
+
   return (
-    <Sheet
-      open={open}
-      title={t("filters")}
-      onClose={onClose}
-      footer={
-        <button
-          type="button"
-          className="m-account-primary-btn tap-scale"
-          onClick={() => {
-            void onApply?.({ fromYmd: from, toYmd: to });
-            onClose?.();
-          }}
+    <>
+      <Sheet
+        open={open}
+        title={t("filters")}
+        onClose={onClose}
+        footer={
+          <button
+            type="button"
+            className="m-account-primary-btn tap-scale"
+            onClick={() => {
+              void onApply?.({ fromYmd: from, toYmd: to });
+              onClose?.();
+            }}
+          >
+            {t("applyFilters")}
+          </button>
+        }
+      >
+        <Section
+          title={t("dateRange")}
+          trailing={
+            span > 0 ? (
+              <span
+                className={`m-filter-span-badge${
+                  activePreset ? " m-filter-span-badge--preset" : " m-filter-span-badge--custom"
+                }`}
+              >
+                {activePreset ? daysLabel : `${t("customRange")} · ${daysLabel}`}
+              </span>
+            ) : null
+          }
         >
-          {t("applyFilters")}
-        </button>
-      }
-    >
-      <div className="m-member-filter">
-        <div className="m-member-field">
-          <span>{t("period")}</span>
-          <div className="m-member-chips">
+          <DateRangeRow
+            fromLabel={t("from")}
+            toLabel={t("toDate")}
+            dateFrom={from}
+            dateTo={to}
+            active={rangeOpen}
+            onOpen={() => setRangeOpen(true)}
+          />
+        </Section>
+
+        <Section title={t("quickSelect")}>
+          <div className="m-filter-pill-wrap">
             {PERIOD_PRESET_KEYS.map((key) => (
-              <button
+              <Pill
                 key={key}
-                type="button"
-                className={`m-member-chip tap-scale${activePreset === key ? " is-active" : ""}`}
+                active={activePreset === key}
                 onClick={() => {
                   const range = periodPresetRange(key);
                   if (!range) return;
@@ -110,112 +148,94 @@ export default function MemberFilterSheet({
                 }}
               >
                 {t(key)}
-              </button>
+              </Pill>
             ))}
           </div>
-        </div>
-
-        <div className="m-member-filter-row">
-          <label className="m-member-field">
-            <span>{t("from")}</span>
-            <input
-              type="date"
-              value={from}
-              max={to || undefined}
-              onChange={(e) => {
-                setActivePreset("");
-                setFrom(e.target.value);
-              }}
-            />
-          </label>
-          <label className="m-member-field">
-            <span>{t("to")}</span>
-            <input
-              type="date"
-              value={to}
-              min={from || undefined}
-              onChange={(e) => {
-                setActivePreset("");
-                setTo(e.target.value);
-              }}
-            />
-          </label>
-        </div>
+        </Section>
 
         {companies.length > 1 ? (
-          <div className="m-member-field">
-            <span>{t("company")}</span>
-            <div className="m-member-chips">
+          <Section title={t("company")}>
+            <div className="m-filter-pill-wrap">
               {companies.map((c) => {
                 const id = Number(c.id || c.company_db_id || 0);
                 const code = String(c.company_id || c.company_code || id).toUpperCase();
                 const active = id === Number(companyId);
                 return (
-                  <button
-                    key={id || code}
-                    type="button"
-                    className={`m-member-chip tap-scale${active ? " is-active" : ""}`}
-                    onClick={() => void onSwitchCompany?.(id, code)}
-                  >
+                  <Pill key={id || code} active={active} onClick={() => void onSwitchCompany?.(id, code)}>
                     {code}
-                  </button>
+                  </Pill>
                 );
               })}
             </div>
-          </div>
+          </Section>
         ) : null}
 
         {linkedAccounts.length > 0 ? (
-          <div className="m-member-field">
-            <span>{t("account")}</span>
-            <div className="m-member-chips">
+          <Section title={t("account")}>
+            <div className="m-filter-pill-wrap">
               {linkedAccounts.map((a) => {
                 const active = Number(a.id) === Number(viewAccountId);
                 const code = String(a.account_id || a.id).toUpperCase();
                 return (
-                  <button
+                  <Pill
                     key={a.id}
-                    type="button"
-                    className={`m-member-chip tap-scale${active ? " is-active" : ""}`}
+                    active={active}
                     onClick={() => void onSwitchAccount?.(a.id, a.account_id, a.name)}
                   >
                     {code}
-                  </button>
+                  </Pill>
                 );
               })}
             </div>
-          </div>
+          </Section>
         ) : null}
 
-        <div className="m-member-field">
-          <span>{t("currency")}</span>
-          <div className="m-member-chips">
+        <Section title={t("currency")}>
+          <div className="m-filter-pill-wrap">
             {availableCurrencies.length > 1 ? (
-              <button
-                type="button"
-                className={`m-member-chip tap-scale${isAllSelected ? " is-active" : ""}`}
-                onClick={() => onSetCurrencyAll?.()}
-              >
+              <Pill active={isAllSelected} onClick={() => onSetCurrencyAll?.()}>
                 {t("all")}
-              </button>
+              </Pill>
             ) : null}
             {availableCurrencies.map((code) => {
               const active = !isAllSelected && selectedCurrencies.includes(code);
               const solo = availableCurrencies.length === 1 && selectedCurrencies.includes(code);
               return (
-                <button
+                <Pill
                   key={code}
-                  type="button"
-                  className={`m-member-chip tap-scale${active || solo || (availableCurrencies.length === 1 && isAllSelected) ? " is-active" : ""}`}
+                  active={active || solo || (availableCurrencies.length === 1 && isAllSelected)}
                   onClick={() => onToggleCurrency?.(code)}
                 >
                   {code}
-                </button>
+                </Pill>
               );
             })}
           </div>
-        </div>
-      </div>
-    </Sheet>
+        </Section>
+      </Sheet>
+
+      <DateRangeCalendarSheet
+        open={rangeOpen}
+        onClose={() => setRangeOpen(false)}
+        dateFrom={from}
+        dateTo={to}
+        maxYmd={todayYmd()}
+        labels={{
+          selectDateRange: t("selectDateRange"),
+          rangePickHint: t("rangePickHint"),
+          from: t("from"),
+          toDate: t("toDate"),
+          today: t("today"),
+          clear: t("clear"),
+          done: t("done"),
+          close: t("closeMenu") || t("close") || "Close",
+        }}
+        onApply={(nextFrom, nextTo) => {
+          setFrom(nextFrom);
+          setTo(nextTo);
+          setActivePreset("");
+        }}
+      />
+    </>
   );
 }
