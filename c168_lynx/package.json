@@ -1,17 +1,14 @@
 {
-  "name": "c168-lynx",
+  "name": "c168-lynx-login",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "build": "rspeedy build",
-    "build:web": "rspeedy build && node scripts/pack-web-host.mjs",
     "dev": "rspeedy dev",
     "preview": "rspeedy preview"
   },
   "dependencies": {
-    "@lynx-js/react": "^0.123.3",
-    "@lynx-js/web-core": "^0.24.0",
-    "decimal.js": "^10.6.0"
+    "@lynx-js/react": "^0.123.3"
   },
   "devDependencies": {
     "@lynx-js/preact-devtools": "5.0.1-20260716151326-abdb87c",

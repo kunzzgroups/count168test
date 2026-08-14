@@ -27,9 +27,8 @@ export type HistoryRow = {
   row_type?: string
 }
 
-export function scopeQueryFields(compId: number, gid: string): Record<string, string> {
-  if (gid) return { group_id: gid }
-  return { company_id: String(compId) }
+export function scopeQueryFields(compId: number, gid: string) {
+  return gid ? { group_id: gid } : { company_id: String(compId) }
 }
 
 export function hasScope(compId: number, gid: string) {

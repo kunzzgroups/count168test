@@ -1,28 +1,21 @@
-# c168_lynx — ReactLynx mobile entry
+## Rspeedy project
 
-Login + Member Win/Loss on Lynx. Existing `c168_mobile` stays as the current phone SPA.
+This is a ReactLynx project bootstrapped with `create-rspeedy`.
 
-## Local
+## Getting Started
 
-```bash
-# repo root
-php -S 127.0.0.1:8000
-
-# another terminal
-cd c168_lynx
-npm install
-npm run dev
-```
-
-Open the Web preview URL. `/api` proxies to PHP on `:8000`.
-
-## Live
-
-After deploy: https://count168.site/c168_lynx/
-
-Pack the static host (web runtime + `main.web.bundle`):
+First, install the dependencies:
 
 ```bash
-cd c168_lynx
-npm run build:web
+pnpm install
 ```
+
+Then, run the development server:
+
+```bash
+pnpm run dev
+```
+
+Scan the QRCode in the terminal with your LynxExplorer App to see the result.
+
+You can start editing the page by modifying `src/App.tsx`. The page auto-updates as you edit the file.

@@ -3,8 +3,10 @@
 declare module '@lynx-js/types' {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   interface GlobalProps {
-    /** Optional PHP API origin for Lynx Explorer, e.g. http://192.168.x.x:8000 */
-    apiBase?: string
+    /**
+     * Define your global properties in this interface.
+     * These types will be accessible through `lynx.__globalProps`.
+     */
   }
 }
 

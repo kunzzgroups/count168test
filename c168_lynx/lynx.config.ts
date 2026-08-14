@@ -8,22 +8,11 @@ export default defineConfig({
   plugins: [
     pluginQRCode({
       schema(url) {
+        // We use `?fullscreen=true` to open the page in LynxExplorer in full screen mode
         return `${url}?fullscreen=true`
       },
     }),
     pluginReactLynx(),
     pluginTypeCheck(),
   ],
-  environments: {
-    web: {},
-    lynx: {},
-  },
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-    },
-  },
 })
