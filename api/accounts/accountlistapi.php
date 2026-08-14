@@ -31,17 +31,15 @@ function getCurrentUserAccountPermissions(PDO $pdo, int $company_id): array {
 }
 
 /**
- * Owner / member / partnership / audit bypass account_permissions whitelist (same rules as permissions.php).
+ * Owner / member bypass account_permissions whitelist (same rules as permissions.php).
+ * Partnership / audit apply self_hidden + superior_closed like other non-owner roles.
  */
 function accountlist_user_sees_all_accounts(string $current_user_role): bool
 {
     $role = strtolower(trim($current_user_role));
     $userType = strtolower(trim((string) ($_SESSION['user_type'] ?? '')));
-    if ($role === 'owner' || $userType === 'member') {
-        return true;
-    }
 
-    return in_array($role, ['partnership', 'audit'], true);
+    return $role === 'owner' || $userType === 'member';
 }
 
 /**

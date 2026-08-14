@@ -2446,6 +2446,14 @@ export default function UserListPage() {
         }
       }
     }
+    if (
+      payload.company_id == null
+      && companyId != null
+      && Number(companyId) > 0
+      && !shouldForceGroupScope
+    ) {
+      payload.company_id = Number(companyId);
+    }
     try {
       const res = await fetch(buildApiUrl("api/users/userlist_api.php"), { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
       const json = await res.json(); if (!json.success) { notifyApi(json.message, "saveFailed", "danger"); return; }

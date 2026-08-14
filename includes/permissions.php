@@ -40,7 +40,9 @@ function getCurrentUserAccountPermissions($pdo) {
 
 /**
  * Roles that bypass user_company_permissions.account_permissions whitelist (full ledger visibility).
- * Partnership / audit are read-only reviewers and must see the same accounts as owner.
+ * Only owner / member skip the whitelist. Partnership / audit follow the same
+ * self_hidden + superior_closed JSON as admin and below.
+ * Keep in sync with accountlist_user_sees_all_accounts() in accountlistapi.php.
  */
 function permissions_user_sees_all_accounts(?string $role = null, ?string $userType = null): bool
 {
@@ -51,11 +53,7 @@ function permissions_user_sees_all_accounts(?string $role = null, ?string $userT
     $role = strtolower(trim((string) ($role ?? $_SESSION['role'] ?? '')));
     $userType = strtolower(trim((string) ($userType ?? $_SESSION['user_type'] ?? '')));
 
-    if ($role === 'owner' || $userType === 'member') {
-        return true;
-    }
-
-    return in_array($role, ['partnership', 'audit'], true);
+    return $role === 'owner' || $userType === 'member';
 }
 
 /**
@@ -206,8 +204,8 @@ function permissions_process_toggleable_ids(PDO $pdo, int $userId, int $companyI
 }
 
 /**
- * Process visibility follows the same top-level read-only policy as accounts.
- * Keep Partnership/Audit aligned with owner-level read visibility.
+ * Process visibility follows the same top-level policy as accounts.
+ * Only owner / member skip the whitelist.
  */
 function permissions_user_sees_all_processes(?string $role = null, ?string $userType = null): bool
 {
@@ -345,7 +343,7 @@ function filterProcessesByPermissions($pdo, $baseQuery, $params = [], $permissio
         session_start();
     }
 
-    // 与 Account 权限过滤保持一致：owner/member/partnership/audit 直接看全量
+    // 与 Account 权限过滤保持一致：仅 owner/member 直接看全量
     if (permissions_user_sees_all_processes()) {
         return [$baseQuery, $params];
     }

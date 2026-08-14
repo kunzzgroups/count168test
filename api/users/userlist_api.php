@@ -1360,6 +1360,24 @@ function userlist_bind_user_to_group_tenant(PDO $pdo, int $userId, string $group
 }
 
 /**
+ * Acc/Process JSON is stored per company. Prefer the company whose Acc grid is shown
+ * (request company_id / session), not company_ids[0] from mixed assignment.
+ * Partnership often has several mapped companies; writing to the smallest id made
+ * Owner unchecks disappear on reopen (GET reads the page company).
+ */
+function userlist_resolve_permission_company_id(array $input, int $scopeCompanyId, int $currentCompanyId): int
+{
+    $requestCompanyId = (int) ($input['company_id'] ?? 0);
+    if ($requestCompanyId > 0) {
+        return $requestCompanyId;
+    }
+    if ($currentCompanyId > 0) {
+        return $currentCompanyId;
+    }
+    return $scopeCompanyId;
+}
+
+/**
  * Resolve effective company scope for group/company modes.
  * - Prefer explicit validated company ids from request (real write target).
  * - group_id is only view/access context for validation.
@@ -2190,11 +2208,10 @@ try {
                     }
                 }
                 
-                // 为新用户在所有关联的公司下初始化权限
-                // 如果提供了 account_permissions 或 process_permissions，则在当前公司下设置它们
-                // 其他公司则使用默认值（null，表示未设置，默认全部可见）
+                // Acc/Process JSON 写在当前 Acc 列表公司（request/session），不是 company_ids[0]
+                $permCompanyId = userlist_resolve_permission_company_id($input, (int) $scope_company_id, (int) $current_company_id);
                 if (
-                    (int) $scope_company_id > 0
+                    $permCompanyId > 0
                     && (isset($input['account_permissions']) || isset($input['process_permissions']))
                 ) {
                     $accountPerms = null;
@@ -2216,9 +2233,8 @@ try {
                         }
                     }
                     
-                    // 只在当前公司下设置权限
                     $permStmt = $pdo->prepare("INSERT INTO user_company_permissions (user_id, company_id, account_permissions, process_permissions) VALUES (?, ?, ?, ?)");
-                    $permStmt->execute([$newUserId, $scope_company_id, $accountPerms, $processPerms]);
+                    $permStmt->execute([$newUserId, $permCompanyId, $accountPerms, $processPerms]);
                 }
                 
                 // 提交事务
@@ -2246,7 +2262,7 @@ try {
                     }
 
                     $stmt = $pdo->prepare("SELECT account_permissions, process_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
-                    $stmt->execute([$newUserId, $scope_company_id]);
+                    $stmt->execute([$newUserId, $permCompanyId > 0 ? $permCompanyId : $scope_company_id]);
                     $companyPermissions = $stmt->fetch(PDO::FETCH_ASSOC);
                     if ($companyPermissions) {
                         $newUser['account_permissions'] = $companyPermissions['account_permissions'];
@@ -2629,9 +2645,13 @@ try {
                 }
                 $accountPermsUpdated = false;
                 $processPermsUpdated = false;
-                if (isset($input['account_permissions']) || isset($input['process_permissions'])) {
+                $permCompanyId = userlist_resolve_permission_company_id($input, (int) $scope_company_id, (int) $current_company_id);
+                if (
+                    $permCompanyId > 0
+                    && (isset($input['account_permissions']) || isset($input['process_permissions']))
+                ) {
                     $existingPermStmt = $pdo->prepare("SELECT account_permissions, process_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ? LIMIT 1");
-                    $existingPermStmt->execute([$targetUid, $scope_company_id]);
+                    $existingPermStmt->execute([$targetUid, $permCompanyId]);
                     $existingPermRow = $existingPermStmt->fetch(PDO::FETCH_ASSOC) ?: null;
                     $isSelfAccessSave = $canSelfAccountAccess && !$canSuperiorAccess;
 
@@ -2643,8 +2663,8 @@ try {
                         $incomingAccounts = is_array($input['account_permissions']) ? $input['account_permissions'] : [];
                         $incomingAccounts = userlist_normalize_account_incoming($incomingAccounts, $isSelfAccessSave);
                         $editorAccountAssignable = $isSelfAccessSave
-                            ? permissions_account_toggleable_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role)
-                            : permissions_account_whitelist_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role);
+                            ? permissions_account_toggleable_ids($pdo, $currentUid, $permCompanyId, $current_user_role)
+                            : permissions_account_whitelist_ids($pdo, $currentUid, $permCompanyId, $current_user_role);
                         $mergedAccounts = userlist_merge_access_payload(
                             $existingPermRow['account_permissions'] ?? null,
                             $incomingAccounts,
@@ -2658,8 +2678,8 @@ try {
                         $incomingProcesses = is_array($input['process_permissions']) ? $input['process_permissions'] : [];
                         $incomingProcesses = userlist_normalize_account_incoming($incomingProcesses, $isSelfAccessSave);
                         $editorProcessAssignable = $isSelfAccessSave
-                            ? permissions_process_toggleable_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role)
-                            : permissions_process_whitelist_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role);
+                            ? permissions_process_toggleable_ids($pdo, $currentUid, $permCompanyId, $current_user_role)
+                            : permissions_process_whitelist_ids($pdo, $currentUid, $permCompanyId, $current_user_role);
                         $mergedProcesses = userlist_merge_access_payload(
                             $existingPermRow['process_permissions'] ?? null,
                             $incomingProcesses,
@@ -2679,7 +2699,7 @@ try {
                     ");
                     $stmt->execute([
                         $input['id'], 
-                        $scope_company_id, 
+                        $permCompanyId, 
                         $accountPerms, 
                         $processPerms,
                         $accountPerms, // 用于条件判断
@@ -2713,7 +2733,7 @@ try {
 
                     // 仅从 user_company_permissions 读取公司级权限。
                     $stmt = $pdo->prepare("SELECT account_permissions, process_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
-                    $stmt->execute([$input['id'], $scope_company_id]);
+                    $stmt->execute([$input['id'], $permCompanyId > 0 ? $permCompanyId : $scope_company_id]);
                     $companyPermissions = $stmt->fetch(PDO::FETCH_ASSOC);
                     if ($companyPermissions) {
                         $updatedUser['account_permissions'] = $companyPermissions['account_permissions'];
@@ -3207,8 +3227,8 @@ try {
                     $user['group_codes'] = userlist_fetch_user_group_codes($pdo, (int) $user['id']);
                     $user['company_ids'] = userlist_fetch_user_subsidiary_company_ids($pdo, (int) $user['id']);
                     
-                    // 从 user_company_permissions 表获取当前公司下的权限（如果存在）
-                    $permCompanyId = (int) $current_company_id;
+                    // Acc/Process JSON：与 save 同一家公司（request company_id / session），避免 partnership 多公司时读到空行
+                    $permCompanyId = userlist_resolve_permission_company_id($input, 0, (int) $current_company_id);
                     if ($permCompanyId <= 0 && $groupScopeForGet !== null) {
                         $permCompanyId = userlist_resolve_group_tenant_entity_company_id($pdo, $groupScopeForGet);
                     }
