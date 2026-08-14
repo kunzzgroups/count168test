@@ -8,7 +8,6 @@ const AUTH_PATHS = [
   "/owner-secondary-password",
   "/user-secondary-password",
   "/reset-password",
-  "/member",
 ];
 
 export function isMobileAuthPath(pathname) {

@@ -4,6 +4,7 @@ import DashboardPage from "./pages/dashboard/DashboardPage.jsx";
 import LoginPage from "./pages/login/LoginPage.jsx";
 import SecondaryPasswordPage from "./pages/login/SecondaryPasswordPage.jsx";
 import StubPage from "./pages/StubPage.jsx";
+import MemberPage from "./pages/member/MemberPage.jsx";
 import { clearMobileTxListSnapshot } from "./lib/mobileTxListSnapshot.js";
 import TransactionLayout from "./pages/transaction/TransactionLayout.jsx";
 import TransactionPage from "./pages/transaction/TransactionPage.jsx";
@@ -46,7 +47,7 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/home" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/member" element={<StubPage title="会员 Win/Loss" backTo="/login" />} />
+        <Route path="/member" element={<MemberPage />} />
         <Route path="/report" element={<ReportHubPage />} />
         <Route path="/report/domain" element={<DomainReportPage />} />
         <Route path="/report/customer" element={<CustomerReportPage />} />

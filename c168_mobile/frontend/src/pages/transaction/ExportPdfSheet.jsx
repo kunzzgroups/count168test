@@ -40,7 +40,8 @@ export default function ExportPdfSheet({
     if (!open) return undefined;
     const accountId = scope?.accountDbId;
     const companyId = scope?.companyId;
-    if (!accountId || !companyId) {
+    const groupId = scope?.groupId || "";
+    if (!accountId || (!companyId && !groupId)) {
       setCurrencies([]);
       return undefined;
     }
@@ -48,7 +49,7 @@ export default function ExportPdfSheet({
     setLoadingCurrencies(true);
     (async () => {
       try {
-        const list = await fetchPaymentHistoryExportCurrencies(accountId, companyId, ac.signal);
+        const list = await fetchPaymentHistoryExportCurrencies(accountId, companyId, ac.signal, groupId);
         if (ac.signal.aborted) return;
         setCurrencies(list);
         const def = resolveExportCurrenciesDefault(scope?.currency, list);
@@ -63,7 +64,14 @@ export default function ExportPdfSheet({
       }
     })();
     return () => ac.abort();
-  }, [open, scope?.accountDbId, scope?.companyId, scope?.currency, m.exportPdfLoadCurrenciesFailed]);
+  }, [
+    open,
+    scope?.accountDbId,
+    scope?.companyId,
+    scope?.groupId,
+    scope?.currency,
+    m.exportPdfLoadCurrenciesFailed,
+  ]);
 
   const exportCodes = useMemo(
     () => exportCurrencyCodes(isAllSelected, selectedCurrencies, currencies),
@@ -79,6 +87,7 @@ export default function ExportPdfSheet({
 
   const handleExport = useCallback(async () => {
     const accountId = scope?.accountDbId;
+    const groupId = scope?.groupId || "";
     const { dateFrom, dateTo } = ymdRangeToDmy(dateFromYmd, dateToYmd);
     if (!dateFrom || !dateTo) {
       setError(m.pleaseSelectDateRange);
@@ -88,7 +97,7 @@ export default function ExportPdfSheet({
       setError(m.pleaseSelectAtLeastOneCurrency);
       return;
     }
-    if (!accountId || !scope?.companyId) {
+    if (!accountId || (!scope?.companyId && !groupId)) {
       setError(m.exportPdfMissingAccount);
       return;
     }
@@ -100,6 +109,7 @@ export default function ExportPdfSheet({
           const rows = await fetchMemberReportHistory({
             accountId,
             companyId: scope.companyId,
+            groupId,
             dateFrom,
             dateTo,
             currency,
