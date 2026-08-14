@@ -61,10 +61,10 @@ function getAccountPermissionFilterForCompany(PDO $pdo, int $company_id, string 
     if ($userAccountPermissions === []) {
         return [];
     }
-    // Exclude self_hidden: site lists hide Accs the user closed; grants remain for self re-open.
+    // Exclude self_hidden / superior_closed: site lists hide Accs the user or a superior closed.
     $accountIds = [];
     foreach ($userAccountPermissions as $row) {
-        if (is_array($row) && !empty($row['self_hidden'])) {
+        if (is_array($row) && (!empty($row['self_hidden']) || !empty($row['superior_closed']))) {
             continue;
         }
         $id = is_array($row) ? (int) ($row['id'] ?? 0) : (int) $row;

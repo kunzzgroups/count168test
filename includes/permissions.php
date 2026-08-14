@@ -16,6 +16,9 @@ function permissions_extract_account_ids($userAccountPermissions, bool $includeS
     $ids = [];
     foreach ($userAccountPermissions as $row) {
         if (is_array($row)) {
+            if (!empty($row['superior_closed'])) {
+                continue;
+            }
             if (!$includeSelfHidden && !empty($row['self_hidden'])) {
                 continue;
             }
@@ -165,7 +168,7 @@ function getCurrentUserAccountPermissions($pdo) {
 /**
  * Roles that bypass user_company_permissions.account_permissions whitelist (full ledger visibility).
  * Only owner / member bypass. Partnership / audit follow the same whitelist as other roles
- * (null = unset see-all; array = granted; superior revoke drops rows; self_hidden hides without revoke).
+ * (null = unset see-all; array = granted; superior_closed / self_hidden stay in JSON but lists hide them).
  */
 function permissions_user_sees_all_accounts(?string $role = null, ?string $userType = null): bool
 {

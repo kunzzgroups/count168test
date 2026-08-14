@@ -156,6 +156,20 @@ export function isAccountPermSelfHidden(row) {
   return v === true || v === 1 || v === "1";
 }
 
+/** @param {unknown} row */
+export function isAccountPermSuperiorClosed(row) {
+  if (!row || typeof row !== "object") return false;
+  const v = row.superior_closed;
+  return v === true || v === 1 || v === "1";
+}
+
+/** Checked in Edit User: not superior-closed; self also leaves self_hidden unchecked. */
+export function isAccountPermModalChecked(row, isSelf) {
+  if (isAccountPermSuperiorClosed(row)) return false;
+  if (isSelf && isAccountPermSelfHidden(row)) return false;
+  return true;
+}
+
 /**
  * Ensure Accs still granted but self_hidden appear in the modal so the user can re-check them.
  * @param {Array<{id?: number, account_id?: string, name?: string}>} accList
@@ -223,7 +237,10 @@ export function buildSelfAccHeldIds(existingPerms, existingUnset, visibleAccount
   const toId = (x) => Number(x?.id ?? x);
   if (!existingUnset && existingPerms != null) {
     return new Set(
-      (Array.isArray(existingPerms) ? existingPerms : []).map(toId).filter((id) => id > 0),
+      (Array.isArray(existingPerms) ? existingPerms : [])
+        .filter((row) => !isAccountPermSuperiorClosed(row))
+        .map(toId)
+        .filter((id) => id > 0),
     );
   }
   return new Set([...visibleAccountIds].map(Number).filter((id) => id > 0));

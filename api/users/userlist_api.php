@@ -66,9 +66,115 @@ function userlistRoleLevel(string $role): int {
     return $hierarchy[strtolower(trim($role))] ?? 999;
 }
 
+function userlist_perm_flag_on($row, string $key): bool
+{
+    if (!is_array($row)) {
+        return false;
+    }
+    $v = $row[$key] ?? false;
+    return $v === true || $v === 1 || $v === '1';
+}
+
+function userlist_apply_preserved_perm_flags(array $prev, $row, bool $preserveFlags): array
+{
+    if (!$preserveFlags || !is_array($row)) {
+        return $prev;
+    }
+    if (userlist_perm_flag_on($row, 'self_hidden')) {
+        $prev['self_hidden'] = true;
+    }
+    if (userlist_perm_flag_on($row, 'superior_closed')) {
+        $prev['superior_closed'] = true;
+    }
+    return $prev;
+}
+
+function userlist_mark_superior_closed(array $row): array
+{
+    unset($row['self_hidden']);
+    $row['superior_closed'] = true;
+    return $row;
+}
+
 /**
- * Normalize account_permissions payload rows to [{id, account_id, self_hidden?}, ...].
- * self_hidden marks Accs the user closed themselves (still granted; can re-open without superior).
+ * Keep existing grant rows the editor did not check as superior_closed (still shown gray
+ * on the target's Edit User; site lists hide them; target cannot self re-open).
+ *
+ * @param array<int, array> $existingById
+ * @param array<int, array> $submittedById
+ * @param int[]|null $grantableIds null = editor unrestricted
+ * @param callable $applySubmitted function(int $id, array $row, array $existingById): array
+ * @return array<int, array>
+ */
+function userlist_merge_grant_rows_keeping_closed(
+    array $existingById,
+    array $submittedById,
+    ?array $grantableIds,
+    callable $applySubmitted
+): array {
+    $merged = [];
+    if ($grantableIds === null) {
+        foreach ($existingById as $id => $row) {
+            $id = (int) $id;
+            if (isset($submittedById[$id])) {
+                $merged[$id] = $applySubmitted($id, $submittedById[$id], $existingById);
+            } else {
+                $merged[$id] = userlist_mark_superior_closed($row);
+            }
+        }
+        foreach ($submittedById as $id => $row) {
+            $id = (int) $id;
+            if (!isset($merged[$id])) {
+                $merged[$id] = $applySubmitted($id, $row, $existingById);
+            }
+        }
+        return $merged;
+    }
+
+    $grantable = array_fill_keys(array_map('intval', $grantableIds), true);
+    foreach ($existingById as $id => $row) {
+        $id = (int) $id;
+        if (!isset($grantable[$id])) {
+            $merged[$id] = $row;
+            continue;
+        }
+        if (isset($submittedById[$id])) {
+            $merged[$id] = $applySubmitted($id, $submittedById[$id], $existingById);
+        } else {
+            $merged[$id] = userlist_mark_superior_closed($row);
+        }
+    }
+    foreach ($submittedById as $id => $row) {
+        $id = (int) $id;
+        if (isset($grantable[$id]) && !isset($merged[$id])) {
+            $merged[$id] = $applySubmitted($id, $row, $existingById);
+        }
+    }
+    return $merged;
+}
+
+/** Ids the editor may still grant (exclude Accs their own superior already closed). */
+function userlist_grantable_ids_from_decoded($decoded): array
+{
+    if (!is_array($decoded) || $decoded === []) {
+        return [];
+    }
+    $ids = [];
+    foreach ($decoded as $row) {
+        if (is_array($row) && userlist_perm_flag_on($row, 'superior_closed')) {
+            continue;
+        }
+        $id = is_array($row) ? (int) ($row['id'] ?? 0) : (int) $row;
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+    }
+    return array_values(array_unique($ids));
+}
+
+/**
+ * Normalize account_permissions payload rows to [{id, account_id, self_hidden?, superior_closed?}, ...].
+ * self_hidden: user closed themselves (can re-open). superior_closed: a superior closed it (gray, locked).
  */
 function userlist_normalize_account_perm_rows($perms, bool $preserveSelfHidden = true): array
 {
@@ -86,9 +192,7 @@ function userlist_normalize_account_perm_rows($perms, bool $preserveSelfHidden =
         if ($accountId !== '') {
             $prev['account_id'] = $accountId;
         }
-        if ($preserveSelfHidden && is_array($row) && !empty($row['self_hidden'])) {
-            $prev['self_hidden'] = true;
-        }
+        $prev = userlist_apply_preserved_perm_flags($prev, $row, $preserveSelfHidden);
         $byId[$id] = $prev;
     }
     return array_values($byId);
@@ -168,6 +272,9 @@ function userlist_encode_account_permissions_json(array $rows): string
         if (is_array($row) && !empty($row['self_hidden'])) {
             $item['self_hidden'] = true;
         }
+        if (is_array($row) && userlist_perm_flag_on($row, 'superior_closed')) {
+            $item['superior_closed'] = true;
+        }
         $compact[] = $item;
     }
     return json_encode(array_values($compact), JSON_UNESCAPED_UNICODE);
@@ -196,10 +303,7 @@ function userlist_editor_grantable_account_ids(PDO $pdo, int $companyId, int $ed
     if (!is_array($decoded) || $decoded === []) {
         return [];
     }
-    $ids = array_values(array_unique(array_filter(array_map(static function ($row): int {
-        return is_array($row) ? (int) ($row['id'] ?? 0) : (int) $row;
-    }, $decoded), static fn (int $id): bool => $id > 0)));
-    return $ids;
+    return userlist_grantable_ids_from_decoded($decoded);
 }
 
 /**
@@ -260,34 +364,19 @@ function userlist_merge_account_permissions(
     }
 
     $applySubmittedRow = static function (int $id, array $row, array $existingById): array {
-        unset($row['self_hidden']);
+        unset($row['self_hidden'], $row['superior_closed']);
         if (($row['account_id'] ?? '') === '' && isset($existingById[$id]['account_id'])) {
             $row['account_id'] = (string) $existingById[$id]['account_id'];
         }
         return $row;
     };
 
-    if ($grantableIds === null) {
-        $merged = [];
-        foreach ($submittedById as $id => $row) {
-            $merged[$id] = $applySubmittedRow((int) $id, $row, $existingById);
-        }
-        return userlist_fill_account_perm_labels($pdo, $merged);
-    }
-
-    $grantable = array_fill_keys(array_map('intval', $grantableIds), true);
-
-    $merged = [];
-    foreach ($existingById as $id => $row) {
-        if (!isset($grantable[$id])) {
-            $merged[$id] = $row;
-        }
-    }
-    foreach ($submittedById as $id => $row) {
-        if (isset($grantable[$id])) {
-            $merged[$id] = $applySubmittedRow((int) $id, $row, $existingById);
-        }
-    }
+    $merged = userlist_merge_grant_rows_keeping_closed(
+        $existingById,
+        $submittedById,
+        $grantableIds,
+        $applySubmittedRow
+    );
 
     return userlist_fill_account_perm_labels($pdo, $merged);
 }
@@ -368,6 +457,10 @@ function userlist_shrink_account_permissions_for_self(
 
     $out = [];
     foreach ($existingById as $id => $row) {
+        if (userlist_perm_flag_on($row, 'superior_closed')) {
+            $out[$id] = $row;
+            continue;
+        }
         if (isset($submittedById[$id])) {
             $next = $row;
             unset($next['self_hidden']);
@@ -381,7 +474,7 @@ function userlist_shrink_account_permissions_for_self(
             $out[$id] = $next;
         }
     }
-    // Ignore submitted ids not in existing grant (superior-revoked).
+    // Ignore submitted ids not in existing grant (including superior_closed).
     return userlist_fill_account_perm_labels($pdo, $out);
 }
 
@@ -404,9 +497,7 @@ function userlist_normalize_process_perm_rows($perms, bool $preserveSelfHidden =
         if ($processId !== '') {
             $prev['process_id'] = $processId;
         }
-        if ($preserveSelfHidden && is_array($row) && !empty($row['self_hidden'])) {
-            $prev['self_hidden'] = true;
-        }
+        $prev = userlist_apply_preserved_perm_flags($prev, $row, $preserveSelfHidden);
         $byId[$id] = $prev;
     }
     return array_values($byId);
@@ -488,6 +579,9 @@ function userlist_encode_process_permissions_json(array $rows): string
         if (is_array($row) && !empty($row['self_hidden'])) {
             $item['self_hidden'] = true;
         }
+        if (is_array($row) && userlist_perm_flag_on($row, 'superior_closed')) {
+            $item['superior_closed'] = true;
+        }
         $compact[] = $item;
     }
     return json_encode(array_values($compact), JSON_UNESCAPED_UNICODE);
@@ -516,10 +610,7 @@ function userlist_editor_grantable_process_ids(PDO $pdo, int $companyId, int $ed
     if (!is_array($decoded) || $decoded === []) {
         return [];
     }
-    $ids = array_values(array_unique(array_filter(array_map(static function ($row): int {
-        return is_array($row) ? (int) ($row['id'] ?? 0) : (int) $row;
-    }, $decoded), static fn (int $id): bool => $id > 0)));
-    return $ids;
+    return userlist_grantable_ids_from_decoded($decoded);
 }
 
 /** @return int[] */
@@ -565,35 +656,21 @@ function userlist_merge_process_permissions(
         }
     }
 
-    // Submitted checkboxes mean "visible grant". Clear self_hidden (mirror Acc merge).
+    // Submitted checkboxes mean "visible grant". Clear self_hidden / superior_closed on re-check.
     $applySubmittedRow = static function (int $id, array $row, array $existingById): array {
-        unset($row['self_hidden']);
+        unset($row['self_hidden'], $row['superior_closed']);
         if (($row['process_id'] ?? '') === '' && isset($existingById[$id]['process_id'])) {
             $row['process_id'] = (string) $existingById[$id]['process_id'];
         }
         return $row;
     };
 
-    if ($grantableIds === null) {
-        $merged = [];
-        foreach ($submittedById as $id => $row) {
-            $merged[$id] = $applySubmittedRow((int) $id, $row, $existingById);
-        }
-        return userlist_fill_process_perm_labels($pdo, $merged);
-    }
-
-    $grantable = array_fill_keys(array_map('intval', $grantableIds), true);
-    $merged = [];
-    foreach ($existingById as $id => $row) {
-        if (!isset($grantable[$id])) {
-            $merged[$id] = $row;
-        }
-    }
-    foreach ($submittedById as $id => $row) {
-        if (isset($grantable[$id])) {
-            $merged[$id] = $applySubmittedRow((int) $id, $row, $existingById);
-        }
-    }
+    $merged = userlist_merge_grant_rows_keeping_closed(
+        $existingById,
+        $submittedById,
+        $grantableIds,
+        $applySubmittedRow
+    );
 
     return userlist_fill_process_perm_labels($pdo, $merged);
 }
@@ -654,6 +731,10 @@ function userlist_shrink_process_permissions_for_self(
 
     $out = [];
     foreach ($existingById as $id => $row) {
+        if (userlist_perm_flag_on($row, 'superior_closed')) {
+            $out[$id] = $row;
+            continue;
+        }
         if (isset($submittedById[$id])) {
             $next = $row;
             unset($next['self_hidden']);

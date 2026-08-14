@@ -86,7 +86,7 @@ import {
   getUserEditFieldLocks,
   mergeAccountPermissionsForEditor,
   buildSelfAccHeldIds,
-  isAccountPermSelfHidden,
+  isAccountPermModalChecked,
   mergeModalAccountsWithGranted,
   mergeModalProcessesWithGranted,
   shrinkAccountPermissionsForSelf,
@@ -2022,11 +2022,9 @@ export default function UserListPage() {
     const accUnset = ap === null;
     const accRows = accUnset ? null : Array.isArray(ap) ? ap : [];
     const isSelfEdit = Number(row.id) === Number(currentUserId) && !row.is_owner_shadow;
-    // Self: selected = not self_hidden; held = all still-granted (incl. self_hidden) so they can re-open.
-    // Superior: selected = all granted (incl. self_hidden) so Save won't revoke self-hidden Accs.
-    // Do not merge full grants into the picker list (same-label / different-id ghosts).
-    // Self-edit: list APIs hide self_hidden rows, so merge labeled grants back
-    // (including hidden) so tiles keep names and can be re-checked.
+    // Self: selected = visible grants; held = still-granted except superior_closed (gray, locked).
+    // Superior: selected = grants except superior_closed so Save can re-open those Accs.
+    // Self-edit: list APIs hide self_hidden / superior_closed, so merge labeled grants back.
     let modalAccList = accList;
     if (!accUnset && Array.isArray(accRows)) {
       if (isSelfEdit) {
@@ -2035,13 +2033,20 @@ export default function UserListPage() {
         setSelectedAccountIds(
           new Set(
             accRows
-              .filter((x) => !isAccountPermSelfHidden(x))
+              .filter((x) => isAccountPermModalChecked(x, true))
               .map((x) => Number(x.id || x))
               .filter((id) => id > 0),
           ),
         );
       } else {
-        setSelectedAccountIds(new Set(accRows.map((x) => Number(x.id || x)).filter((id) => id > 0)));
+        setSelectedAccountIds(
+          new Set(
+            accRows
+              .filter((x) => isAccountPermModalChecked(x, false))
+              .map((x) => Number(x.id || x))
+              .filter((id) => id > 0),
+          ),
+        );
       }
     } else {
       setSelectedAccountIds(new Set(accList.map((a) => Number(a.id))));
@@ -2056,13 +2061,20 @@ export default function UserListPage() {
         setSelectedProcessIds(
           new Set(
             procRows
-              .filter((x) => !isAccountPermSelfHidden(x))
+              .filter((x) => isAccountPermModalChecked(x, true))
               .map((x) => Number(x.id || x))
               .filter((id) => id > 0),
           ),
         );
       } else {
-        setSelectedProcessIds(new Set(procRows.map((x) => Number(x.id || x)).filter((id) => id > 0)));
+        setSelectedProcessIds(
+          new Set(
+            procRows
+              .filter((x) => isAccountPermModalChecked(x, false))
+              .map((x) => Number(x.id || x))
+              .filter((id) => id > 0),
+          ),
+        );
       }
     } else {
       setSelectedProcessIds(new Set(procList.map((p) => Number(p.id))));
@@ -2572,6 +2584,7 @@ export default function UserListPage() {
           mergedRows.map((row) => {
             const out = { id: Number(row.id) };
             if (row?.self_hidden) out.self_hidden = true;
+            if (row?.superior_closed) out.superior_closed = true;
             return out;
           });
         let nextAccountPerms;
@@ -2631,6 +2644,7 @@ export default function UserListPage() {
           mergedRows.map((row) => {
             const out = { id: Number(row.id) };
             if (row?.self_hidden) out.self_hidden = true;
+            if (row?.superior_closed) out.superior_closed = true;
             return out;
           });
         let nextProcessPerms;
