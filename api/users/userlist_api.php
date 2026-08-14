@@ -115,7 +115,8 @@ function userlist_permission_row_id($row): int
 }
 
 /**
- * Keep ids the editor cannot assign; apply incoming only within assignable ids.
+ * Keep ids the editor cannot toggle; apply incoming only within toggleable ids
+ * (checked + self_hidden; excludes superior_closed on the editor).
  * existingJson null (unrestricted) → use incoming as-is so first save can close items without wiping unseen accs.
  */
 function userlist_merge_access_payload($existingJson, array $incoming, ?array $assignableIds): array
@@ -2662,9 +2663,7 @@ try {
                         $accountPermsUpdated = true;
                         $incomingAccounts = is_array($input['account_permissions']) ? $input['account_permissions'] : [];
                         $incomingAccounts = userlist_normalize_account_incoming($incomingAccounts, $isSelfAccessSave);
-                        $editorAccountAssignable = $isSelfAccessSave
-                            ? permissions_account_toggleable_ids($pdo, $currentUid, $permCompanyId, $current_user_role)
-                            : permissions_account_whitelist_ids($pdo, $currentUid, $permCompanyId, $current_user_role);
+                        $editorAccountAssignable = permissions_account_toggleable_ids($pdo, $currentUid, $permCompanyId, $current_user_role);
                         $mergedAccounts = userlist_merge_access_payload(
                             $existingPermRow['account_permissions'] ?? null,
                             $incomingAccounts,
@@ -2677,9 +2676,7 @@ try {
                         $processPermsUpdated = true;
                         $incomingProcesses = is_array($input['process_permissions']) ? $input['process_permissions'] : [];
                         $incomingProcesses = userlist_normalize_account_incoming($incomingProcesses, $isSelfAccessSave);
-                        $editorProcessAssignable = $isSelfAccessSave
-                            ? permissions_process_toggleable_ids($pdo, $currentUid, $permCompanyId, $current_user_role)
-                            : permissions_process_whitelist_ids($pdo, $currentUid, $permCompanyId, $current_user_role);
+                        $editorProcessAssignable = permissions_process_toggleable_ids($pdo, $currentUid, $permCompanyId, $current_user_role);
                         $mergedProcesses = userlist_merge_access_payload(
                             $existingPermRow['process_permissions'] ?? null,
                             $incomingProcesses,

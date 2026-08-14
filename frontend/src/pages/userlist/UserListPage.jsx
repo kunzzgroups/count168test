@@ -2344,7 +2344,6 @@ export default function UserListPage() {
       superiorClosedAccountIds,
       {
         isSelf: selfAcc,
-        assignableIds: assignableAccountIds,
         toggleableIds: toggleableAccountIds,
       },
     );

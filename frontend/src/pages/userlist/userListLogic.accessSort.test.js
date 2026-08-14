@@ -82,7 +82,7 @@ test("buildAccountPermissionPayload superior uncheck writes superior_closed only
   ];
   const payload = buildAccountPermissionPayload(accounts, new Set([1]), new Set([2]), {
     isSelf: false,
-    assignableIds: new Set([1, 2, 3]),
+    toggleableIds: new Set([1, 2, 3]),
   });
   assert.deepEqual(payload, [
     { id: 1, account_id: "A" },

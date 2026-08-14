@@ -210,7 +210,6 @@ const SelectionColumn = React.memo(function SelectionColumn({
   setSelectedIds,
   idList,
   locked,
-  assignableIds = null,
   toggleableIds = null,
   superiorClosedIds = null,
   setSuperiorClosedIds = null,
@@ -232,13 +231,12 @@ const SelectionColumn = React.memo(function SelectionColumn({
     [items, selectedIds, codeKey],
   );
   const bulkIdList = useMemo(() => {
+    const source = toggleableIds == null ? idList : idList.filter((id) => toggleableIds.has(Number(id)));
     if (selfToggle) {
-      const source = toggleableIds == null ? idList : idList.filter((id) => toggleableIds.has(Number(id)));
       return source.filter((id) => !closedIds.has(Number(id)));
     }
-    if (assignableIds == null) return idList;
-    return idList.filter((id) => assignableIds.has(Number(id)));
-  }, [assignableIds, closedIds, idList, selfToggle, toggleableIds]);
+    return source;
+  }, [closedIds, idList, selfToggle, toggleableIds]);
   const [gridCols, setGridCols] = useState(4);
 
   useLayoutEffect(() => {
@@ -258,13 +256,10 @@ const SelectionColumn = React.memo(function SelectionColumn({
   const isItemLocked = useCallback(
     (id) => {
       if (locked) return true;
-      if (selfToggle) {
-        if (closedIds.has(id)) return true;
-        return toggleableIds != null && !toggleableIds.has(id);
-      }
-      return assignableIds != null && !assignableIds.has(id);
+      if (selfToggle && closedIds.has(id)) return true;
+      return toggleableIds != null && !toggleableIds.has(id);
     },
-    [assignableIds, closedIds, locked, selfToggle, toggleableIds],
+    [closedIds, locked, selfToggle, toggleableIds],
   );
 
   const onToggle = useCallback(
@@ -415,14 +410,12 @@ function UserModal({
   modalAccounts,
   selectedAccountIds,
   setSelectedAccountIds,
-  assignableAccountIds = null,
   toggleableAccountIds = null,
   superiorClosedAccountIds = null,
   setSuperiorClosedAccountIds,
   modalProcesses,
   selectedProcessIds,
   setSelectedProcessIds,
-  assignableProcessIds = null,
   toggleableProcessIds = null,
   superiorClosedProcessIds = null,
   setSuperiorClosedProcessIds,
@@ -862,7 +855,6 @@ function UserModal({
               setSelectedIds={setSelectedAccountIds}
               idList={accountIdList}
               locked={accountLocked}
-              assignableIds={assignableAccountIds}
               toggleableIds={toggleableAccountIds}
               superiorClosedIds={superiorClosedAccountIds}
               setSuperiorClosedIds={setSuperiorClosedAccountIds}
@@ -883,7 +875,6 @@ function UserModal({
                 setSelectedIds={setSelectedProcessIds}
                 idList={processIdList}
                 locked={processLocked}
-                assignableIds={assignableProcessIds}
                 toggleableIds={toggleableProcessIds}
                 superiorClosedIds={superiorClosedProcessIds}
                 setSuperiorClosedIds={setSuperiorClosedProcessIds}
