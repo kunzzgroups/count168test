@@ -4,15 +4,19 @@ import { useMobileMember } from "../../hooks/useMobileMember.js";
 import { computeTableTotals } from "../../lib/memberHelpers.js";
 import { moneyToneClass } from "../../lib/money/moneyToneClass.js";
 import {
-  formatPaymentHistoryMoney,
+  formatHistoryBalanceMoney,
+  formatHistoryMoney,
   formatRateForHistoryDisplay,
   getHistoryRemark,
+  toUpperDisplay,
 } from "../../lib/transactionFormat.js";
+import { historyTypeCardClass } from "../../lib/transactionTypeStyles.js";
 import { formatMemberRowDescription } from "../../translateFile/memberTranslate.js";
 import ExportPdfSheet from "../transaction/ExportPdfSheet.jsx";
 import MemberFilterSheet from "./MemberFilterSheet.jsx";
 import "../account/account.css";
 import "../transaction/transaction-history.css";
+import "../transaction/transaction-history-types.css";
 import "./member.css";
 
 function MoneyTone({ value, children }) {
@@ -20,72 +24,171 @@ function MoneyTone({ value, children }) {
 }
 
 function productLabel(row) {
-  if (row?.is_bank_process_transaction && row?.card_owner) return String(row.card_owner);
-  return String(row?.id_product || row?.process || "-");
+  if (row?.is_bank_process_transaction && row?.card_owner) {
+    return toUpperDisplay(row.card_owner);
+  }
+  return toUpperDisplay(row?.id_product || row?.product || row?.process || "-");
+}
+
+function rowKey(currency, row, idx) {
+  const id = Number(row?.transaction_id ?? row?.id ?? 0);
+  return `${currency}-${id || idx}-${row?.date || ""}`;
 }
 
 function CurrencySection({ currency, rows, t, lang, expandedKey, setExpandedKey }) {
   const totals = useMemo(() => computeTableTotals(rows), [rows]);
+
   return (
     <section className="m-member-ccy" aria-label={t("currencyTitle", { currency })}>
       <h2 className="m-member-ccy-title">{t("currencyTitle", { currency })}</h2>
-      <div className="m-tx-hist-list">
-        {rows.length === 0 ? (
-          <div className="m-account-empty">
-            <p>{t("noData")}</p>
-          </div>
-        ) : (
-          rows.map((row, idx) => {
-            const key = `${currency}-${row.transaction_id || idx}-${row.date || ""}`;
-            const open = expandedKey === key;
-            return (
-              <Fragment key={key}>
-                <button
-                  type="button"
-                  className={`m-tx-hist-row tap-scale${open ? " is-open" : ""}`}
-                  onClick={() => setExpandedKey(open ? null : key)}
-                >
-                  <span className="m-tx-hist-row-main">
-                    <strong>{row.date || "—"}</strong>
-                    <small>{productLabel(row)}</small>
-                  </span>
-                  <span className="m-tx-hist-row-bal">
-                    <MoneyTone value={row.balance}>{formatPaymentHistoryMoney(row.balance)}</MoneyTone>
-                  </span>
-                </button>
-                {open ? (
-                  <div className="m-tx-hist-detail">
-                    <div>
-                      <span>{t("colRate")}</span>
-                      <strong>{formatRateForHistoryDisplay(row.rate)}</strong>
-                    </div>
-                    <div>
-                      <span>{t("colWinLoss")}</span>
-                      <strong>
-                        <MoneyTone value={row.win_loss}>{formatPaymentHistoryMoney(row.win_loss)}</MoneyTone>
-                      </strong>
-                    </div>
-                    <div>
-                      <span>{t("colCrDr")}</span>
-                      <strong>
-                        <MoneyTone value={row.cr_dr}>{formatPaymentHistoryMoney(row.cr_dr)}</MoneyTone>
-                      </strong>
-                    </div>
-                    <div>
-                      <span>{t("colDescription")}</span>
-                      <strong>{formatMemberRowDescription(lang, row)}</strong>
-                    </div>
-                    <div>
-                      <span>{t("colRemark")}</span>
-                      <strong>{getHistoryRemark(row) || "—"}</strong>
-                    </div>
-                  </div>
-                ) : null}
-              </Fragment>
-            );
-          })
-        )}
+      <div className="m-tx-hist-dense-wrap">
+        <table className="m-tx-hist-dense-table">
+          <colgroup>
+            <col className="m-tx-hist-col--date" />
+            <col className="m-tx-hist-col--product" />
+            <col className="m-tx-hist-col--num" span={3} />
+            <col className="m-tx-hist-col--chev" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col" className="m-tx-hist-dense-th m-tx-hist-dense-th--date">
+                {t("colDate")}
+              </th>
+              <th scope="col" className="m-tx-hist-dense-th m-tx-hist-dense-th--product">
+                {t("colIdProduct")}
+              </th>
+              <th scope="col" className="m-tx-hist-dense-th m-tx-hist-dense-th--num">
+                {t("colWinLoss")}
+              </th>
+              <th scope="col" className="m-tx-hist-dense-th m-tx-hist-dense-th--num">
+                {t("colCrDr")}
+              </th>
+              <th scope="col" className="m-tx-hist-dense-th m-tx-hist-dense-th--num">
+                {t("colBalance")}
+              </th>
+              <th scope="col" className="m-tx-hist-dense-th m-tx-hist-dense-th--chev">
+                <span className="sr-only">{t("paymentHistoryDetails")}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => {
+              const key = rowKey(currency, row, idx);
+              const expanded = expandedKey === key;
+              const typeCls = historyTypeCardClass(row);
+              const idProductDisplay = productLabel(row);
+              const createdRaw = row.created_by;
+              const createdBy =
+                createdRaw == null ||
+                String(createdRaw).trim() === "" ||
+                String(createdRaw).toLowerCase() === "null"
+                  ? "-"
+                  : String(createdRaw);
+              const remark = getHistoryRemark(row);
+              const description = formatMemberRowDescription(lang, row);
+              const detailId = `member-hist-detail-${key}`;
+              const toggle = () => setExpandedKey(expanded ? null : key);
+
+              return (
+                <Fragment key={key}>
+                  <tr
+                    className={`m-tx-hist-row ${typeCls}${idx % 2 === 1 ? " m-tx-hist-row--alt" : ""}${
+                      expanded ? " m-tx-hist-row--expanded" : ""
+                    }`}
+                    tabIndex={0}
+                    role="button"
+                    aria-expanded={expanded}
+                    aria-controls={detailId}
+                    onClick={toggle}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggle();
+                      }
+                    }}
+                  >
+                    <td className="m-tx-hist-dense-td m-tx-hist-dense-td--date">{row.date || "—"}</td>
+                    <td className="m-tx-hist-dense-td m-tx-hist-dense-td--product">
+                      {idProductDisplay || "—"}
+                    </td>
+                    <td className="m-tx-hist-dense-td m-tx-hist-dense-td--num">
+                      <MoneyTone value={row.win_loss}>{formatHistoryMoney(row.win_loss)}</MoneyTone>
+                    </td>
+                    <td className="m-tx-hist-dense-td m-tx-hist-dense-td--num">
+                      <MoneyTone value={row.cr_dr}>{formatHistoryMoney(row.cr_dr)}</MoneyTone>
+                    </td>
+                    <td className="m-tx-hist-dense-td m-tx-hist-dense-td--num">
+                      <MoneyTone value={row.balance}>{formatHistoryBalanceMoney(row.balance)}</MoneyTone>
+                    </td>
+                    <td className="m-tx-hist-dense-td m-tx-hist-dense-td--chev">
+                      <i
+                        className={`fas fa-chevron-${expanded ? "up" : "down"} m-tx-hist-chev`}
+                        aria-hidden="true"
+                      />
+                    </td>
+                  </tr>
+                  {expanded ? (
+                    <tr className="m-tx-hist-detail-row" id={detailId}>
+                      <td className="m-tx-hist-detail" colSpan={6}>
+                        <div className="m-tx-hist-detail-panel">
+                          <div className="m-tx-hist-detail-block">
+                            <span className="m-tx-hist-detail-label">{t("colDescription")}</span>
+                            <p
+                              className={
+                                description && description !== "-"
+                                  ? "m-tx-hist-detail-desc"
+                                  : "m-tx-hist-detail-desc m-tx-hist-detail-desc--muted"
+                              }
+                            >
+                              {description && description !== "-" ? description : "—"}
+                            </p>
+                          </div>
+
+                          <div className="m-tx-hist-detail-meta">
+                            <div className="m-tx-hist-detail-meta-item">
+                              <span className="m-tx-hist-detail-label">{t("currency")}</span>
+                              <span className="m-tx-hist-detail-value">{currency}</span>
+                            </div>
+                            <div className="m-tx-hist-detail-meta-item">
+                              <span className="m-tx-hist-detail-label">{t("createdBy")}</span>
+                              <span
+                                className={
+                                  createdBy && createdBy !== "-"
+                                    ? "m-tx-hist-detail-value"
+                                    : "m-tx-hist-detail-value m-tx-hist-detail-value--muted"
+                                }
+                              >
+                                {createdBy && createdBy !== "-" ? createdBy : "—"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {row.rate && row.rate !== "-" ? (
+                            <div className="m-tx-hist-detail-block m-tx-hist-detail-block--inline">
+                              <span className="m-tx-hist-detail-label">{t("colRate")}</span>
+                              <span className="m-tx-hist-detail-value">
+                                {formatRateForHistoryDisplay(row.rate)}
+                              </span>
+                            </div>
+                          ) : null}
+
+                          {remark && remark !== "-" ? (
+                            <div className="m-tx-hist-detail-block">
+                              <span className="m-tx-hist-detail-label">{t("colRemark")}</span>
+                              <p className="m-tx-hist-detail-desc">{remark}</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
+
       {rows.length > 0 ? (
         <div className="m-member-total">
           <strong>{t("totalRow", { currency })}</strong>
@@ -93,19 +196,19 @@ function CurrencySection({ currency, rows, t, lang, expandedKey, setExpandedKey 
             <span>
               {t("colWinLoss")}:{" "}
               <MoneyTone value={totals.totalWinLoss.toString()}>
-                {formatPaymentHistoryMoney(totals.totalWinLoss.toString())}
+                {formatHistoryMoney(totals.totalWinLoss.toString())}
               </MoneyTone>
             </span>
             <span>
               {t("colCrDr")}:{" "}
               <MoneyTone value={totals.totalCrDr.toString()}>
-                {formatPaymentHistoryMoney(totals.totalCrDr.toString())}
+                {formatHistoryMoney(totals.totalCrDr.toString())}
               </MoneyTone>
             </span>
             <span>
               {t("colBalance")}:{" "}
               <MoneyTone value={totals.closingBalance.toString()}>
-                {formatPaymentHistoryMoney(totals.closingBalance.toString())}
+                {formatHistoryBalanceMoney(totals.closingBalance.toString())}
               </MoneyTone>
             </span>
           </div>
@@ -241,21 +344,19 @@ export default function MemberPage() {
         </>
       }
     >
-      <div className="m-member-page">
+      <div className="m-member-page m-tx-hist-page">
         {api.toast ? (
           <div className={`m-account-toast ${api.toast.tone}`}>{api.toast.message}</div>
         ) : null}
 
+        {!api.loadingTable && api.groupedRows.length > 0 ? (
+          <p className="m-tx-hist-expand-hint">{t("paymentHistoryTapRowHint")}</p>
+        ) : null}
+
         {api.loadingTable ? (
-          <div className="m-account-loading">
-            <i className="fas fa-spinner fa-spin" aria-hidden="true" />
-            <span>{t("loading")}</span>
-          </div>
+          <div className="m-tx-hist-loading">{t("loading")}</div>
         ) : api.groupedRows.length === 0 ? (
-          <div className="m-account-empty">
-            <i className="fas fa-receipt" aria-hidden="true" />
-            <p>{t("noDataInRange")}</p>
-          </div>
+          <p className="m-tx-hist-empty">{t("noDataInRange")}</p>
         ) : (
           api.groupedRows.map(([currency, rows]) => (
             <CurrencySection

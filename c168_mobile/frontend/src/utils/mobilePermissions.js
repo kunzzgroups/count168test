@@ -123,6 +123,9 @@ export function resolveMobileLandingPath(me) {
 }
 
 export function mobileNavItems(me) {
+  if (String(me?.user_type || "").toLowerCase() === "member") {
+    return [{ to: "/member", icon: "fa-chart-line", key: "winLoss" }];
+  }
   const items = [];
   if (canAccessDashboard(me)) {
     items.push({ to: "/dashboard", icon: "fa-house", key: "navHome" });
