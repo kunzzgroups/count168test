@@ -15,7 +15,7 @@ session_write_close(); // 释放 session 锁，允许并发 AJAX 请求并行执
 // ---------- 数据库与业务辅助函数 ----------
 
 /** 返回当前用户在某公司下的账户权限列表（用于展示/调试）。未设置时返回 []。 */
-function accountlist_user_permissions_rows_for_company(PDO $pdo, int $company_id): array {
+function getCurrentUserAccountPermissions(PDO $pdo, int $company_id): array {
     $currentUserId = $_SESSION['user_id'] ?? null;
     if (!$currentUserId) {
         return [];
@@ -31,48 +31,41 @@ function accountlist_user_permissions_rows_for_company(PDO $pdo, int $company_id
 }
 
 /**
- * Owner / member bypass account_permissions whitelist (same rules as permissions.php).
- * Partnership / audit follow whitelist like other roles.
+ * Owner / member / partnership / audit bypass account_permissions whitelist (same rules as permissions.php).
  */
 function accountlist_user_sees_all_accounts(string $current_user_role): bool
 {
     $role = strtolower(trim($current_user_role));
     $userType = strtolower(trim((string) ($_SESSION['user_type'] ?? '')));
+    if ($role === 'owner' || $userType === 'member') {
+        return true;
+    }
 
-    return $role === 'owner' || $userType === 'member';
+    return in_array($role, ['partnership', 'audit'], true);
 }
 
 /**
  * 返回账户 ID 过滤：null = 不限制，[] = 不显示任何账户，[id,...] = 只显示这些账户。
- * Company unset → fall back to group-entity grants (Owner group User List save target).
  */
 function getAccountPermissionFilterForCompany(PDO $pdo, int $company_id, string $current_user_role): ?array {
     $currentUserId = $_SESSION['user_id'] ?? null;
     if (!$currentUserId || accountlist_user_sees_all_accounts($current_user_role)) {
         return null;
     }
-    if (!function_exists('permissions_load_account_permissions_decoded')) {
-        require_once __DIR__ . '/../../includes/permissions.php';
-    }
-    $userAccountPermissions = permissions_load_account_permissions_decoded($pdo, (int) $currentUserId, $company_id);
-    if ($userAccountPermissions === null) {
+    $stmt = $pdo->prepare("SELECT account_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
+    $stmt->execute([$currentUserId, $company_id]);
+    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$permission || $permission['account_permissions'] === null) {
         return null;
     }
-    if ($userAccountPermissions === []) {
+    $userAccountPermissions = json_decode($permission['account_permissions'], true);
+    if (empty($userAccountPermissions) || !is_array($userAccountPermissions)) {
         return [];
     }
-    // Exclude self_hidden / superior_closed: site lists hide Accs the user or a superior closed.
-    $accountIds = [];
-    foreach ($userAccountPermissions as $row) {
-        if (is_array($row) && (!empty($row['self_hidden']) || !empty($row['superior_closed']))) {
-            continue;
-        }
-        $id = is_array($row) ? (int) ($row['id'] ?? 0) : (int) $row;
-        if ($id > 0) {
-            $accountIds[] = $id;
-        }
-    }
-    return array_values(array_unique($accountIds));
+    $accountIds = array_values(array_unique(array_filter(array_map('intval', array_column($userAccountPermissions, 'id')), function ($id) {
+        return $id > 0;
+    })));
+    return $accountIds;
 }
 
 function validateCompanyAccess(PDO $pdo, int $company_id): void {
@@ -589,16 +582,11 @@ try {
     }
 
     $current_user_role = $_SESSION['role'] ?? '';
-    $permCompanyId = $company_id > 0 ? $company_id : 0;
-    if ($permCompanyId <= 0 && $groupOnlyLedger && $group_scope_id !== null) {
-        // Group ledger has no subsidiary company_id — read grants from group entity/anchor.
-        $permCompanyId = (int) gc_resolve_group_anchor_company_id($pdo, $group_scope_id);
-    }
-    $accountIdFilter = $permCompanyId > 0
-        ? getAccountPermissionFilterForCompany($pdo, $permCompanyId, $current_user_role)
+    $accountIdFilter = $company_id > 0
+        ? getAccountPermissionFilterForCompany($pdo, $company_id, $current_user_role)
         : null;
-    $userAccountPermissions = $permCompanyId > 0
-        ? accountlist_user_permissions_rows_for_company($pdo, $permCompanyId)
+    $userAccountPermissions = $company_id > 0
+        ? getCurrentUserAccountPermissions($pdo, $company_id)
         : [];
 
     $accounts = [];
@@ -646,7 +634,7 @@ try {
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => '数据库错误: ' . $e->getMessage(), 'data' => null]);
-} catch (Throwable $e) {
+} catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => '系统错误: ' . $e->getMessage(), 'data' => null]);
 }

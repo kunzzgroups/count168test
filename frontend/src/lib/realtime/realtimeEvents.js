@@ -1,17 +1,6 @@
 /** Window event for app-wide invalidate bus (from AuthenticatedLayout SSE). */
 export const REALTIME_INVALIDATE_EVENT = "ec:realtime-invalidate";
 
-/** Force SSE to remint a ticket (stale 6h ticket / Partnership scope deny). */
-export const REALTIME_RECONNECT_EVENT = "ec:realtime-reconnect";
-
-export function requestRealtimeReconnect() {
-  try {
-    window.dispatchEvent(new CustomEvent(REALTIME_RECONNECT_EVENT));
-  } catch {
-    /* ignore */
-  }
-}
-
 /** Domains published by PHP `realtime_publish*` / ledger wrappers. */
 export const REALTIME_DOMAINS = Object.freeze({
   LEDGER: "ledger",

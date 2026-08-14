@@ -34,35 +34,25 @@ try {
         exit;
     }
 
-    $uid = (int) ($_SESSION['user_id'] ?? 0);
     $scopeParams = $_GET;
     $viewGroupForAccess = dcNormalizeGroupId(
         $scopeParams['view_group'] ?? $scopeParams['group_id'] ?? ''
     );
 
-    $channels = [];
-    try {
-        $listScope = tx_resolve_transaction_list_scope($pdo, $scopeParams);
-        $permCompanyId = tx_permission_company_id_for_scope($pdo, $listScope);
-        if ($permCompanyId <= 0 && ($listScope['mode'] ?? '') !== 'group') {
-            throw new Exception('缺少公司或集团信息');
-        }
-        if ($permCompanyId > 0) {
-            dcAssertUserCanAccessCompany(
-                $pdo,
-                $permCompanyId,
-                $viewGroupForAccess !== '' ? $viewGroupForAccess : null
-            );
-        }
-        $channels = realtime_channels_from_scope($listScope);
-    } catch (Throwable $scopeError) {
-        // Never fail closed: Acc/Process grants publish to tx:u:{uid}. English
-        // "No permission to access this company" must not 500-disable SSE.
-        error_log('realtime/ticket_api scope fallback: ' . $scopeError->getMessage());
+    $listScope = tx_resolve_transaction_list_scope($pdo, $scopeParams);
+    $permCompanyId = tx_permission_company_id_for_scope($pdo, $listScope);
+    if ($permCompanyId <= 0 && ($listScope['mode'] ?? '') !== 'group') {
+        throw new Exception('缺少公司或集团信息');
+    }
+    if ($permCompanyId > 0) {
+        dcAssertUserCanAccessCompany(
+            $pdo,
+            $permCompanyId,
+            $viewGroupForAccess !== '' ? $viewGroupForAccess : null
+        );
     }
 
-    $channels = array_merge($channels, realtime_session_fallback_channels($pdo, $uid));
-    $channels = realtime_append_user_channel($channels, $uid);
+    $channels = realtime_channels_from_scope($listScope);
     if ($channels === []) {
         api_success(realtime_ticket_disabled_payload(), 'No realtime channels for scope');
         exit;
@@ -74,7 +64,7 @@ try {
     $payload = [
         'exp' => $expiresAt,
         'channels' => $channels,
-        'uid' => $uid,
+        'uid' => (int) ($_SESSION['user_id'] ?? 0),
         'ut' => (string) ($_SESSION['user_type'] ?? 'user'),
     ];
     $ticket = realtime_sign_ticket($payload, $cfg['secret']);

@@ -32,36 +32,25 @@ try {
         exit;
     }
 
-    $uid = (int) ($_SESSION['user_id'] ?? 0);
     $scopeParams = $_GET;
     $viewGroupForAccess = dcNormalizeGroupId(
         $scopeParams['view_group'] ?? $scopeParams['group_id'] ?? ''
     );
 
-    $channels = [];
-    try {
-        $listScope = tx_resolve_transaction_list_scope($pdo, $scopeParams);
-        $permCompanyId = tx_permission_company_id_for_scope($pdo, $listScope);
-        if ($permCompanyId <= 0 && ($listScope['mode'] ?? '') !== 'group') {
-            throw new Exception('缺少公司或集团信息');
-        }
-        if ($permCompanyId > 0) {
-            dcAssertUserCanAccessCompany(
-                $pdo,
-                $permCompanyId,
-                $viewGroupForAccess !== '' ? $viewGroupForAccess : null
-            );
-        }
-        $channels = tx_ledger_realtime_channels_from_scope($listScope);
-    } catch (Throwable $scopeError) {
-        if (!realtime_ticket_is_scope_access_error($scopeError)) {
-            throw $scopeError;
-        }
-        error_log('realtime_ticket_api scope fallback: ' . $scopeError->getMessage());
+    $listScope = tx_resolve_transaction_list_scope($pdo, $scopeParams);
+    $permCompanyId = tx_permission_company_id_for_scope($pdo, $listScope);
+    if ($permCompanyId <= 0 && ($listScope['mode'] ?? '') !== 'group') {
+        throw new Exception('缺少公司或集团信息');
+    }
+    if ($permCompanyId > 0) {
+        dcAssertUserCanAccessCompany(
+            $pdo,
+            $permCompanyId,
+            $viewGroupForAccess !== '' ? $viewGroupForAccess : null
+        );
     }
 
-    $channels = array_merge($channels, realtime_session_fallback_channels($pdo, $uid));
-    $channels = realtime_append_user_channel($channels, $uid);
+    $channels = tx_ledger_realtime_channels_from_scope($listScope);
     if ($channels === []) {
         api_success(realtime_ticket_disabled_payload(), 'No realtime channels for scope');
         exit;
@@ -71,7 +60,7 @@ try {
     $payload = [
         'exp' => $expiresAt,
         'channels' => $channels,
-        'uid' => $uid,
+        'uid' => (int) ($_SESSION['user_id'] ?? 0),
         'ut' => (string) ($_SESSION['user_type'] ?? 'user'),
     ];
     $ticket = tx_ledger_realtime_sign_ticket($payload, $cfg['secret']);

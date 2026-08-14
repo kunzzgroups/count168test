@@ -1,52 +1,9 @@
-import React, { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { accountCompanyPickerZIndex, accountModalOverlayZIndex } from "../../../components/ProcessModalPortal.jsx";
 import SimpleSelect from "../../../components/SimpleSelect.jsx";
 import { useSubmitGuard } from "../../../hooks/useSubmitGuard.js";
 import PasswordInput from "../../../components/PasswordInput.jsx";
-import {
-  nextAccountSelectionPreservingOutside,
-  nextSelfAccountSelection,
-} from "../userListLogic.js";
-
-function readCssPxToken(el, name, fallback) {
-  if (!el || typeof window === "undefined") return fallback;
-  const raw = parseFloat(getComputedStyle(el).getPropertyValue(name));
-  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
-}
-
-function readResolvedCssInt(el, name, fallback) {
-  if (!el || typeof window === "undefined") return fallback;
-  const raw = String(getComputedStyle(el).getPropertyValue(name) || "").trim();
-  // Custom props may still be `var(--x, 4)` — peel a trailing integer.
-  const direct = parseInt(raw, 10);
-  if (Number.isFinite(direct) && direct > 0) return direct;
-  const nested = raw.match(/(\d+)\s*\)?\s*$/);
-  if (nested) {
-    const n = parseInt(nested[1], 10);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return fallback;
-}
-
-/** Match userlist.css wide/compact Acc-Process column breakpoint. */
-function readAccessGridCols() {
-  if (typeof window === "undefined") return 4;
-  const root = document.documentElement;
-  const wide = readResolvedCssInt(root, "--user-modal-access-grid-cols-wide", 4);
-  const compact = readResolvedCssInt(root, "--user-modal-access-grid-cols-compact", 3);
-  const bp = readCssPxToken(root, "--user-modal-access-grid-bp", 1700);
-  return window.innerWidth < bp ? compact : wide;
-}
-
-function readAccessRowEstimate() {
-  if (typeof document === "undefined") return 43;
-  const root = document.getElementById("userModal") || document.documentElement;
-  const minH = readCssPxToken(root, "--user-modal-access-card-min-height", 38);
-  const gap = readCssPxToken(root, "--user-modal-access-card-gap", 5);
-  return Math.ceil(minH + gap);
-}
 
 /** Inline so first paint is 3-column even if extracted CSS applies one frame late */
 const modalBodyStyle = {
@@ -235,16 +192,13 @@ const SelectionColumn = React.memo(function SelectionColumn({
   variant,
   title,
   items,
+  gridRef,
   selectedIds,
   setSelectedIds,
   idList,
   locked,
-  /** @type {Set<number>|null|undefined} self Acc: only these ids may be (re)checked */
-  shrinkOnlyHeldIds = null,
   bulkSelectionSettling,
   runBulkSelection,
-  /** Modal open — remount/remeasure virtualizer when display flips on */
-  listActive = true,
   t,
 }) {
   const idPrefix = variant === "account" ? "acc" : "proc";
@@ -252,126 +206,49 @@ const SelectionColumn = React.memo(function SelectionColumn({
     variant === "account"
       ? "user-modal-col user-modal-col--account account-process-col"
       : "user-modal-col user-modal-col--process account-process-col";
-  const selfShrinkOnly = shrinkOnlyHeldIds instanceof Set;
-  const scrollRef = useRef(null);
-  const [cols, setCols] = useState(4);
-  const [rowEstimate, setRowEstimate] = useState(43);
-
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return undefined;
-    const syncMetrics = () => {
-      setCols(readAccessGridCols());
-      setRowEstimate(readAccessRowEstimate());
-    };
-    syncMetrics();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncMetrics) : null;
-    ro?.observe(el);
-    window.addEventListener("resize", syncMetrics);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", syncMetrics);
-    };
-  }, [listActive, items.length]);
-
-  const rowCount = cols > 0 ? Math.ceil(items.length / cols) : 0;
-  const rowVirtualizer = useVirtualizer({
-    count: listActive ? rowCount : 0,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowEstimate,
-    overscan: 8,
-  });
-
-  useEffect(() => {
-    if (!listActive) return;
-    const id = requestAnimationFrame(() => {
-      rowVirtualizer.measure();
-    });
-    return () => cancelAnimationFrame(id);
-    // measure() only — avoid depending on virtualizer identity
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed by layout inputs
-  }, [listActive, cols, rowEstimate, items.length]);
 
   const onToggle = useCallback(
     (id, checked) => {
-      const nId = Number(id);
-      // Self shrink-only: block checking Accs not in the held baseline (superior-closed).
-      if (checked && selfShrinkOnly && !shrinkOnlyHeldIds.has(nId)) return;
       setSelectedIds((prev) => {
         const n = new Set(prev);
-        if (checked) n.add(nId);
-        else n.delete(nId);
+        if (checked) n.add(Number(id));
+        else n.delete(Number(id));
         return n;
       });
     },
-    [setSelectedIds, selfShrinkOnly, shrinkOnlyHeldIds],
+    [setSelectedIds],
   );
-
-  const virtualRows = rowVirtualizer.getVirtualItems();
-  const totalSize = rowVirtualizer.getTotalSize();
 
   return (
     <div className={colClass} style={userModalColStyle}>
       <label className="acc-proc-label user-modal-col-title">{title}</label>
       <div
-        ref={scrollRef}
-        className={`account-grid account-grid--four account-grid--process account-grid--virtual${bulkSelectionSettling ? " account-grid--bulk-settling" : ""}`}
+        ref={gridRef}
+        className={`account-grid account-grid--four account-grid--process${bulkSelectionSettling ? " account-grid--bulk-settling" : ""}`}
       >
-        <div className="account-grid-virtual-spacer" style={{ height: totalSize }}>
-          {virtualRows.map((vRow) => {
-            const start = vRow.index * cols;
-            const rowItems = items.slice(start, start + cols);
-            return (
-              <div
-                key={vRow.key}
-                data-index={vRow.index}
-                ref={rowVirtualizer.measureElement}
-                className="account-grid-virtual-row"
-                style={{ transform: `translateY(${vRow.start}px)` }}
-              >
-                {rowItems.map((it) => {
-                  const primary = variant === "account" ? it.account_id : it.process_id;
-                  const secondary = variant === "account" ? it.name : it.description;
-                  const nId = Number(it.id);
-                  const checked = selectedIds.has(nId);
-                  // Unchecked + not held → lock (cannot restore superior-closed Acc).
-                  // Checked + not held → still allow uncheck.
-                  const cardLocked =
-                    locked || (selfShrinkOnly && !shrinkOnlyHeldIds.has(nId) && !checked);
-                  return (
-                    <AccessSelectCard
-                      key={it.id}
-                      id={it.id}
-                      idPrefix={idPrefix}
-                      primary={primary}
-                      secondary={secondary}
-                      checked={checked}
-                      locked={cardLocked}
-                      onToggle={onToggle}
-                    />
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
+        {items.map((it) => {
+          const primary = variant === "account" ? it.account_id : it.process_id;
+          const secondary = variant === "account" ? it.name : it.description;
+          return (
+            <AccessSelectCard
+              key={it.id}
+              id={it.id}
+              idPrefix={idPrefix}
+              primary={primary}
+              secondary={secondary}
+              checked={selectedIds.has(Number(it.id))}
+              locked={locked}
+              onToggle={onToggle}
+            />
+          );
+        })}
       </div>
       <div className="account-control-buttons user-modal-col-actions">
         <button
           type="button"
           className="btn-account-control"
           disabled={locked}
-          onClick={() =>
-            runBulkSelection(variant, () => {
-              if (selfShrinkOnly) {
-                setSelectedIds((prev) =>
-                  nextSelfAccountSelection(prev, idList, shrinkOnlyHeldIds, "select"),
-                );
-                return;
-              }
-              setSelectedIds((prev) => nextAccountSelectionPreservingOutside(prev, idList, "select"));
-            })
-          }
+          onClick={() => runBulkSelection(variant, () => setSelectedIds(new Set(idList)))}
         >
           {t("selectAll")}
         </button>
@@ -379,17 +256,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
           type="button"
           className="btn-clearall"
           disabled={locked}
-          onClick={() =>
-            runBulkSelection(variant, () => {
-              if (selfShrinkOnly) {
-                setSelectedIds((prev) =>
-                  nextSelfAccountSelection(prev, idList, shrinkOnlyHeldIds, "clear"),
-                );
-                return;
-              }
-              setSelectedIds((prev) => nextAccountSelectionPreservingOutside(prev, idList, "clear"));
-            })
-          }
+          onClick={() => runBulkSelection(variant, () => setSelectedIds(new Set()))}
         >
           {t("clearAll")}
         </button>
@@ -426,10 +293,6 @@ function UserModal({
   modalAccounts,
   selectedAccountIds,
   setSelectedAccountIds,
-  /** Self-edit Acc held baseline; null = not self shrink-only mode */
-  selfAccHeldIds = null,
-  /** Self-edit Process held baseline; null = not self shrink-only mode */
-  selfProcessHeldIds = null,
   modalProcesses,
   selectedProcessIds,
   setSelectedProcessIds,
@@ -441,6 +304,8 @@ function UserModal({
 }) {
   const cardRef = useRef(null);
   const modalBodyRef = useRef(null);
+  const accountGridRef = useRef(null);
+  const processGridRef = useRef(null);
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false);
   const [permissionPickerOpen, setPermissionPickerOpen] = useState(false);
   const [companySearchQuery, setCompanySearchQuery] = useState("");
@@ -469,6 +334,62 @@ function UserModal({
     }
     return opts;
   }, [isEditMode, currentUserRole, editingRow, form.role, t]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const clearMinHeights = (gridEl) => {
+      if (!gridEl) return;
+      gridEl.querySelectorAll(".user-modal-select-card").forEach((el) => {
+        el.style.minHeight = "";
+      });
+    };
+
+    // Defer equal-height sync until the browser is idle so Role clicks right after
+    // Add User are not blocked by hundreds of getBoundingClientRect writes.
+    const syncGridCardHeights = (gridEl) => {
+      if (!gridEl) return;
+      const cards = gridEl.querySelectorAll(".user-modal-select-card");
+      if (!cards.length) return;
+      cards.forEach((c) => {
+        c.style.minHeight = "";
+      });
+      let maxH = 0;
+      cards.forEach((c) => {
+        maxH = Math.max(maxH, c.getBoundingClientRect().height);
+      });
+      const px = maxH > 0 ? `${Math.ceil(maxH)}px` : "";
+      if (!px) return;
+      cards.forEach((c) => {
+        c.style.minHeight = px;
+      });
+    };
+
+    const syncAll = () => {
+      syncGridCardHeights(accountGridRef.current);
+      syncGridCardHeights(processGridRef.current);
+    };
+
+    let idleId = 0;
+    let timeoutId = 0;
+    const rafId = requestAnimationFrame(() => {
+      if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+        idleId = window.requestIdleCallback(syncAll, { timeout: 2500 });
+      } else {
+        timeoutId = window.setTimeout(syncAll, 400);
+      }
+    });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (idleId && typeof window !== "undefined" && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId) window.clearTimeout(timeoutId);
+      clearMinHeights(accountGridRef.current);
+      clearMinHeights(processGridRef.current);
+    };
+  }, [open, modalAccounts, modalProcesses]);
 
   useEffect(() => {
     return () => {
@@ -537,9 +458,9 @@ function UserModal({
   const runBulkSelection = useCallback((variant, update) => {
     if (bulkSelectionTimerRef.current) clearTimeout(bulkSelectionTimerRef.current);
     setBulkSettlingVariant(variant);
-    // Sync update so Save immediately after Select All reads the new selection
-    // (startTransition previously deferred Set state and could persist []).
-    update();
+    startTransition(() => {
+      update();
+    });
     bulkSelectionTimerRef.current = setTimeout(() => setBulkSettlingVariant(null), 120);
   }, []);
 
@@ -623,10 +544,7 @@ function UserModal({
   }, [open, pageReadOnlyLock]);
 
   const permissionsLocked = fieldLocks.sidebar || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
-  const accountLocked =
-    !!(fieldLocks.account ?? fieldLocks.accountProcess) || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
-  const processLocked =
-    !!(fieldLocks.process ?? fieldLocks.accountProcess) || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
+  const accountProcessLocked = !!fieldLocks.accountProcess || !!editingRow?.is_owner_shadow || pageReadOnlyLock;
   const showSecondaryPassword = isC168Company || !!editingRow?.is_owner_shadow;
 
   const userModalShell = (
@@ -664,7 +582,7 @@ function UserModal({
                       <label htmlFor="password">{isEditMode ? t("password") : t("passwordRequiredMark")}</label>
                       <PasswordInput
                         id="password"
-                        disabled={fieldLocks.password || pageReadOnlyLock}
+                        disabled={pageReadOnlyLock}
                         value={form.password}
                         onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                         showLabel={t("showPassword")}
@@ -679,7 +597,7 @@ function UserModal({
                         maxLength={6}
                         pattern="[0-9]{6}"
                         placeholder={t("secondaryPasswordPlaceholder")}
-                        disabled={fieldLocks.password || pageReadOnlyLock}
+                        disabled={pageReadOnlyLock}
                         value={form.secondary_password}
                         onChange={(e) => setForm((f) => ({ ...f, secondary_password: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
                         showLabel={t("showPassword")}
@@ -694,7 +612,7 @@ function UserModal({
                     <label htmlFor="password">{isEditMode ? t("password") : t("passwordRequiredMark")}</label>
                     <PasswordInput
                       id="password"
-                      disabled={fieldLocks.password || pageReadOnlyLock}
+                      disabled={pageReadOnlyLock}
                       value={form.password}
                       onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                       showLabel={t("showPassword")}
@@ -863,14 +781,13 @@ function UserModal({
               variant="account"
               title={t("account")}
               items={modalAccounts}
+              gridRef={accountGridRef}
               selectedIds={selectedAccountIds}
               setSelectedIds={setSelectedAccountIds}
               idList={accountIdList}
-              locked={accountLocked}
-              shrinkOnlyHeldIds={selfAccHeldIds}
+              locked={accountProcessLocked}
               bulkSelectionSettling={bulkSettlingVariant === "account"}
               runBulkSelection={runBulkSelection}
-              listActive={open}
               t={t}
             />
 
@@ -879,14 +796,13 @@ function UserModal({
                 variant="process"
                 title={t("process")}
                 items={modalProcesses}
+                gridRef={processGridRef}
                 selectedIds={selectedProcessIds}
                 setSelectedIds={setSelectedProcessIds}
                 idList={processIdList}
-                locked={processLocked}
-                shrinkOnlyHeldIds={selfProcessHeldIds}
+                locked={accountProcessLocked}
                 bulkSelectionSettling={bulkSettlingVariant === "process"}
                 runBulkSelection={runBulkSelection}
-                listActive={open}
                 t={t}
               />
             ) : null}

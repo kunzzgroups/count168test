@@ -230,17 +230,7 @@ try {
 
                 if ($successCount === count($affectedUserIds)) {
                     require_once __DIR__ . '/../includes/realtime.php';
-                    require_once __DIR__ . '/../includes/ledger_realtime.php';
-                    $pubCompanyId = (int) $current_company_id;
-                    $pubChannels = realtime_channels_from_company_ids($pubCompanyId > 0 ? [$pubCompanyId] : []);
-                    foreach ($affectedUserIds as $uid) {
-                        $pubChannels = realtime_append_user_channel($pubChannels, (int) $uid);
-                    }
-                    if ($pubChannels !== []) {
-                        realtime_publish($pubChannels, 'users', 'update_permissions');
-                        realtime_publish($pubChannels, 'accounts', 'user_account_permissions');
-                        realtime_publish($pubChannels, 'ledger', 'user_account_permissions');
-                    }
+                    realtime_publish_companies([(int) $current_company_id], 'users', 'update_permissions');
                     $msg = $input['source_type'] === 'template'
                         ? "Successfully updated permissions for $successCount user(s) based on template: {$templateUser['name']} ({$templateUser['login_id']})"
                         : "Successfully updated permissions for $successCount user(s) with manually selected permissions";

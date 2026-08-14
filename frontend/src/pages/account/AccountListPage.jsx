@@ -42,7 +42,7 @@ import {
   warmAccountListRouteCache,
 } from "./accountRoutePrefetch.js";
 import { useRealtimeDomain } from "../../lib/realtime/useRealtimeDomain.js";
-import { REALTIME_DOMAINS, requestRealtimeReconnect } from "../../lib/realtime/realtimeEvents.js";
+import { REALTIME_DOMAINS } from "../../lib/realtime/realtimeEvents.js";
 import {
   canClearCompanySelection,
   canUseGroupOnlyMode,
@@ -710,30 +710,17 @@ export default function AccountListPage() {
   const refreshAccountList = useCallback(
     (options = {}) => {
       const scope = gcScopeRef.current;
-      if (!scope) return;
-      const hasScope = Boolean(scope.companyId || scope.selectedGroup || scope.groupsAllMode || scope.groupAllMode);
-      if (scope.isListScopeReady === false && !hasScope) return;
+      if (!scope?.isListScopeReady) return;
       const groupOnly = options.groupOnly ?? resolveGroupOnlyFetch(scope);
       invalidateAccountListCacheForScope(scope, { groupOnly });
-      void fetchAccounts(scope, {
-        groupOnly,
-        silent: options.silent ?? false,
-        trustRequestScope: true,
-      });
+      void fetchAccounts(scope, { groupOnly, silent: options.silent ?? false });
     },
     [fetchAccounts, invalidateAccountListCacheForScope, resolveGroupOnlyFetch],
   );
 
-  useRealtimeDomain(
-    [REALTIME_DOMAINS.ACCOUNTS, REALTIME_DOMAINS.USERS],
-    () => {
-      refreshAccountList({ silent: true });
-    },
-  );
-
-  useEffect(() => {
-    requestRealtimeReconnect();
-  }, []);
+  useRealtimeDomain(REALTIME_DOMAINS.ACCOUNTS, () => {
+    refreshAccountList({ silent: true });
+  });
 
   const sessionUserId = sessionMe?.user_id ?? sessionMe?.id ?? null;
 
