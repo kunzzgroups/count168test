@@ -98,3 +98,45 @@ export function todayYmd() {
   const d = String(n.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
+/** Currencies shown in mobile Balances strip — follows Member currency filter. */
+export function getMemberMiniGridCurrencies(availableCurrencies, isAllSelected, selectedCurrencies) {
+  const available = (availableCurrencies || []).map((c) => String(c || "").trim().toUpperCase()).filter(Boolean);
+  if (isAllSelected) return available;
+  const selected = (selectedCurrencies || []).map((c) => String(c || "").trim().toUpperCase()).filter(Boolean);
+  return available.filter((c) => selected.includes(c));
+}
+
+/** Last non-empty balance per currency from history rows → Decimal map. */
+export function memberHistoryClosingBalancesForAllCurrencies(rows, wantedUpperSet) {
+  const map = new Map();
+  wantedUpperSet.forEach((cu) => map.set(cu, normalizeNumber("0")));
+  (rows || []).forEach((row) => {
+    const rc = String(row.currency || "")
+      .trim()
+      .toUpperCase();
+    if (!wantedUpperSet.has(rc)) return;
+    if (row.balance !== "-" && row.balance != null && String(row.balance).trim() !== "") {
+      map.set(rc, normalizeNumber(row.balance));
+    }
+  });
+  return map;
+}
+
+/** Sum balances per currency across accounts. Key in balanceMap: `${accountId}|${CCY}`. */
+export function computeMiniGridTotals(balanceMap, orderUpper, accounts) {
+  const totalsByCu = new Map();
+  (orderUpper || []).forEach((cu) => totalsByCu.set(cu, normalizeNumber("0")));
+  (accounts || []).forEach((acc) => {
+    const id = Number(acc.id);
+    if (id <= 0) return;
+    (orderUpper || []).forEach((cu) => {
+      const dec = balanceMap?.get(`${id}|${cu}`);
+      if (dec != null && typeof dec.plus === "function") {
+        totalsByCu.set(cu, totalsByCu.get(cu).plus(dec));
+      }
+    });
+  });
+  return totalsByCu;
+}
+

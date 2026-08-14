@@ -106,6 +106,137 @@
   font-size: inherit;
 }
 
+/* Concept A — expandable Balances strip */
+.m-member-balances {
+  display: grid;
+  gap: 0;
+  border: 1px solid #dbe3f0;
+  border-radius: 0.9rem;
+  background: #f4f8ff;
+  overflow: hidden;
+}
+
+.m-member-balances-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  color: #1e3a8a;
+}
+
+.m-member-balances-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.m-member-balances-toggle-left > i {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.m-member-balances-title {
+  font-size: var(--m-text-body);
+  font-weight: 800;
+}
+
+.m-member-balances-count {
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.m-member-balances-summary {
+  flex-shrink: 0;
+  font-size: var(--m-text-caption);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-member-balances-panel {
+  border-top: 1px solid #dbe3f0;
+  background: #fff;
+  padding: 0.55rem 0.55rem 0.65rem;
+}
+
+.m-member-balances-empty {
+  margin: 0;
+  padding: 0.55rem 0.35rem;
+  color: #64748b;
+  font-size: var(--m-text-caption);
+  font-weight: 600;
+}
+
+.m-member-balances-table-wrap {
+  overflow: hidden;
+  border-radius: 0.65rem;
+  border: 1px solid #e2e8f0;
+}
+
+.m-member-balances-table-wrap--scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.m-member-balances-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--m-text-caption);
+}
+
+.m-member-balances-table--matrix {
+  table-layout: auto;
+  min-width: 100%;
+}
+
+.m-member-balances-table th,
+.m-member-balances-table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: middle;
+}
+
+.m-member-balances-table thead th {
+  background: #eef2ff;
+  color: #1e3a8a;
+  font-weight: 800;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+
+.m-member-balances-table tbody th {
+  text-align: left;
+  font-weight: 700;
+  color: #334155;
+}
+
+.m-member-balances-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.m-member-balances-table tbody tr.is-alt th,
+.m-member-balances-table tbody tr.is-alt td {
+  background: #f8fafc;
+}
+
+.m-member-balances-total th,
+.m-member-balances-total td {
+  background: #eef2ff !important;
+  border-bottom: none;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
 /* Member sidebar: single Win/Loss item should feel primary (desktop-like). */
 .m-sidebar-nav-link[href="/member"].m-sidebar-nav-link--active {
   background: var(--m-grad-brand, linear-gradient(180deg, #63c4ff, #0d60ff));

@@ -5,6 +5,8 @@ import { readLoginLang, writeLoginLang } from "../lib/loginLang.js";
 import {
   applyCurrencyAllToggle,
   applyCurrencyToggle,
+  computeMiniGridTotals,
+  getMemberMiniGridCurrencies,
   groupHistoryForDisplay,
   hasScope,
   mapLinkedAccountsApiList,
@@ -13,6 +15,7 @@ import {
   todayYmd,
   ymdToDmy,
 } from "../lib/memberHelpers.js";
+import { fetchAccountHistoryClosingBalance } from "../lib/memberBalanceApi.js";
 import { getMemberText, memberText, translateMemberApiMessage } from "../translateFile/memberTranslate.js";
 import { buildApiUrl } from "../utils/apiUrl.js";
 
@@ -44,10 +47,18 @@ export function useMobileMember() {
   const [loadingTable, setLoadingTable] = useState(false);
   const [toast, setToast] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [balanceMap, setBalanceMap] = useState(() => new Map());
+  const [balanceTotals, setBalanceTotals] = useState(() => new Map());
+  const [balanceCurrencies, setBalanceCurrencies] = useState([]);
+  const [balancesLoading, setBalancesLoading] = useState(false);
 
   const historyAbortRef = useRef(null);
+  const balancesAbortRef = useRef(null);
   const toastTimer = useRef(null);
   const searchSeqRef = useRef(0);
+  const balancesSeqRef = useRef(0);
+  const linkedAccountsRef = useRef(linkedAccounts);
+  linkedAccountsRef.current = linkedAccounts;
 
   const setLang = useCallback((next) => {
     setLangState(writeLoginLang(next));
@@ -122,7 +133,8 @@ export function useMobileMember() {
   const loadLinkedAccounts = useCallback(async (rootId, compId, gid) => {
     if (!rootId || !hasScope(compId, gid)) {
       setLinkedAccounts([]);
-      return;
+      linkedAccountsRef.current = [];
+      return [];
     }
     try {
       const params = new URLSearchParams({
@@ -135,9 +147,14 @@ export function useMobileMember() {
         cache: "no-store",
       });
       const json = await parseJsonResponse(await res.text());
-      setLinkedAccounts(json?.success ? mapLinkedAccountsApiList(json.data) : []);
+      const list = json?.success ? mapLinkedAccountsApiList(json.data) : [];
+      setLinkedAccounts(list);
+      linkedAccountsRef.current = list;
+      return list;
     } catch {
       setLinkedAccounts([]);
+      linkedAccountsRef.current = [];
+      return [];
     }
   }, []);
 
@@ -160,6 +177,88 @@ export function useMobileMember() {
       currencyOrder,
     });
   }, []);
+
+  const refreshBalances = useCallback(
+    async ({
+      accounts,
+      compId = companyId,
+      gid = groupId,
+      fromYmd = dateFromYmd,
+      toYmd = dateToYmd,
+      useAll = isAllSelected,
+      useSelected = selectedCurrencies,
+      currencyCodes = availableCurrencies,
+      silent = false,
+    } = {}) => {
+      const orderUpper = getMemberMiniGridCurrencies(currencyCodes, useAll, useSelected);
+      const list = (accounts ?? linkedAccountsRef.current ?? []).filter((a) => Number(a?.id) > 0);
+
+      balancesSeqRef.current += 1;
+      const seq = balancesSeqRef.current;
+      balancesAbortRef.current?.abort();
+      const ac = new AbortController();
+      balancesAbortRef.current = ac;
+
+      if (!list.length || !orderUpper.length || !hasScope(compId, gid)) {
+        setBalanceMap(new Map());
+        setBalanceTotals(new Map());
+        setBalanceCurrencies(orderUpper);
+        setBalancesLoading(false);
+        return;
+      }
+
+      if (!silent) setBalancesLoading(true);
+      setBalanceCurrencies(orderUpper);
+
+      try {
+        const results = await Promise.all(
+          list.flatMap((acc) =>
+            orderUpper.map(async (cu) => {
+              const id = Number(acc.id);
+              try {
+                const dec = await fetchAccountHistoryClosingBalance(
+                  id,
+                  cu,
+                  fromYmd,
+                  toYmd,
+                  compId,
+                  gid,
+                  ac.signal,
+                );
+                return { key: `${id}|${cu}`, dec };
+              } catch (e) {
+                if (e?.name === "AbortError") throw e;
+                return { key: `${id}|${cu}`, dec: null };
+              }
+            }),
+          ),
+        );
+        if (seq !== balancesSeqRef.current) return;
+        const nextMap = new Map();
+        for (const row of results) {
+          if (row?.dec != null) nextMap.set(row.key, row.dec);
+        }
+        setBalanceMap(nextMap);
+        setBalanceTotals(computeMiniGridTotals(nextMap, orderUpper, list));
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+        if (seq !== balancesSeqRef.current) return;
+        setBalanceMap(new Map());
+        setBalanceTotals(new Map());
+      } finally {
+        if (seq === balancesSeqRef.current) setBalancesLoading(false);
+      }
+    },
+    [
+      companyId,
+      groupId,
+      dateFromYmd,
+      dateToYmd,
+      isAllSelected,
+      selectedCurrencies,
+      availableCurrencies,
+    ],
+  );
 
   const fetchHistory = useCallback(
     async ({
@@ -188,6 +287,9 @@ export function useMobileMember() {
       if (!useAll && !(useSelected?.length)) {
         setHistoryRows([]);
         commitTableDisplayContext(false, [], [], currencyCodes);
+        setBalanceMap(new Map());
+        setBalanceTotals(new Map());
+        setBalanceCurrencies([]);
         if (seq === searchSeqRef.current) setLoadingTable(false);
         return;
       }
@@ -241,6 +343,16 @@ export function useMobileMember() {
         setHistoryRows(history);
         commitTableDisplayContext(useAll, useSelected, history, currencyCodes);
         if (!silent) notify(t("queryCompleted"));
+        void refreshBalances({
+          compId,
+          gid,
+          fromYmd,
+          toYmd,
+          useAll,
+          useSelected,
+          currencyCodes,
+          silent: true,
+        });
       } catch (e) {
         if (e?.name === "AbortError") return;
         if (seq !== searchSeqRef.current) return;
@@ -261,6 +373,7 @@ export function useMobileMember() {
       selectedCurrencies,
       availableCurrencies,
       commitTableDisplayContext,
+      refreshBalances,
       notify,
       lang,
       t,
@@ -325,6 +438,7 @@ export function useMobileMember() {
     return () => {
       ac.abort();
       historyAbortRef.current?.abort();
+      balancesAbortRef.current?.abort();
       clearTimeout(toastTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -463,6 +577,10 @@ export function useMobileMember() {
     loadingTable,
     toast,
     refreshing,
+    balanceMap,
+    balanceTotals,
+    balanceCurrencies,
+    balancesLoading,
     companyCode,
     groupIdLabel: displayGroupId,
     logout,

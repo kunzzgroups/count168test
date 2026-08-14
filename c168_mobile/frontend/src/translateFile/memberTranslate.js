@@ -59,6 +59,10 @@ export const MEMBER_I18N = {
     from: "From",
     to: "To",
     accessDenied: "Member access only.",
+    balances: "Balances",
+    balancesAccounts: "{count} accounts",
+    balancesCurrencies: "{count} currencies",
+    balancesEmpty: "No linked accounts.",
   },
   zh: {
     ...DASHBOARD_I18N.zh,
@@ -117,6 +121,10 @@ export const MEMBER_I18N = {
     from: "开始",
     to: "结束",
     accessDenied: "仅限会员访问。",
+    balances: "余额",
+    balancesAccounts: "{count} 个账号",
+    balancesCurrencies: "{count} 种货币",
+    balancesEmpty: "暂无关联账号。",
   },
 };
 

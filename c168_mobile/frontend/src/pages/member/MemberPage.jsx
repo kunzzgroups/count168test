@@ -13,6 +13,7 @@ import {
 import { historyTypeCardClass } from "../../lib/transactionTypeStyles.js";
 import { formatMemberRowDescription } from "../../translateFile/memberTranslate.js";
 import ExportPdfSheet from "../transaction/ExportPdfSheet.jsx";
+import MemberBalancesStrip from "./MemberBalancesStrip.jsx";
 import MemberFilterSheet from "./MemberFilterSheet.jsx";
 import "../account/account.css";
 import "../transaction/transaction-history.css";
@@ -221,6 +222,7 @@ export default function MemberPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [expandedKey, setExpandedKey] = useState(null);
+  const [balancesOpen, setBalancesOpen] = useState(false);
 
   const exportScope = useMemo(
     () => ({
@@ -344,6 +346,19 @@ export default function MemberPage() {
       <div className="m-member-page m-tx-hist-page">
         {api.toast ? (
           <div className={`m-account-toast ${api.toast.tone}`}>{api.toast.message}</div>
+        ) : null}
+
+        {api.linkedAccounts.length > 0 || api.balancesLoading ? (
+          <MemberBalancesStrip
+            expanded={balancesOpen}
+            onToggle={() => setBalancesOpen((v) => !v)}
+            accounts={api.linkedAccounts}
+            currencies={api.balanceCurrencies}
+            balanceMap={api.balanceMap}
+            balanceTotals={api.balanceTotals}
+            loading={api.balancesLoading}
+            t={t}
+          />
         ) : null}
 
         {!api.loadingTable && api.groupedRows.length > 0 ? (
