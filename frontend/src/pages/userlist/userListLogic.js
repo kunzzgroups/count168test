@@ -127,9 +127,17 @@ export function getUserEditFieldLocks(row, currentUserId, currentUserRole) {
     password: false,
     sidebar: isSelf || isSame || isLower,
     company: isSelf || isSame || isLower || !canPickCompany,
-    // 自己编辑自己时锁定账户/流程，避免把自己的账户全部清空后造成自我锁定（账户页无数据）
+    // Process stays locked for self. Acc self-toggle is gated by canSelfEditAccountAccess.
     accountProcess: isSelf,
   };
+}
+
+/** Non-owner editing themselves may hide/unhide Acc (not Process). Owner / owner-shadow cannot. */
+export function canSelfEditAccountAccess(row, currentUserId, currentUserRole) {
+  if (!row || row.is_owner_shadow) return false;
+  if (normRole(currentUserRole) === "owner") return false;
+  if (row.id == null || currentUserId == null) return false;
+  return Number(row.id) === Number(currentUserId);
 }
 
 export function getCurrentUserRolePermissions(currentUserRole) {
@@ -592,6 +600,77 @@ export function parseAssignableIds(raw) {
   if (raw == null) return null;
   if (!Array.isArray(raw)) return null;
   return new Set(raw.map((id) => Number(id)).filter((id) => id > 0));
+}
+
+export function accessRowHasFlag(row, flag) {
+  return !!row && typeof row === "object" && (row[flag] === 1 || row[flag] === true || row[flag] === "1");
+}
+
+/**
+ * Split stored Acc JSON into checked ids vs superior-closed ids.
+ * self_hidden rows stay listed but unchecked. null JSON = all listed accounts selected.
+ */
+export function partitionAccessRows(raw, accList) {
+  if (raw == null) {
+    return {
+      selected: new Set((accList || []).map((a) => Number(a.id)).filter((id) => id > 0)),
+      superiorClosed: new Set(),
+    };
+  }
+  const selected = new Set();
+  const superiorClosed = new Set();
+  for (const row of Array.isArray(raw) ? raw : []) {
+    const id = Number(row?.id ?? row);
+    if (!(id > 0)) continue;
+    if (accessRowHasFlag(row, "superior_closed")) {
+      superiorClosed.add(id);
+      continue;
+    }
+    if (accessRowHasFlag(row, "self_hidden")) continue;
+    selected.add(id);
+  }
+  return { selected, superiorClosed };
+}
+
+/**
+ * Persist Acc rows with flags. Only selected / superior-closed / self-hidden toggleable
+ * items are written — never the whole company catalog.
+ */
+export function buildAccountPermissionPayload(accounts, selectedIds, superiorClosedIds, options = {}) {
+  const { isSelf = false, toggleableIds = null } = options;
+  const selected = selectedIds instanceof Set ? selectedIds : new Set();
+  const closed = superiorClosedIds instanceof Set ? superiorClosedIds : new Set();
+  const out = [];
+  for (const a of accounts || []) {
+    const id = Number(a.id);
+    if (!(id > 0)) continue;
+    const inSelected = selected.has(id);
+    const inClosed = closed.has(id);
+    const inToggle = toggleableIds == null || toggleableIds.has(id);
+    const row = { id, account_id: a.account_id || "" };
+    if (isSelf) {
+      if (!inToggle && !inSelected && !inClosed) continue;
+      if (inClosed) {
+        out.push({ ...row, superior_closed: 1 });
+        continue;
+      }
+      if (!inSelected) {
+        if (!inToggle) continue;
+        out.push({ ...row, self_hidden: 1 });
+        continue;
+      }
+      out.push(row);
+      continue;
+    }
+    if (inSelected) {
+      out.push(row);
+      continue;
+    }
+    if (inClosed) {
+      out.push({ ...row, superior_closed: 1 });
+    }
+  }
+  return out;
 }
 
 export function resolveUserListFetchScopeKey({

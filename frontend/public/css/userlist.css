@@ -4032,7 +4032,7 @@ body.user-page .pagination-container {
     position: relative;
     grid-template-columns: none !important;
     grid-auto-rows: auto;
-    contain: content;
+    contain: layout;
 }
 
 #userModal .account-grid-virtual-spacer {
@@ -4050,6 +4050,7 @@ body.user-page .pagination-container {
     grid-template-columns: repeat(var(--user-modal-access-grid-cols), minmax(0, 1fr));
     gap: var(--user-modal-access-card-gap, 5px);
     align-content: start;
+    margin-bottom: var(--user-modal-access-card-gap, 5px);
 }
 
 #userModal .user-modal-select-card {

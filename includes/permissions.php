@@ -90,6 +90,59 @@ function permissions_whitelist_ids_from_json($json): ?array
 }
 
 /**
+ * Ids the user may toggle in the user-list Acc grid.
+ * Includes self_hidden (re-openable by self); excludes superior_closed.
+ * null JSON → null (unrestricted); empty/invalid → [].
+ */
+function permissions_toggleable_ids_from_json($json): ?array
+{
+    if ($json === null) {
+        return null;
+    }
+    $decoded = json_decode((string) $json, true);
+    if (!is_array($decoded) || $decoded === []) {
+        return [];
+    }
+    $ids = [];
+    foreach ($decoded as $row) {
+        if (is_array($row) && !empty($row['superior_closed'])) {
+            continue;
+        }
+        $id = 0;
+        if (is_array($row) && isset($row['id'])) {
+            $id = (int) $row['id'];
+        } elseif (is_numeric($row)) {
+            $id = (int) $row;
+        }
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+    }
+    return array_values(array_unique($ids));
+}
+
+/**
+ * @return null unrestricted, int[] toggleable ids (empty = none)
+ */
+function permissions_account_toggleable_ids(PDO $pdo, int $userId, int $companyId, ?string $role = null): ?array
+{
+    if ($userId <= 0 || $companyId <= 0) {
+        return [];
+    }
+    if (permissions_user_sees_all_accounts($role)) {
+        return null;
+    }
+    $stmt = $pdo->prepare("SELECT account_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
+    $stmt->execute([$userId, $companyId]);
+    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$permission || $permission['account_permissions'] === null) {
+        return null;
+    }
+    $ids = permissions_toggleable_ids_from_json($permission['account_permissions']);
+    return $ids === null ? [] : $ids;
+}
+
+/**
  * @return null unrestricted, int[] whitelist (empty = none)
  */
 function permissions_account_whitelist_ids(PDO $pdo, int $userId, int $companyId, ?string $role = null): ?array

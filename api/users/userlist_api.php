@@ -73,6 +73,36 @@ function userlist_can_edit_target_access(string $currentRole, string $targetRole
     return userlistRoleLevel($currentRole) < userlistRoleLevel($targetRole);
 }
 
+/** Non-owner may update own account_permissions (self_hidden only; cannot clear superior_closed). */
+function userlist_can_edit_own_account_access(string $currentRole, int $currentUserId, int $targetUserId): bool
+{
+    if ($currentUserId <= 0 || $targetUserId <= 0 || $currentUserId !== $targetUserId) {
+        return false;
+    }
+    return strtolower(trim($currentRole)) !== 'owner';
+}
+
+/** Self save cannot set or clear superior_closed; those rows stay with merge. */
+function userlist_normalize_account_incoming(array $incoming, bool $isSelf): array
+{
+    $out = [];
+    foreach ($incoming as $row) {
+        $id = userlist_permission_row_id($row);
+        if ($id <= 0) {
+            continue;
+        }
+        $item = is_array($row) ? $row : ['id' => $id];
+        if ($isSelf && !empty($item['superior_closed'])) {
+            continue;
+        }
+        if ($isSelf) {
+            unset($item['superior_closed']);
+        }
+        $out[] = $item;
+    }
+    return $out;
+}
+
 function userlist_permission_row_id($row): int
 {
     if (is_array($row) && isset($row['id'])) {
@@ -2588,13 +2618,17 @@ try {
                     userlist_sync_user_group_tenants($pdo, (int) $input['id'], $bindGroupScopes);
                 }
                 
-                // 保存 Account 和 Process 权限到 user_company_permissions 表（按当前公司）
-                // 只有上级改下级时才更新；自己/同级/上级不能改回已关闭的 acc/process
+                // Acc/Process: superior may update both; non-owner self may update Acc flags only.
                 $currentUid = (int) ($_SESSION['user_id'] ?? 0);
                 $targetUid = (int) $input['id'];
                 $targetRole = (string) ($originalUser['role'] ?? '');
-                if (!userlist_can_edit_target_access($current_user_role, $targetRole, $currentUid, $targetUid)) {
-                    unset($input['account_permissions'], $input['process_permissions']);
+                $canSuperiorAccess = userlist_can_edit_target_access($current_user_role, $targetRole, $currentUid, $targetUid);
+                $canSelfAccountAccess = userlist_can_edit_own_account_access($current_user_role, $currentUid, $targetUid);
+                if (!$canSuperiorAccess) {
+                    unset($input['process_permissions']);
+                    if (!$canSelfAccountAccess) {
+                        unset($input['account_permissions']);
+                    }
                 }
                 $accountPermsUpdated = false;
                 $processPermsUpdated = false;
@@ -2602,7 +2636,6 @@ try {
                     $existingPermStmt = $pdo->prepare("SELECT account_permissions, process_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ? LIMIT 1");
                     $existingPermStmt->execute([$targetUid, $scope_company_id]);
                     $existingPermRow = $existingPermStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-                    $editorAccountAssignable = permissions_account_whitelist_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role);
                     $editorProcessAssignable = permissions_process_whitelist_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role);
 
                     $accountPerms = null;
@@ -2611,6 +2644,11 @@ try {
                     if (isset($input['account_permissions'])) {
                         $accountPermsUpdated = true;
                         $incomingAccounts = is_array($input['account_permissions']) ? $input['account_permissions'] : [];
+                        $isSelfAccountSave = $canSelfAccountAccess && !$canSuperiorAccess;
+                        $incomingAccounts = userlist_normalize_account_incoming($incomingAccounts, $isSelfAccountSave);
+                        $editorAccountAssignable = $isSelfAccountSave
+                            ? permissions_account_toggleable_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role)
+                            : permissions_account_whitelist_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role);
                         $mergedAccounts = userlist_merge_access_payload(
                             $existingPermRow['account_permissions'] ?? null,
                             $incomingAccounts,

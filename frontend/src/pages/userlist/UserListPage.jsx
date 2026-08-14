@@ -81,6 +81,9 @@ import {
   normRole,
   sortUsers,
   parseAssignableIds,
+  partitionAccessRows,
+  buildAccountPermissionPayload,
+  canSelfEditAccountAccess,
   roleHasReadOnlyToggle,
   canInteractWithReadOnlyToggle,
   isUserModalPageReadOnlyLock,
@@ -347,6 +350,8 @@ export default function UserListPage() {
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [selectedProcessIds, setSelectedProcessIds] = useState(new Set());
   const [assignableAccountIds, setAssignableAccountIds] = useState(null);
+  const [toggleableAccountIds, setToggleableAccountIds] = useState(null);
+  const [superiorClosedAccountIds, setSuperiorClosedAccountIds] = useState(() => new Set());
   const [assignableProcessIds, setAssignableProcessIds] = useState(null);
   const [roleSelectDisabled, setRoleSelectDisabled] = useState(false);
   const [loginDisabled, setLoginDisabled] = useState(false);
@@ -1822,6 +1827,7 @@ export default function UserListPage() {
         setModalAccounts(next.accounts);
         setModalProcesses(next.processes);
         setAssignableAccountIds(next.assignableAccountIds ?? null);
+        setToggleableAccountIds(next.toggleableAccountIds ?? null);
         setAssignableProcessIds(next.assignableProcessIds ?? null);
         setModalAccessReadyCompanyId(Number(cid));
       };
@@ -1844,9 +1850,10 @@ export default function UserListPage() {
           setModalAccounts([]);
           setModalProcesses([]);
           setAssignableAccountIds(null);
+          setToggleableAccountIds(null);
           setAssignableProcessIds(null);
         }
-        return { accounts: [], processes: [], assignableAccountIds: null, assignableProcessIds: null };
+        return { accounts: [], processes: [], assignableAccountIds: null, toggleableAccountIds: null, assignableProcessIds: null };
       }
     }
     try {
@@ -1869,6 +1876,7 @@ export default function UserListPage() {
           accounts: accs,
           processes: procs,
           assignableAccountIds: parseAssignableIds(accJ?.data?.assignable_ids),
+          toggleableAccountIds: parseAssignableIds(accJ?.data?.toggleable_ids),
           assignableProcessIds: Array.isArray(procPayload) ? null : parseAssignableIds(procPayload?.assignable_ids),
         };
       });
@@ -1878,7 +1886,7 @@ export default function UserListPage() {
       applyAccessState(next);
       return next;
     } catch {
-      const empty = { accounts: [], processes: [], assignableAccountIds: null, assignableProcessIds: null };
+      const empty = { accounts: [], processes: [], assignableAccountIds: null, toggleableAccountIds: null, assignableProcessIds: null };
       modalAccessCacheRef.current.set(cacheKey, cached || empty);
       applyAccessState(cached || empty);
       return cached || empty;
@@ -1986,7 +1994,9 @@ export default function UserListPage() {
     setForm((f) => ({ ...f, read_only: detail.read_only !== undefined ? parseInt(detail.read_only, 10) === 1 : true }));
     let ap = null, pp = null; try { if (detail.account_permissions != null) ap = typeof detail.account_permissions === "string" ? JSON.parse(detail.account_permissions) : detail.account_permissions; } catch { ap = []; }
     try { if (detail.process_permissions != null) pp = typeof detail.process_permissions === "string" ? JSON.parse(detail.process_permissions) : detail.process_permissions; } catch { pp = []; }
-    setSelectedAccountIds(ap === null ? new Set(accList.map(a => Number(a.id))) : new Set((Array.isArray(ap) ? ap : []).map(x => Number(x.id || x))));
+    const accPartition = partitionAccessRows(ap, accList);
+    setSelectedAccountIds(accPartition.selected);
+    setSuperiorClosedAccountIds(accPartition.superiorClosed);
     setSelectedProcessIds(pp === null ? new Set(procList.map(p => Number(p.id))) : new Set((Array.isArray(pp) ? pp : []).map(x => Number(x.id || x))));
     if (currentUserRole === "admin" || currentUserRole === "owner") {
       if (useDualTenantUserPicker) {
@@ -2030,6 +2040,7 @@ export default function UserListPage() {
       setPermSelected(new Set(getVisiblePermissionKeys("owner")));
       setSelectedAccountIds(new Set(accList.map((a) => Number(a.id))));
       setSelectedProcessIds(new Set(procList.map((p) => Number(p.id))));
+      setSuperiorClosedAccountIds(new Set());
       setSelectedCompanyIds([]);
       setSelectedGroupIds([]);
     }
@@ -2080,6 +2091,7 @@ export default function UserListPage() {
     const initialAccess = cachedAccess || currentAccess || { accounts: [], processes: [], assignableAccountIds: null, assignableProcessIds: null };
     if (!cachedAccess && !currentAccess) { setModalAccounts([]); setModalProcesses([]); }
     setSelectedAccountIds(new Set(initialAccess.accounts.map((a) => Number(a.id)))); setSelectedProcessIds(new Set(initialAccess.processes.map((p) => Number(p.id))));
+    setSuperiorClosedAccountIds(new Set());
     if (currentUserRole === "admin" || currentUserRole === "owner") {
       if (useDualTenantUserPicker) {
         const defaultGroupIds = selectedGroup
@@ -2125,6 +2137,7 @@ export default function UserListPage() {
           startTransition(() => {
             setSelectedAccountIds(new Set(accList.map((a) => Number(a.id))));
             setSelectedProcessIds(new Set(procList.map((p) => Number(p.id))));
+            setSuperiorClosedAccountIds(new Set());
           });
         });
       };
@@ -2313,7 +2326,17 @@ export default function UserListPage() {
     }
     const emailCheck = validateEmail(form.email);
     if (!emailCheck.ok) { notify(t("invalidEmailFormat"), "danger"); return; }
-    const accountPerms = Array.from(selectedAccountIds).map(id => { const a = modalAccounts.find(x => Number(x.id) === Number(id)); return { id: Number(id), account_id: a?.account_id || "" }; });
+    const selfAcc = isEditMode && canSelfEditAccountAccess(editingRow, currentUserId, currentUserRole);
+    const accountPerms = buildAccountPermissionPayload(
+      modalAccounts,
+      selectedAccountIds,
+      superiorClosedAccountIds,
+      {
+        isSelf: selfAcc,
+        assignableIds: assignableAccountIds,
+        toggleableIds: toggleableAccountIds,
+      },
+    );
     const shouldSendProcessPermissions = useDualTenantUserPicker
       ? selectedCompanyIds.length > 0
       : !groupOnlyUserList;
@@ -2391,6 +2414,8 @@ export default function UserListPage() {
         payload.permissions = Array.from(permSelected);
         payload.account_permissions = accountPerms;
         if (shouldSendProcessPermissions) payload.process_permissions = processPerms;
+      } else if (selfAcc) {
+        payload.account_permissions = accountPerms;
       }
       if ((currentUserRole === "admin" || currentUserRole === "owner") && !fieldLocks.company && !useDualTenantUserPicker) {
         payload.company_ids = shouldForceGroupScope ? saveCompanyIds : (groupOnlyUserList ? saveCompanyIds : selectedCompanyIds);
@@ -2772,7 +2797,7 @@ export default function UserListPage() {
             document.body
           )
         : null}
-      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} assignableAccountIds={assignableAccountIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} assignableProcessIds={assignableProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
+      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} assignableAccountIds={assignableAccountIds} toggleableAccountIds={toggleableAccountIds} superiorClosedAccountIds={superiorClosedAccountIds} setSuperiorClosedAccountIds={setSuperiorClosedAccountIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} assignableProcessIds={assignableProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
       <UserConfirmModal open={confirmOpen} message={confirmMessage} onConfirm={confirmDelete} onClose={() => setConfirmOpen(false)} confirmDisabled={userMutationsBlocked} t={t} />
     </>
   );

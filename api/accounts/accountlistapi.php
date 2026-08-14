@@ -76,6 +76,38 @@ function getAccountPermissionFilterForCompany(PDO $pdo, int $company_id, string 
     return array_values(array_unique($accountIds));
 }
 
+/**
+ * Acc ids the editor may toggle in user-list (includes self_hidden, excludes superior_closed).
+ * null = unrestricted.
+ */
+function getAccountToggleableFilterForCompany(PDO $pdo, int $company_id, string $current_user_role): ?array {
+    $currentUserId = $_SESSION['user_id'] ?? null;
+    if (!$currentUserId || accountlist_user_sees_all_accounts($current_user_role)) {
+        return null;
+    }
+    $stmt = $pdo->prepare("SELECT account_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
+    $stmt->execute([$currentUserId, $company_id]);
+    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$permission || $permission['account_permissions'] === null) {
+        return null;
+    }
+    $userAccountPermissions = json_decode($permission['account_permissions'], true);
+    if (empty($userAccountPermissions) || !is_array($userAccountPermissions)) {
+        return [];
+    }
+    $accountIds = [];
+    foreach ($userAccountPermissions as $row) {
+        if (is_array($row) && !empty($row['superior_closed'])) {
+            continue;
+        }
+        $id = is_array($row) ? (int) ($row['id'] ?? 0) : (int) $row;
+        if ($id > 0) {
+            $accountIds[] = $id;
+        }
+    }
+    return array_values(array_unique($accountIds));
+}
+
 function validateCompanyAccess(PDO $pdo, int $company_id): void {
     if (gc_is_group_login()) {
         $current_user_id = (int)($_SESSION['user_id'] ?? 0);
@@ -595,6 +627,9 @@ try {
         ? getAccountPermissionFilterForCompany($pdo, $company_id, $current_user_role)
         : null;
     $assignableIds = $accountIdFilter;
+    $toggleableIds = $company_id > 0
+        ? getAccountToggleableFilterForCompany($pdo, $company_id, $current_user_role)
+        : null;
     if ($forAssignment) {
         $accountIdFilter = null;
     }
@@ -643,6 +678,7 @@ try {
             'company_id' => $company_id,
             'user_permissions_count' => count($userAccountPermissions),
             'assignable_ids' => $forAssignment ? $assignableIds : null,
+            'toggleable_ids' => $forAssignment ? $toggleableIds : null,
         ],
     ]);
 } catch (PDOException $e) {

@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compareAccessCode, parseAssignableIds, sortAccessItems } from "./userListLogic.js";
+import {
+  buildAccountPermissionPayload,
+  canSelfEditAccountAccess,
+  compareAccessCode,
+  parseAssignableIds,
+  partitionAccessRows,
+  sortAccessItems,
+} from "./userListLogic.js";
 
 test("compareAccessCode sorts numbers before letters and uses numeric order", () => {
   const codes = ["B", "10", "2", "A", "a1"];
@@ -26,4 +33,65 @@ test("parseAssignableIds treats null as unrestricted", () => {
 
 test("parseAssignableIds builds a set of positive ids", () => {
   assert.deepEqual([...parseAssignableIds(["1", 2, 0, -3])], [1, 2]);
+});
+
+test("partitionAccessRows keeps self_hidden unchecked and superior_closed flagged", () => {
+  const accs = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+  const { selected, superiorClosed } = partitionAccessRows(
+    [
+      { id: 1, account_id: "A" },
+      { id: 2, account_id: "B", self_hidden: 1 },
+      { id: 3, account_id: "C", superior_closed: 1 },
+    ],
+    accs,
+  );
+  assert.deepEqual([...selected], [1]);
+  assert.deepEqual([...superiorClosed], [3]);
+});
+
+test("partitionAccessRows treats null as all selected", () => {
+  const { selected, superiorClosed } = partitionAccessRows(null, [{ id: 8 }, { id: 9 }]);
+  assert.deepEqual([...selected].sort(), [8, 9]);
+  assert.equal(superiorClosed.size, 0);
+});
+
+test("buildAccountPermissionPayload self-hide is re-openable and preserves superior_closed", () => {
+  const accounts = [
+    { id: 1, account_id: "A" },
+    { id: 2, account_id: "B" },
+    { id: 3, account_id: "C" },
+    { id: 4, account_id: "D" },
+  ];
+  const payload = buildAccountPermissionPayload(accounts, new Set([1]), new Set([3]), {
+    isSelf: true,
+    toggleableIds: new Set([1, 2]),
+  });
+  assert.deepEqual(payload, [
+    { id: 1, account_id: "A" },
+    { id: 2, account_id: "B", self_hidden: 1 },
+    { id: 3, account_id: "C", superior_closed: 1 },
+  ]);
+});
+
+test("buildAccountPermissionPayload superior uncheck writes superior_closed only for closed set", () => {
+  const accounts = [
+    { id: 1, account_id: "A" },
+    { id: 2, account_id: "B" },
+    { id: 3, account_id: "C" },
+  ];
+  const payload = buildAccountPermissionPayload(accounts, new Set([1]), new Set([2]), {
+    isSelf: false,
+    assignableIds: new Set([1, 2, 3]),
+  });
+  assert.deepEqual(payload, [
+    { id: 1, account_id: "A" },
+    { id: 2, account_id: "B", superior_closed: 1 },
+  ]);
+});
+
+test("canSelfEditAccountAccess is false for owner and owner-shadow", () => {
+  assert.equal(canSelfEditAccountAccess({ id: 1, role: "owner" }, 1, "owner"), false);
+  assert.equal(canSelfEditAccountAccess({ id: 1, is_owner_shadow: true }, 1, "admin"), false);
+  assert.equal(canSelfEditAccountAccess({ id: 1, role: "admin" }, 1, "admin"), true);
+  assert.equal(canSelfEditAccountAccess({ id: 2, role: "admin" }, 1, "admin"), false);
 });
