@@ -356,6 +356,8 @@ export default function MemberPage() {
             currencies={api.balanceCurrencies}
             balanceMap={api.balanceMap}
             balanceTotals={api.balanceTotals}
+            linkedAccountCurrenciesMap={api.linkedAccountCurrenciesMap}
+            linkedCurrenciesLoaded={api.linkedCurrenciesLoaded}
             loading={api.balancesLoading}
             t={t}
           />

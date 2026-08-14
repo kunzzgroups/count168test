@@ -113,7 +113,8 @@
   border: 1px solid #dbe3f0;
   border-radius: 0.9rem;
   background: #f4f8ff;
-  overflow: hidden;
+  /* Do not clip the matrix scrollport / last currency column. */
+  overflow: visible;
 }
 
 .m-member-balances-toggle {
@@ -125,6 +126,11 @@
   padding: 0.7rem 0.85rem;
   text-align: left;
   color: #1e3a8a;
+  border-radius: 0.9rem 0.9rem 0 0;
+}
+
+.m-member-balances-toggle:not(.is-open) {
+  border-radius: 0.9rem;
 }
 
 .m-member-balances-toggle-left {
@@ -162,6 +168,8 @@
   border-top: 1px solid #dbe3f0;
   background: #fff;
   padding: 0.55rem 0.55rem 0.65rem;
+  border-radius: 0 0 0.9rem 0.9rem;
+  overflow: hidden;
 }
 
 .m-member-balances-empty {
@@ -180,7 +188,10 @@
 
 .m-member-balances-table-wrap--scroll {
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
 }
 
 .m-member-balances-table {
@@ -191,8 +202,11 @@
 }
 
 .m-member-balances-table--matrix {
-  table-layout: auto;
+  width: max-content;
   min-width: 100%;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .m-member-balances-table th,
@@ -200,6 +214,31 @@
   padding: 0.45rem 0.5rem;
   border-bottom: 1px solid #e2e8f0;
   vertical-align: middle;
+}
+
+.m-member-balances-table--matrix th,
+.m-member-balances-table--matrix td {
+  padding: 0.45rem 0.55rem;
+}
+
+.m-member-balances-table--matrix .m-member-balances-num {
+  min-width: 5.5rem;
+  box-sizing: border-box;
+}
+
+.m-member-balances-table--matrix th:last-child,
+.m-member-balances-table--matrix td:last-child {
+  padding-right: 0.85rem;
+}
+
+.m-member-balances-table--matrix thead th:first-child,
+.m-member-balances-table--matrix tbody th[scope="row"] {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 4.75rem;
+  max-width: 5.5rem;
+  box-shadow: 1px 0 0 #e2e8f0;
 }
 
 .m-member-balances-table thead th {
@@ -211,10 +250,20 @@
   letter-spacing: -0.01em;
 }
 
+.m-member-balances-table--matrix thead th:first-child {
+  z-index: 3;
+  background: #eef2ff;
+}
+
 .m-member-balances-table tbody th {
   text-align: left;
   font-weight: 700;
   color: #334155;
+  background: #fff;
+}
+
+.m-member-balances-table tbody tr.is-alt th[scope="row"] {
+  background: #f8fafc;
 }
 
 .m-member-balances-num {
@@ -235,6 +284,11 @@
   border-bottom: none;
   font-weight: 800;
   color: #1e3a8a;
+}
+
+.m-member-balances-table--matrix .m-member-balances-total th[scope="row"] {
+  background: #eef2ff !important;
+  z-index: 2;
 }
 
 /* Member sidebar: single Win/Loss item should feel primary (desktop-like). */

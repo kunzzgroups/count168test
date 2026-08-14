@@ -5,10 +5,12 @@ import { readLoginLang, writeLoginLang } from "../lib/loginLang.js";
 import {
   applyCurrencyAllToggle,
   applyCurrencyToggle,
+  accountHoldsMiniGridCurrency,
   computeMiniGridTotals,
   getMemberMiniGridCurrencies,
   groupHistoryForDisplay,
   hasScope,
+  mapBatchAccountCurrencies,
   mapLinkedAccountsApiList,
   parseJsonResponse,
   scopeQueryFields,
@@ -51,6 +53,8 @@ export function useMobileMember() {
   const [balanceTotals, setBalanceTotals] = useState(() => new Map());
   const [balanceCurrencies, setBalanceCurrencies] = useState([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
+  const [linkedAccountCurrenciesMap, setLinkedAccountCurrenciesMap] = useState(() => new Map());
+  const [linkedCurrenciesLoaded, setLinkedCurrenciesLoaded] = useState(false);
 
   const historyAbortRef = useRef(null);
   const balancesAbortRef = useRef(null);
@@ -59,6 +63,10 @@ export function useMobileMember() {
   const balancesSeqRef = useRef(0);
   const linkedAccountsRef = useRef(linkedAccounts);
   linkedAccountsRef.current = linkedAccounts;
+  const linkedCcyMapRef = useRef(linkedAccountCurrenciesMap);
+  linkedCcyMapRef.current = linkedAccountCurrenciesMap;
+  const linkedCcyLoadedRef = useRef(linkedCurrenciesLoaded);
+  linkedCcyLoadedRef.current = linkedCurrenciesLoaded;
 
   const setLang = useCallback((next) => {
     setLangState(writeLoginLang(next));
@@ -134,6 +142,10 @@ export function useMobileMember() {
     if (!rootId || !hasScope(compId, gid)) {
       setLinkedAccounts([]);
       linkedAccountsRef.current = [];
+      setLinkedAccountCurrenciesMap(new Map());
+      linkedCcyMapRef.current = new Map();
+      setLinkedCurrenciesLoaded(true);
+      linkedCcyLoadedRef.current = true;
       return [];
     }
     try {
@@ -150,10 +162,48 @@ export function useMobileMember() {
       const list = json?.success ? mapLinkedAccountsApiList(json.data) : [];
       setLinkedAccounts(list);
       linkedAccountsRef.current = list;
+
+      const ids = list.map((a) => Number(a.id)).filter(Boolean);
+      if (!ids.length) {
+        setLinkedAccountCurrenciesMap(new Map());
+        linkedCcyMapRef.current = new Map();
+        setLinkedCurrenciesLoaded(true);
+        linkedCcyLoadedRef.current = true;
+        return list;
+      }
+      setLinkedCurrenciesLoaded(false);
+      linkedCcyLoadedRef.current = false;
+      try {
+        const qs = new URLSearchParams({
+          action: "get_batch_account_currencies",
+          account_ids: ids.join(","),
+          ...scopeQueryFields(compId, gid),
+          _t: String(Date.now()),
+        });
+        const cRes = await fetch(buildApiUrl(`api/accounts/account_currency_api.php?${qs}`), {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const cJson = await parseJsonResponse(await cRes.text());
+        const map =
+          cJson?.success && Array.isArray(cJson.data) ? mapBatchAccountCurrencies(cJson.data) : new Map();
+        setLinkedAccountCurrenciesMap(map);
+        linkedCcyMapRef.current = map;
+      } catch {
+        setLinkedAccountCurrenciesMap(new Map());
+        linkedCcyMapRef.current = new Map();
+      } finally {
+        setLinkedCurrenciesLoaded(true);
+        linkedCcyLoadedRef.current = true;
+      }
       return list;
     } catch {
       setLinkedAccounts([]);
       linkedAccountsRef.current = [];
+      setLinkedAccountCurrenciesMap(new Map());
+      linkedCcyMapRef.current = new Map();
+      setLinkedCurrenciesLoaded(true);
+      linkedCcyLoadedRef.current = true;
       return [];
     }
   }, []);
@@ -210,28 +260,37 @@ export function useMobileMember() {
       if (!silent) setBalancesLoading(true);
       setBalanceCurrencies(orderUpper);
 
+      const ccyMap = linkedCcyMapRef.current;
+      const ccyLoaded = linkedCcyLoadedRef.current;
+
       try {
+        const pairs = [];
+        for (const acc of list) {
+          const id = Number(acc.id);
+          for (const cu of orderUpper) {
+            if (!accountHoldsMiniGridCurrency(ccyMap, ccyLoaded, id, cu)) continue;
+            pairs.push({ id, cu });
+          }
+        }
+
         const results = await Promise.all(
-          list.flatMap((acc) =>
-            orderUpper.map(async (cu) => {
-              const id = Number(acc.id);
-              try {
-                const dec = await fetchAccountHistoryClosingBalance(
-                  id,
-                  cu,
-                  fromYmd,
-                  toYmd,
-                  compId,
-                  gid,
-                  ac.signal,
-                );
-                return { key: `${id}|${cu}`, dec };
-              } catch (e) {
-                if (e?.name === "AbortError") throw e;
-                return { key: `${id}|${cu}`, dec: null };
-              }
-            }),
-          ),
+          pairs.map(async ({ id, cu }) => {
+            try {
+              const dec = await fetchAccountHistoryClosingBalance(
+                id,
+                cu,
+                fromYmd,
+                toYmd,
+                compId,
+                gid,
+                ac.signal,
+              );
+              return { key: `${id}|${cu}`, dec };
+            } catch (e) {
+              if (e?.name === "AbortError") throw e;
+              return { key: `${id}|${cu}`, dec: null };
+            }
+          }),
         );
         if (seq !== balancesSeqRef.current) return;
         const nextMap = new Map();
@@ -239,7 +298,7 @@ export function useMobileMember() {
           if (row?.dec != null) nextMap.set(row.key, row.dec);
         }
         setBalanceMap(nextMap);
-        setBalanceTotals(computeMiniGridTotals(nextMap, orderUpper, list));
+        setBalanceTotals(computeMiniGridTotals(nextMap, orderUpper, list, ccyMap, ccyLoaded));
       } catch (e) {
         if (e?.name === "AbortError") return;
         if (seq !== balancesSeqRef.current) return;
@@ -581,6 +640,8 @@ export function useMobileMember() {
     balanceTotals,
     balanceCurrencies,
     balancesLoading,
+    linkedAccountCurrenciesMap,
+    linkedCurrenciesLoaded,
     companyCode,
     groupIdLabel: displayGroupId,
     logout,

@@ -1,13 +1,34 @@
-import { formatHistoryBalanceMoney } from "../../lib/transactionFormat.js";
+import { accountHoldsMiniGridCurrency } from "../../lib/memberHelpers.js";
+import { formatHistoryMoney } from "../../lib/transactionFormat.js";
 import { moneyToneClass } from "../../lib/money/moneyToneClass.js";
 
 function MoneyTone({ value, children }) {
   return <span className={moneyToneClass(value)}>{children}</span>;
 }
 
+/** Desktop mini-grid parity: zero → "-", missing hold → "–". */
 function formatDec(dec) {
-  if (dec == null || typeof dec.toString !== "function") return "–";
-  return formatHistoryBalanceMoney(dec.toString());
+  if (dec == null || typeof dec.isZero !== "function") return "–";
+  if (dec.isZero()) return "-";
+  return formatHistoryMoney(dec.toString());
+}
+
+function cellContent({
+  id,
+  cu,
+  balanceMap,
+  linkedAccountCurrenciesMap,
+  linkedCurrenciesLoaded,
+}) {
+  const holds = accountHoldsMiniGridCurrency(
+    linkedAccountCurrenciesMap,
+    linkedCurrenciesLoaded,
+    id,
+    cu,
+  );
+  if (!holds) return { text: "–", value: "" };
+  const dec = balanceMap?.get(`${id}|${cu}`);
+  return { text: formatDec(dec), value: dec != null ? dec.toString() : "" };
 }
 
 /**
@@ -20,6 +41,8 @@ export default function MemberBalancesStrip({
   currencies,
   balanceMap,
   balanceTotals,
+  linkedAccountCurrenciesMap,
+  linkedCurrenciesLoaded,
   loading,
   t,
 }) {
@@ -49,9 +72,7 @@ export default function MemberBalancesStrip({
         <span className="m-member-balances-toggle-left">
           <i className={`fas fa-chevron-${expanded ? "up" : "down"}`} aria-hidden="true" />
           <span className="m-member-balances-title">{t("balances")}</span>
-          <span className="m-member-balances-count">
-            {t("balancesAccounts", { count: n })}
-          </span>
+          <span className="m-member-balances-count">{t("balancesAccounts", { count: n })}</span>
         </span>
         {summaryRight ? (
           <span className="m-member-balances-summary">
@@ -89,13 +110,18 @@ export default function MemberBalancesStrip({
                   {list.map((acc, idx) => {
                     const id = Number(acc.id);
                     const code = String(acc.account_id || acc.id).toUpperCase();
-                    const dec = balanceMap?.get(`${id}|${singleCu}`);
-                    const text = formatDec(dec);
+                    const cell = cellContent({
+                      id,
+                      cu: singleCu,
+                      balanceMap,
+                      linkedAccountCurrenciesMap,
+                      linkedCurrenciesLoaded,
+                    });
                     return (
                       <tr key={id} className={idx % 2 === 1 ? "is-alt" : undefined}>
                         <th scope="row">{code}</th>
                         <td className="m-member-balances-num">
-                          <MoneyTone value={dec != null ? dec.toString() : ""}>{text}</MoneyTone>
+                          <MoneyTone value={cell.value}>{cell.text}</MoneyTone>
                         </td>
                       </tr>
                     );
@@ -132,12 +158,16 @@ export default function MemberBalancesStrip({
                       <tr key={id} className={idx % 2 === 1 ? "is-alt" : undefined}>
                         <th scope="row">{code}</th>
                         {orderUpper.map((cu) => {
-                          const dec = balanceMap?.get(`${id}|${cu}`);
+                          const cell = cellContent({
+                            id,
+                            cu,
+                            balanceMap,
+                            linkedAccountCurrenciesMap,
+                            linkedCurrenciesLoaded,
+                          });
                           return (
                             <td key={cu} className="m-member-balances-num">
-                              <MoneyTone value={dec != null ? dec.toString() : ""}>
-                                {formatDec(dec)}
-                              </MoneyTone>
+                              <MoneyTone value={cell.value}>{cell.text}</MoneyTone>
                             </td>
                           );
                         })}

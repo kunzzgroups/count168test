@@ -107,6 +107,39 @@ export function getMemberMiniGridCurrencies(availableCurrencies, isAllSelected, 
   return available.filter((c) => selected.includes(c));
 }
 
+/** Map get_batch_account_currencies rows → accountId → Set(codes). */
+export function mapBatchAccountCurrencies(data) {
+  const map = new Map();
+  (data || []).forEach((row) => {
+    const id = Number(row.account_id);
+    if (!id) return;
+    const set = new Set();
+    (row.currencies || []).forEach((c) => {
+      const code = String(c.currency_code || c.code || "")
+        .trim()
+        .toUpperCase();
+      if (code) set.add(code);
+    });
+    map.set(id, set);
+  });
+  return map;
+}
+
+/**
+ * Desktop parity: only treat a currency as “held” when batch currencies say so.
+ * Empty set / not loaded → allow (same as desktop).
+ */
+export function accountHoldsMiniGridCurrency(linkedAccountCurrenciesMap, linkedCurrenciesLoaded, accountId, currencyUpper) {
+  const cu = String(currencyUpper || "")
+    .trim()
+    .toUpperCase();
+  if (!cu) return true;
+  if (!linkedCurrenciesLoaded) return true;
+  const set = linkedAccountCurrenciesMap?.get(Number(accountId));
+  if (!set || set.size === 0) return true;
+  return set.has(cu);
+}
+
 /** Last non-empty balance per currency from history rows → Decimal map. */
 export function memberHistoryClosingBalancesForAllCurrencies(rows, wantedUpperSet) {
   const map = new Map();
@@ -123,14 +156,26 @@ export function memberHistoryClosingBalancesForAllCurrencies(rows, wantedUpperSe
   return map;
 }
 
-/** Sum balances per currency across accounts. Key in balanceMap: `${accountId}|${CCY}`. */
-export function computeMiniGridTotals(balanceMap, orderUpper, accounts) {
+/** Sum balances per currency — skip currencies an account does not hold. */
+export function computeMiniGridTotals(
+  balanceMap,
+  orderUpper,
+  accounts,
+  linkedAccountCurrenciesMap = null,
+  linkedCurrenciesLoaded = false,
+) {
   const totalsByCu = new Map();
   (orderUpper || []).forEach((cu) => totalsByCu.set(cu, normalizeNumber("0")));
   (accounts || []).forEach((acc) => {
     const id = Number(acc.id);
     if (id <= 0) return;
     (orderUpper || []).forEach((cu) => {
+      if (
+        linkedCurrenciesLoaded &&
+        !accountHoldsMiniGridCurrency(linkedAccountCurrenciesMap, linkedCurrenciesLoaded, id, cu)
+      ) {
+        return;
+      }
       const dec = balanceMap?.get(`${id}|${cu}`);
       if (dec != null && typeof dec.plus === "function") {
         totalsByCu.set(cu, totalsByCu.get(cu).plus(dec));
