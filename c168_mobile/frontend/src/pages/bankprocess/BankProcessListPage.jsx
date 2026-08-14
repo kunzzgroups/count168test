@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
+import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx";
 import { useIncrementalList } from "../../hooks/useIncrementalList.js";
 import { useMaintenanceSession } from "../../hooks/useMaintenanceSession.js";
 import {
@@ -375,6 +376,11 @@ export default function BankProcessListPage() {
 
   const stickyBar = (
     <div className="m-mt-sticky">
+      <MobileSubpageHeader
+        backTo="/maintenance"
+        backAriaLabel={i18n.backToHub}
+        title={i18n.setupBank}
+      />
       <MaintenanceFilterBar
         i18n={i18n}
         dateFrom={dateFrom}

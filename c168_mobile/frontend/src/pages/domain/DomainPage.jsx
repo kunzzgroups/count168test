@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
+import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx";
 import { useIncrementalList } from "../../hooks/useIncrementalList.js";
 import { useMobileDomain } from "../../hooks/useMobileDomain.js";
 import { MAX_VISIBLE_CHIPS, forceSearchValue } from "../../lib/domainHelpers.js";
@@ -219,9 +220,11 @@ export default function DomainPage() {
 
   const stickyBar = (
     <div className="m-account-sticky m-domain-sticky">
-      <div className="m-domain-heading">
-        <div className="m-domain-heading-row">
-          <h1>{t("domainList")}</h1>
+      <MobileSubpageHeader
+        backTo="/more"
+        backAriaLabel={t("backToMore")}
+        title={t("domainList")}
+        trailing={
           <button
             type="button"
             className="m-domain-price-pill tap-scale"
@@ -231,8 +234,8 @@ export default function DomainPage() {
             <i className="fas fa-tags" aria-hidden="true" />
             {t("price")}
           </button>
-        </div>
-      </div>
+        }
+      />
       <label className="m-account-search">
         <i className="fas fa-magnifying-glass" aria-hidden="true" />
         <input

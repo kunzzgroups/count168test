@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import MobileShell from "../../components/layout/MobileShell.jsx";
+import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx";
 import { fetchJson } from "../../lib/fetchJson.js";
 import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
@@ -93,7 +94,6 @@ export default function MaintenanceHubPage() {
     });
   }
 
-  // Data Capture / Formula are desktop-only — omit from mobile hub.
   const setup = [];
   if (canAccessBankProcess(me)) {
     setup.push({
@@ -105,6 +105,15 @@ export default function MaintenanceHubPage() {
     });
   }
 
+  const stickyBar = (
+    <MobileSubpageHeader
+      backTo="/more"
+      backAriaLabel={i18n.backToMore}
+      title={i18n.hubTitle}
+      subtitle={i18n.hubSubtitle}
+    />
+  );
+
   return (
     <MobileShell
       i18n={i18n}
@@ -112,18 +121,9 @@ export default function MaintenanceHubPage() {
       onLogout={logout}
       lang={lang}
       onLangChange={setLang}
+      stickyBar={stickyBar}
     >
       <main className="m-mt-page">
-        <section className="m-mt-hero">
-          <span className="m-mt-hero-icon">
-            <i className="fas fa-screwdriver-wrench" aria-hidden="true" />
-          </span>
-          <div>
-            <h1>{i18n.hubTitle}</h1>
-            <p>{i18n.hubSubtitle}</p>
-          </div>
-        </section>
-
         {loading ? (
           <div className="m-mt-state">
             <i className="fas fa-spinner fa-spin" aria-hidden="true" />
