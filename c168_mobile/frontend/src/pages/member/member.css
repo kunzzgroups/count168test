@@ -74,8 +74,15 @@
 }
 
 /* Total row inside dense history table (above B/F), mirrors account Balance TOTAL. */
-.m-member-ccy .m-tx-hist-row--total > .m-tx-hist-dense-td,
-.m-member-ccy .m-tx-hist-row--total > .m-tx-hist-dense-td--total-label {
+.m-member-ccy .m-tx-hist-row--total {
+  cursor: default;
+}
+
+.m-member-ccy .m-tx-hist-row--total:active {
+  filter: none;
+}
+
+.m-member-ccy .m-tx-hist-row--total > .m-tx-hist-dense-td {
   background: #eef2ff;
   font-weight: 800;
   border-top: 1px solid #cbd5e1;
@@ -83,12 +90,16 @@
 
 .m-member-ccy .m-tx-hist-dense-td--total-label {
   text-align: left;
-  padding: 0.45rem 0.35rem;
-  font-size: var(--m-text-caption);
+  padding: 0.3rem 0.35rem;
+  /* Match dense table size — caption token overflows the DATE+PRODUCT span. */
+  font-size: inherit;
   text-transform: uppercase;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: #1e3a8a;
   vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .m-member-ccy .m-tx-hist-dense-td--total {

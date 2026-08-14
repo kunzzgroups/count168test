@@ -73,14 +73,10 @@ function CurrencySection({ currency, rows, t, lang, expandedKey, setExpandedKey 
           </thead>
           <tbody>
             {rows.length > 0 ? (
-              <tr className="m-tx-hist-row m-tx-hist-row--total">
-                <th
-                  scope="row"
-                  colSpan={2}
-                  className="m-tx-hist-dense-td m-tx-hist-dense-td--total-label"
-                >
+              <tr className="m-tx-hist-row m-tx-hist-row--total" aria-label={t("totalRow", { currency })}>
+                <td colSpan={2} className="m-tx-hist-dense-td m-tx-hist-dense-td--total-label">
                   {t("totalRow", { currency })}
-                </th>
+                </td>
                 <td className="m-tx-hist-dense-td m-tx-hist-dense-td--num m-tx-hist-dense-td--total">
                   <MoneyTone value={totals.totalWinLoss.toString()}>
                     {formatHistoryMoney(totals.totalWinLoss.toString())}
