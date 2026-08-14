@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 import { useOverlayLock } from "../../hooks/useOverlayLock.js";
+import { PERIOD_PRESET_KEYS, periodPresetRange } from "../../lib/dashboardDateUtils.js";
 import "../transaction/add-transaction-sheet.css";
 import "../account/account.css";
 import "./member.css";
+
+function matchPreset(fromYmd, toYmd) {
+  for (const key of PERIOD_PRESET_KEYS) {
+    const range = periodPresetRange(key);
+    if (range && range.dateFrom === fromYmd && range.dateTo === toYmd) return key;
+  }
+  return "";
+}
 
 function Sheet({ open, title, onClose, children, footer = null }) {
   useOverlayLock(open, onClose);
@@ -56,11 +65,13 @@ export default function MemberFilterSheet({
 }) {
   const [from, setFrom] = useState(dateFromYmd);
   const [to, setTo] = useState(dateToYmd);
+  const [activePreset, setActivePreset] = useState(() => matchPreset(dateFromYmd, dateToYmd));
 
   useEffect(() => {
     if (!open) return;
     setFrom(dateFromYmd);
     setTo(dateToYmd);
+    setActivePreset(matchPreset(dateFromYmd, dateToYmd));
   }, [open, dateFromYmd, dateToYmd]);
 
   return (
@@ -82,14 +93,52 @@ export default function MemberFilterSheet({
       }
     >
       <div className="m-member-filter">
+        <div className="m-member-field">
+          <span>{t("period")}</span>
+          <div className="m-member-chips">
+            {PERIOD_PRESET_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                className={`m-member-chip tap-scale${activePreset === key ? " is-active" : ""}`}
+                onClick={() => {
+                  const range = periodPresetRange(key);
+                  if (!range) return;
+                  setActivePreset(key);
+                  setFrom(range.dateFrom);
+                  setTo(range.dateTo);
+                }}
+              >
+                {t(key)}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="m-member-filter-row">
           <label className="m-member-field">
             <span>{t("from")}</span>
-            <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => {
+                setActivePreset("");
+                setFrom(e.target.value);
+              }}
+            />
           </label>
           <label className="m-member-field">
             <span>{t("to")}</span>
-            <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => {
+                setActivePreset("");
+                setTo(e.target.value);
+              }}
+            />
           </label>
         </div>
 
