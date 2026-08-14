@@ -107,6 +107,9 @@
   --account-select-card-border-checked: #0d60ff;
   --account-select-label-checked: #0d60ff;
   --account-select-desc-checked: #797979;
+  --account-select-card-bg-closed: #e2e8f0;
+  --account-select-card-border-closed: #94a3b8;
+  --account-select-label-closed: #64748b;
 
   /*
    * Add User — Account / Process 选择网格（改此处即可；userlist.css 通过 var() 引用）
