@@ -74,14 +74,35 @@ export function applyCurrencyAllToggle() {
   return { isAllSelected: true, selectedCurrencies: [] };
 }
 
+/**
+ * Currency pill toggle — desktop Member parity:
+ * - From ALL → clicking a code selects only that code
+ * - Otherwise multi-select add/remove; empty selection allowed
+ */
 export function applyCurrencyToggle(available, isAllSelected, selectedCurrencies, code) {
-  const next = new Set(isAllSelected ? available : selectedCurrencies);
-  if (next.has(code)) next.delete(code);
-  else next.add(code);
-  const selected = available.filter((c) => next.has(c));
-  if (selected.length === 0) return { isAllSelected: false, selectedCurrencies: [] };
-  if (selected.length === available.length) return { isAllSelected: true, selectedCurrencies: [] };
-  return { isAllSelected: false, selectedCurrencies: selected };
+  const cu = String(code || "")
+    .trim()
+    .toUpperCase();
+  if (!available?.length) {
+    return { isAllSelected: true, selectedCurrencies: [] };
+  }
+  if (!cu) {
+    return { isAllSelected: Boolean(isAllSelected), selectedCurrencies: [...(selectedCurrencies || [])] };
+  }
+  if (isAllSelected) {
+    return { isAllSelected: false, selectedCurrencies: [cu] };
+  }
+  const current = (selectedCurrencies || []).map((c) => String(c || "").trim().toUpperCase()).filter(Boolean);
+  if (current.includes(cu)) {
+    const next = current.filter((c) => c !== cu);
+    return { isAllSelected: false, selectedCurrencies: next };
+  }
+  const availSet = new Set(available.map((c) => String(c || "").trim().toUpperCase()).filter(Boolean));
+  const next = [...current, cu].filter((c) => availSet.has(c));
+  if (next.length === availSet.size) {
+    return { isAllSelected: true, selectedCurrencies: [] };
+  }
+  return { isAllSelected: false, selectedCurrencies: next };
 }
 
 /** YYYY-MM-DD → DD/MM/YYYY for history_api */
