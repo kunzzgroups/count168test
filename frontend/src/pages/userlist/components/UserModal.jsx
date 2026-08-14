@@ -151,6 +151,7 @@ import {
   roleHasReadOnlyToggle,
   canInteractWithReadOnlyToggle,
   isUserModalPageReadOnlyLock,
+  sortAccessItems,
 } from "../userListLogic.js";
 import { formatUserRoleDisplay } from "../../../translateFile/pages/userListTranslate.js";
 import { sanitizeEmailInput } from "../../../utils/input/emailValidation.js";
@@ -171,7 +172,7 @@ const AccessSelectCard = React.memo(function AccessSelectCard({
 }) {
   return (
     <label
-      className={`account-item-compact account-item-compact--process user-modal-select-card${checked ? " is-selected" : ""}${locked ? " is-disabled" : ""}`}
+      className={`account-item-compact account-item-compact--process user-modal-select-card${checked ? " is-selected" : " is-closed"}${locked ? " is-disabled" : ""}`}
     >
       <input
         type="checkbox"
@@ -197,6 +198,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
   setSelectedIds,
   idList,
   locked,
+  assignableIds = null,
   bulkSelectionSettling,
   runBulkSelection,
   t,
@@ -206,9 +208,19 @@ const SelectionColumn = React.memo(function SelectionColumn({
     variant === "account"
       ? "user-modal-col user-modal-col--account account-process-col"
       : "user-modal-col user-modal-col--process account-process-col";
+  const codeKey = variant === "account" ? "account_id" : "process_id";
+  const sortedItems = useMemo(
+    () => sortAccessItems(items, selectedIds, codeKey),
+    [items, selectedIds, codeKey],
+  );
+  const assignableIdList = useMemo(() => {
+    if (assignableIds == null) return idList;
+    return idList.filter((id) => assignableIds.has(Number(id)));
+  }, [assignableIds, idList]);
 
   const onToggle = useCallback(
     (id, checked) => {
+      if (assignableIds != null && !assignableIds.has(Number(id))) return;
       setSelectedIds((prev) => {
         const n = new Set(prev);
         if (checked) n.add(Number(id));
@@ -216,7 +228,7 @@ const SelectionColumn = React.memo(function SelectionColumn({
         return n;
       });
     },
-    [setSelectedIds],
+    [assignableIds, setSelectedIds],
   );
 
   return (
@@ -226,9 +238,11 @@ const SelectionColumn = React.memo(function SelectionColumn({
         ref={gridRef}
         className={`account-grid account-grid--four account-grid--process${bulkSelectionSettling ? " account-grid--bulk-settling" : ""}`}
       >
-        {items.map((it) => {
+        {sortedItems.map((it) => {
           const primary = variant === "account" ? it.account_id : it.process_id;
           const secondary = variant === "account" ? it.name : it.description;
+          const id = Number(it.id);
+          const itemLocked = locked || (assignableIds != null && !assignableIds.has(id));
           return (
             <AccessSelectCard
               key={it.id}
@@ -236,8 +250,8 @@ const SelectionColumn = React.memo(function SelectionColumn({
               idPrefix={idPrefix}
               primary={primary}
               secondary={secondary}
-              checked={selectedIds.has(Number(it.id))}
-              locked={locked}
+              checked={selectedIds.has(id)}
+              locked={itemLocked}
               onToggle={onToggle}
             />
           );
@@ -248,7 +262,11 @@ const SelectionColumn = React.memo(function SelectionColumn({
           type="button"
           className="btn-account-control"
           disabled={locked}
-          onClick={() => runBulkSelection(variant, () => setSelectedIds(new Set(idList)))}
+          onClick={() => runBulkSelection(variant, () => setSelectedIds((prev) => {
+            const n = new Set(prev);
+            assignableIdList.forEach((id) => n.add(Number(id)));
+            return n;
+          }))}
         >
           {t("selectAll")}
         </button>
@@ -256,7 +274,11 @@ const SelectionColumn = React.memo(function SelectionColumn({
           type="button"
           className="btn-clearall"
           disabled={locked}
-          onClick={() => runBulkSelection(variant, () => setSelectedIds(new Set()))}
+          onClick={() => runBulkSelection(variant, () => setSelectedIds((prev) => {
+            const n = new Set(prev);
+            assignableIdList.forEach((id) => n.delete(Number(id)));
+            return n;
+          }))}
         >
           {t("clearAll")}
         </button>
@@ -293,9 +315,11 @@ function UserModal({
   modalAccounts,
   selectedAccountIds,
   setSelectedAccountIds,
+  assignableAccountIds = null,
   modalProcesses,
   selectedProcessIds,
   setSelectedProcessIds,
+  assignableProcessIds = null,
   applyPermTemplate,
   onSave,
   sessionMutationsBlocked = false,
@@ -786,6 +810,7 @@ function UserModal({
               setSelectedIds={setSelectedAccountIds}
               idList={accountIdList}
               locked={accountProcessLocked}
+              assignableIds={assignableAccountIds}
               bulkSelectionSettling={bulkSettlingVariant === "account"}
               runBulkSelection={runBulkSelection}
               t={t}
@@ -801,6 +826,7 @@ function UserModal({
                 setSelectedIds={setSelectedProcessIds}
                 idList={processIdList}
                 locked={accountProcessLocked}
+                assignableIds={assignableProcessIds}
                 bulkSelectionSettling={bulkSettlingVariant === "process"}
                 runBulkSelection={runBulkSelection}
                 t={t}

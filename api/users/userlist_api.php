@@ -65,6 +65,75 @@ function userlistRoleLevel(string $role): int {
     return $hierarchy[strtolower(trim($role))] ?? 999;
 }
 
+function userlist_can_edit_target_access(string $currentRole, string $targetRole, int $currentUserId, int $targetUserId): bool
+{
+    if ($currentUserId <= 0 || $targetUserId <= 0 || $currentUserId === $targetUserId) {
+        return false;
+    }
+    return userlistRoleLevel($currentRole) < userlistRoleLevel($targetRole);
+}
+
+function userlist_permission_row_id($row): int
+{
+    if (is_array($row) && isset($row['id'])) {
+        return (int) $row['id'];
+    }
+    if (is_numeric($row)) {
+        return (int) $row;
+    }
+    return 0;
+}
+
+/**
+ * Keep ids the editor cannot assign; apply incoming only within assignable ids.
+ * existingJson null (unrestricted) → use incoming as-is so first save can close items without wiping unseen accs.
+ */
+function userlist_merge_access_payload($existingJson, array $incoming, ?array $assignableIds): array
+{
+    if ($assignableIds === null) {
+        return array_values($incoming);
+    }
+    if ($existingJson === null || $existingJson === '') {
+        return array_values($incoming);
+    }
+    $existing = json_decode((string) $existingJson, true);
+    if (!is_array($existing)) {
+        return array_values($incoming);
+    }
+    $assignable = [];
+    foreach ($assignableIds as $id) {
+        $nid = (int) $id;
+        if ($nid > 0) {
+            $assignable[$nid] = true;
+        }
+    }
+    $incomingById = [];
+    foreach ($incoming as $row) {
+        $id = userlist_permission_row_id($row);
+        if ($id > 0) {
+            $incomingById[$id] = is_array($row) ? $row : ['id' => $id];
+        }
+    }
+    $out = [];
+    $seen = [];
+    foreach ($existing as $row) {
+        $id = userlist_permission_row_id($row);
+        if ($id <= 0 || isset($assignable[$id])) {
+            continue;
+        }
+        $out[] = is_array($row) ? $row : ['id' => $id];
+        $seen[$id] = true;
+    }
+    foreach ($incomingById as $id => $row) {
+        if (!isset($assignable[$id]) || isset($seen[$id])) {
+            continue;
+        }
+        $out[] = $row;
+        $seen[$id] = true;
+    }
+    return $out;
+}
+
 /** Audit：manager 及以上可写 read_only；Partnership：仅 owner */
 function canSetUserReadOnly(string $currentRole, string $targetUserRole): bool {
     $target = strtolower(trim($targetUserRole));
@@ -2302,7 +2371,7 @@ try {
             // 获取原有的 login_id 并验证用户是否存在
             // 注意：用户可能属于多个公司，所以不限制在当前公司
             $stmt = $pdo->prepare("
-                SELECT u.login_id 
+                SELECT u.login_id, u.role
                 FROM user u
                 WHERE u.id = ?
             ");
@@ -2520,28 +2589,45 @@ try {
                 }
                 
                 // 保存 Account 和 Process 权限到 user_company_permissions 表（按当前公司）
-                // 只有当提供了 account_permissions 或 process_permissions 时才更新
+                // 只有上级改下级时才更新；自己/同级/上级不能改回已关闭的 acc/process
+                $currentUid = (int) ($_SESSION['user_id'] ?? 0);
+                $targetUid = (int) $input['id'];
+                $targetRole = (string) ($originalUser['role'] ?? '');
+                if (!userlist_can_edit_target_access($current_user_role, $targetRole, $currentUid, $targetUid)) {
+                    unset($input['account_permissions'], $input['process_permissions']);
+                }
+                $accountPermsUpdated = false;
+                $processPermsUpdated = false;
                 if (isset($input['account_permissions']) || isset($input['process_permissions'])) {
-                    // 准备权限值
+                    $existingPermStmt = $pdo->prepare("SELECT account_permissions, process_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ? LIMIT 1");
+                    $existingPermStmt->execute([$targetUid, $scope_company_id]);
+                    $existingPermRow = $existingPermStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                    $editorAccountAssignable = permissions_account_whitelist_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role);
+                    $editorProcessAssignable = permissions_process_whitelist_ids($pdo, $currentUid, (int) $scope_company_id, $current_user_role);
+
                     $accountPerms = null;
                     $processPerms = null;
                     
                     if (isset($input['account_permissions'])) {
-                        if (is_array($input['account_permissions']) && count($input['account_permissions']) > 0) {
-                            $accountPerms = json_encode($input['account_permissions']);
-                        } else {
-                            // 空数组 [] 表示已设置但为空（不选任何账户）
-                            $accountPerms = json_encode([]);
-                        }
+                        $accountPermsUpdated = true;
+                        $incomingAccounts = is_array($input['account_permissions']) ? $input['account_permissions'] : [];
+                        $mergedAccounts = userlist_merge_access_payload(
+                            $existingPermRow['account_permissions'] ?? null,
+                            $incomingAccounts,
+                            $editorAccountAssignable
+                        );
+                        $accountPerms = json_encode(array_values($mergedAccounts));
                     }
                     
                     if (isset($input['process_permissions'])) {
-                        if (is_array($input['process_permissions']) && count($input['process_permissions']) > 0) {
-                            $processPerms = json_encode($input['process_permissions']);
-                        } else {
-                            // 空数组 [] 表示已设置但为空（不选任何流程）
-                            $processPerms = json_encode([]);
-                        }
+                        $processPermsUpdated = true;
+                        $incomingProcesses = is_array($input['process_permissions']) ? $input['process_permissions'] : [];
+                        $mergedProcesses = userlist_merge_access_payload(
+                            $existingPermRow['process_permissions'] ?? null,
+                            $incomingProcesses,
+                            $editorProcessAssignable
+                        );
+                        $processPerms = json_encode(array_values($mergedProcesses));
                     }
                     
                     // 使用 INSERT ... ON DUPLICATE KEY UPDATE 来更新或插入
@@ -2622,6 +2708,14 @@ try {
                 }
                 if ($publishIds !== []) {
                     realtime_publish_companies($publishIds, 'users', 'update');
+                    // Acc/Process 白名单变更：Account / Process 下拉 + ledger 立刻按新权限重拉
+                    if (!empty($accountPermsUpdated)) {
+                        realtime_publish_companies($publishIds, 'accounts', 'user_account_permissions');
+                        realtime_publish_companies($publishIds, 'ledger', 'user_account_permissions');
+                    }
+                    if (!empty($processPermsUpdated)) {
+                        realtime_publish_companies($publishIds, 'processes', 'user_process_permissions');
+                    }
                 }
                 
                 sendResponse(true, $message, $responseData);

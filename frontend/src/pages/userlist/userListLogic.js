@@ -565,6 +565,35 @@ export function readUserListGroupFilterOptOut() {
 }
 
 /** Active list scope key — must stay in sync with userListFetchScopeKey useMemo in UserListPage. */
+/** Digit-first natural order: 2 < 10 < A < Z. */
+export function compareAccessCode(a, b) {
+  return String(a || "").localeCompare(String(b || ""), "en", { numeric: true, sensitivity: "base" });
+}
+
+/**
+ * Open (checked) items first, closed (unchecked) last.
+ * Within each group: numbers → A → Z.
+ */
+export function sortAccessItems(items, selectedIds, codeKey) {
+  const selected = selectedIds instanceof Set ? selectedIds : new Set();
+  const list = Array.isArray(items) ? items : [];
+  return [...list].sort((a, b) => {
+    const aOn = selected.has(Number(a?.id)) ? 0 : 1;
+    const bOn = selected.has(Number(b?.id)) ? 0 : 1;
+    if (aOn !== bOn) return aOn - bOn;
+    const byCode = compareAccessCode(a?.[codeKey], b?.[codeKey]);
+    if (byCode !== 0) return byCode;
+    return Number(a?.id || 0) - Number(b?.id || 0);
+  });
+}
+
+/** null = editor may assign every listed item; Set = only those ids. */
+export function parseAssignableIds(raw) {
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) return null;
+  return new Set(raw.map((id) => Number(id)).filter((id) => id > 0));
+}
+
 export function resolveUserListFetchScopeKey({
   companyId: cid,
   selectedGroup: sg,

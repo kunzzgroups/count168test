@@ -62,10 +62,18 @@ function getAccountPermissionFilterForCompany(PDO $pdo, int $company_id, string 
     if (empty($userAccountPermissions) || !is_array($userAccountPermissions)) {
         return [];
     }
-    $accountIds = array_values(array_unique(array_filter(array_map('intval', array_column($userAccountPermissions, 'id')), function ($id) {
-        return $id > 0;
-    })));
-    return $accountIds;
+    // Exclude self_hidden / superior_closed: site lists hide Accs the user or a superior closed.
+    $accountIds = [];
+    foreach ($userAccountPermissions as $row) {
+        if (is_array($row) && (!empty($row['self_hidden']) || !empty($row['superior_closed']))) {
+            continue;
+        }
+        $id = is_array($row) ? (int) ($row['id'] ?? 0) : (int) $row;
+        if ($id > 0) {
+            $accountIds[] = $id;
+        }
+    }
+    return array_values(array_unique($accountIds));
 }
 
 function validateCompanyAccess(PDO $pdo, int $company_id): void {
@@ -582,9 +590,14 @@ try {
     }
 
     $current_user_role = $_SESSION['role'] ?? '';
+    $forAssignment = isset($_GET['for_assignment']) && (string) $_GET['for_assignment'] === '1';
     $accountIdFilter = $company_id > 0
         ? getAccountPermissionFilterForCompany($pdo, $company_id, $current_user_role)
         : null;
+    $assignableIds = $accountIdFilter;
+    if ($forAssignment) {
+        $accountIdFilter = null;
+    }
     $userAccountPermissions = $company_id > 0
         ? getCurrentUserAccountPermissions($pdo, $company_id)
         : [];
@@ -629,6 +642,7 @@ try {
             'showAll' => $showAll,
             'company_id' => $company_id,
             'user_permissions_count' => count($userAccountPermissions),
+            'assignable_ids' => $forAssignment ? $assignableIds : null,
         ],
     ]);
 } catch (PDOException $e) {

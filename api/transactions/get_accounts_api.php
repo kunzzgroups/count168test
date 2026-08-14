@@ -115,11 +115,7 @@ try {
     if (($listScope['mode'] ?? '') !== 'group') {
         $baseSql .= tenant_sql_account_company_subsidiary_only($pdo, 'ac');
     }
-    list($baseSql, $params) = filterAccountsByPermissions($pdo, $baseSql, $params, $permCompanyId > 0 ? $permCompanyId : $company_id);
-    $baseSql = preg_replace('/\bAND id IN\b/i', 'AND a.id IN', $baseSql);
-    $baseSql = preg_replace('/\bWHERE id IN\b/i', 'WHERE a.id IN', $baseSql);
-    $baseSql = preg_replace('/\bAND 1=0\b/i', 'AND 1=0', $baseSql);
-    $baseSql = preg_replace('/\bWHERE 1=0\b/i', 'WHERE 1=0', $baseSql);
+    // Payment type / To-From 做账需要可选被关闭（白名单外）的 acc；balance 仍由 search_api 按权限过滤。
     $baseSql .= " ORDER BY a.account_id ASC";
 
     $stmt = $pdo->prepare($baseSql);

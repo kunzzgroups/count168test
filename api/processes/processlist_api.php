@@ -332,6 +332,13 @@ function getProcesses() {
         $showOfficial = isset($_GET['showOfficial']) && $_GET['showOfficial'] == '1';
         $showEInvoice = isset($_GET['showEInvoice']) && $_GET['showEInvoice'] == '1';
         $showAll = isset($_GET['showAll']) && $_GET['showAll'] == '1';
+        $forAssignment = isset($_GET['for_assignment']) && (string) $_GET['for_assignment'] === '1';
+        $assignableIds = permissions_process_whitelist_ids(
+            $pdo,
+            (int) ($_SESSION['user_id'] ?? 0),
+            (int) $targetCompanyId,
+            $_SESSION['role'] ?? ''
+        );
         
         $hasTxnProcessId = false;
         try {
@@ -399,7 +406,10 @@ function getProcesses() {
         }
         
         // 权限过滤 - 使用请求的公司 id（与 p.company_id 一致），避免 session 仍为上一家公司时返回空列表
-        list($baseSql, $params) = filterProcessesByPermissions($pdo, $baseSql, $params, $targetCompanyId);
+        // for_assignment=1：User List 勾选需要展示已关闭项（灰色），不按当前用户白名单裁剪
+        if (!$forAssignment) {
+            list($baseSql, $params) = filterProcessesByPermissions($pdo, $baseSql, $params, $targetCompanyId);
+        }
         
         // 添加 GROUP BY 和 ORDER BY
         $baseSql .= " GROUP BY p.id ORDER BY p.dts_created DESC";
@@ -431,7 +441,14 @@ function getProcesses() {
             ];
         }
         
-        jsonResponse(true, '', $formattedProcesses);
+        if ($forAssignment) {
+            jsonResponse(true, '', [
+                'processes' => $formattedProcesses,
+                'assignable_ids' => $assignableIds,
+            ]);
+        } else {
+            jsonResponse(true, '', $formattedProcesses);
+        }
     } catch (PDOException $e) {
         error_log("Error fetching processes: " . $e->getMessage());
         jsonResponse(false, 'Failed to fetch processes: ' . $e->getMessage(), null);

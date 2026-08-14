@@ -4164,6 +4164,16 @@ body.user-page .pagination-container {
     opacity: 0.55;
 }
 
+#userModal .user-modal-select-card.is-closed:not(.is-selected) {
+    background: #f3f4f6;
+}
+
+#userModal .user-modal-select-card.is-closed:not(.is-selected) .account-label,
+#userModal .user-modal-select-card.is-closed:not(.is-selected) .account-label.account-label--process,
+#userModal .user-modal-select-card.is-closed:not(.is-selected) .account-label-desc {
+    color: #9aa0a6;
+}
+
 #userModal .user-modal-select-card input[type="checkbox"]:checked + .account-label {
     color: var(--account-select-label-checked);
     font-weight: var(--font-weight-bold);

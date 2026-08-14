@@ -59,6 +59,79 @@ function permissions_user_sees_all_accounts(?string $role = null, ?string $userT
 }
 
 /**
+ * Decode account/process permission JSON into unique positive ids.
+ * null JSON → null (unrestricted); empty/invalid → [].
+ */
+function permissions_whitelist_ids_from_json($json): ?array
+{
+    if ($json === null) {
+        return null;
+    }
+    $decoded = json_decode((string) $json, true);
+    if (!is_array($decoded) || $decoded === []) {
+        return [];
+    }
+    $ids = [];
+    foreach ($decoded as $row) {
+        if (is_array($row) && (!empty($row['self_hidden']) || !empty($row['superior_closed']))) {
+            continue;
+        }
+        $id = 0;
+        if (is_array($row) && isset($row['id'])) {
+            $id = (int) $row['id'];
+        } elseif (is_numeric($row)) {
+            $id = (int) $row;
+        }
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+    }
+    return array_values(array_unique($ids));
+}
+
+/**
+ * @return null unrestricted, int[] whitelist (empty = none)
+ */
+function permissions_account_whitelist_ids(PDO $pdo, int $userId, int $companyId, ?string $role = null): ?array
+{
+    if ($userId <= 0 || $companyId <= 0) {
+        return [];
+    }
+    if (permissions_user_sees_all_accounts($role)) {
+        return null;
+    }
+    $stmt = $pdo->prepare("SELECT account_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
+    $stmt->execute([$userId, $companyId]);
+    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$permission || $permission['account_permissions'] === null) {
+        return null;
+    }
+    $ids = permissions_whitelist_ids_from_json($permission['account_permissions']);
+    return $ids === null ? [] : $ids;
+}
+
+/**
+ * @return null unrestricted, int[] whitelist (empty = none)
+ */
+function permissions_process_whitelist_ids(PDO $pdo, int $userId, int $companyId, ?string $role = null): ?array
+{
+    if ($userId <= 0 || $companyId <= 0) {
+        return [];
+    }
+    if (permissions_user_sees_all_processes($role)) {
+        return null;
+    }
+    $stmt = $pdo->prepare("SELECT process_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
+    $stmt->execute([$userId, $companyId]);
+    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$permission || $permission['process_permissions'] === null) {
+        return null;
+    }
+    $ids = permissions_whitelist_ids_from_json($permission['process_permissions']);
+    return $ids === null ? [] : $ids;
+}
+
+/**
  * Process visibility follows the same top-level read-only policy as accounts.
  * Keep Partnership/Audit aligned with owner-level read visibility.
  */
@@ -126,13 +199,11 @@ function filterAccountsByPermissions($pdo, $baseQuery, $params = [], $permission
         return [$baseQuery, $params];
     }
     
-    // 如果 account_permissions 有值，只显示权限列表中的账户
-    $accountIds = array_column($userAccountPermissions, 'id');
-    // 确保所有 ID 都是整数类型，避免类型不匹配问题
-    $accountIds = array_map('intval', $accountIds);
-    $accountIds = array_filter($accountIds, function($id) { return $id > 0; }); // 过滤无效的 ID
-    $accountIds = array_unique($accountIds); // 去重
-    $accountIds = array_values($accountIds); // 重新索引数组
+    // 如果 account_permissions 有值，只显示权限列表中的账户（排除 self_hidden / superior_closed）
+    $accountIds = permissions_whitelist_ids_from_json($permission['account_permissions']);
+    if ($accountIds === null) {
+        $accountIds = [];
+    }
     
     // 只有当有有效的账户 ID 时，才添加过滤条件
     if (!empty($accountIds)) {
@@ -254,13 +325,11 @@ function filterProcessesByPermissions($pdo, $baseQuery, $params = [], $permissio
         return [$baseQuery, $params];
     }
 
-    // 如果 process_permissions 有值，只显示权限列表中的流程
-    $processIds = array_column($userProcessPermissions, 'id');
-    // 确保所有 ID 都是整数类型
-    $processIds = array_map('intval', $processIds);
-    $processIds = array_filter($processIds, function($id) { return $id > 0; }); // 过滤无效的 ID
-    $processIds = array_unique($processIds); // 去重
-    $processIds = array_values($processIds); // 重新索引数组
+    // 如果 process_permissions 有值，只显示权限列表中的流程（排除 self_hidden / superior_closed）
+    $processIds = permissions_whitelist_ids_from_json($permission['process_permissions']);
+    if ($processIds === null) {
+        $processIds = [];
+    }
     
     if (!empty($processIds)) {
         $placeholders = str_repeat('?,', count($processIds) - 1) . '?';

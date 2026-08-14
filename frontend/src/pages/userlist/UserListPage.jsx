@@ -80,6 +80,7 @@ import {
   roleSupportsOwnershipPermission,
   normRole,
   sortUsers,
+  parseAssignableIds,
   roleHasReadOnlyToggle,
   canInteractWithReadOnlyToggle,
   isUserModalPageReadOnlyLock,
@@ -345,6 +346,8 @@ export default function UserListPage() {
   const [editReadyIds, setEditReadyIds] = useState(() => new Set());
   const [selectedAccountIds, setSelectedAccountIds] = useState(new Set());
   const [selectedProcessIds, setSelectedProcessIds] = useState(new Set());
+  const [assignableAccountIds, setAssignableAccountIds] = useState(null);
+  const [assignableProcessIds, setAssignableProcessIds] = useState(null);
   const [roleSelectDisabled, setRoleSelectDisabled] = useState(false);
   const [loginDisabled, setLoginDisabled] = useState(false);
   const [fieldLocks, setFieldLocks] = useState({ name: false, email: false, role: false, password: false, sidebar: false, company: false });
@@ -1818,6 +1821,8 @@ export default function UserListPage() {
         modalAccessCompanyIdRef.current = Number(cid);
         setModalAccounts(next.accounts);
         setModalProcesses(next.processes);
+        setAssignableAccountIds(next.assignableAccountIds ?? null);
+        setAssignableProcessIds(next.assignableProcessIds ?? null);
         setModalAccessReadyCompanyId(Number(cid));
       };
       if (background) startTransition(commit);
@@ -1838,25 +1843,34 @@ export default function UserListPage() {
         if (!background) {
           setModalAccounts([]);
           setModalProcesses([]);
+          setAssignableAccountIds(null);
+          setAssignableProcessIds(null);
         }
-        return { accounts: [], processes: [] };
+        return { accounts: [], processes: [], assignableAccountIds: null, assignableProcessIds: null };
       }
     }
     try {
       const accountQuery = useGroupScopedAccounts
-        ? `group_id=${encodeURIComponent(normalizedGroupId)}`
-        : `company_id=${cid}`;
+        ? `group_id=${encodeURIComponent(normalizedGroupId)}&for_assignment=1`
+        : `company_id=${cid}&for_assignment=1`;
       const request = Promise.all([
         fetch(buildApiUrl(`api/accounts/accountlistapi.php?${accountQuery}`), { credentials: "include" }),
         cid != null && Number(cid) > 0
-          ? fetch(buildApiUrl(`api/processes/processlist_api.php?company_id=${cid}&showAll=1`), { credentials: "include" })
+          ? fetch(buildApiUrl(`api/processes/processlist_api.php?company_id=${cid}&showAll=1&for_assignment=1`), { credentials: "include" })
           : Promise.resolve(null),
       ]).then(async ([accRes, procRes]) => {
         const accJ = await accRes.json();
         const procJ = procRes ? await procRes.json() : { data: [] };
         const accs = (accJ?.data?.accounts || []).filter((a) => String(a.status || "").toLowerCase() === "active").map((a) => ({ id: a.id, account_id: a.account_id, name: String(a.name || "").trim() }));
-        const procs = (Array.isArray(procJ?.data) ? procJ.data : []).filter((p) => String(p.status || "").toLowerCase() === "active").map((p) => ({ id: p.id, process_id: p.process_name || p.process_id || "", description: p.description_name || p.description || "" }));
-        return { accounts: accs, processes: procs };
+        const procPayload = procJ?.data;
+        const procRows = Array.isArray(procPayload) ? procPayload : (procPayload?.processes || []);
+        const procs = procRows.filter((p) => String(p.status || "").toLowerCase() === "active").map((p) => ({ id: p.id, process_id: p.process_name || p.process_id || "", description: p.description_name || p.description || "" }));
+        return {
+          accounts: accs,
+          processes: procs,
+          assignableAccountIds: parseAssignableIds(accJ?.data?.assignable_ids),
+          assignableProcessIds: Array.isArray(procPayload) ? null : parseAssignableIds(procPayload?.assignable_ids),
+        };
       });
       modalAccessPendingRef.current.set(cacheKey, request);
       const next = await request;
@@ -1864,7 +1878,7 @@ export default function UserListPage() {
       applyAccessState(next);
       return next;
     } catch {
-      const empty = { accounts: [], processes: [] };
+      const empty = { accounts: [], processes: [], assignableAccountIds: null, assignableProcessIds: null };
       modalAccessCacheRef.current.set(cacheKey, cached || empty);
       applyAccessState(cached || empty);
       return cached || empty;
@@ -2063,7 +2077,7 @@ export default function UserListPage() {
       Number(modalAccessCompanyIdRef.current) === Number(mutationScopeCompanyId)
         ? { accounts: modalAccounts, processes: modalProcesses }
         : null;
-    const initialAccess = cachedAccess || currentAccess || { accounts: [], processes: [] };
+    const initialAccess = cachedAccess || currentAccess || { accounts: [], processes: [], assignableAccountIds: null, assignableProcessIds: null };
     if (!cachedAccess && !currentAccess) { setModalAccounts([]); setModalProcesses([]); }
     setSelectedAccountIds(new Set(initialAccess.accounts.map((a) => Number(a.id)))); setSelectedProcessIds(new Set(initialAccess.processes.map((p) => Number(p.id))));
     if (currentUserRole === "admin" || currentUserRole === "owner") {
@@ -2372,10 +2386,8 @@ export default function UserListPage() {
       }
     } else {
       const caps = computeRowCapabilities(editingRow, currentUserId, currentUserRole);
-      if (caps.isSelf || caps.isHigherLevel || caps.isSameLevel) {
-        payload.account_permissions = accountPerms;
-        if (shouldSendProcessPermissions) payload.process_permissions = processPerms;
-      } else {
+      const canAssignAccess = !caps.isSelf && !caps.isHigherLevel && !caps.isSameLevel;
+      if (canAssignAccess) {
         payload.permissions = Array.from(permSelected);
         payload.account_permissions = accountPerms;
         if (shouldSendProcessPermissions) payload.process_permissions = processPerms;
@@ -2760,7 +2772,7 @@ export default function UserListPage() {
             document.body
           )
         : null}
-      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
+      <UserModal open={modalOpen} onClose={closeModal} isEditMode={isEditMode} editingRow={editingRow} form={form} setForm={setForm} isC168Company={isC168Company} currentUserRole={currentUserRole} currentUserId={currentUserId} roleSelectDisabled={roleSelectDisabled} loginDisabled={loginDisabled} fieldLocks={fieldLocks} permDisabledMap={permDisabledMap} visiblePermissionKeys={visiblePermissionKeys} permSelected={permSelected} setPermSelected={setPermSelected} modalCompanies={modalCompanies} selectedCompanyIds={selectedCompanyIds} setSelectedCompanyIds={setSelectedCompanyIds} groupPickerMode={!useDualTenantUserPicker && groupOnlyUserList} dualTenantPicker={useDualTenantUserPicker} modalGroupCompanies={modalGroupCompanies} modalSubsidiaryCompanies={modalSubsidiaryCompanies} selectedGroupIds={selectedGroupIds} setSelectedGroupIds={setSelectedGroupIds} modalAccounts={modalAccounts} selectedAccountIds={selectedAccountIds} setSelectedAccountIds={setSelectedAccountIds} assignableAccountIds={assignableAccountIds} modalProcesses={modalProcesses} selectedProcessIds={selectedProcessIds} setSelectedProcessIds={setSelectedProcessIds} assignableProcessIds={assignableProcessIds} applyPermTemplate={applyPermTemplate} onSave={stableSaveUser} sessionMutationsBlocked={isUserEditBlockedByReadOnly(editingRow)} t={t} />
       <UserConfirmModal open={confirmOpen} message={confirmMessage} onConfirm={confirmDelete} onClose={() => setConfirmOpen(false)} confirmDisabled={userMutationsBlocked} t={t} />
     </>
   );
