@@ -59,6 +59,8 @@ fi
 # C168 Mobile SPA nginx include (works with certbot le-ssl after one-time patch)
 MOBILE_INC_SRC="$APP_ROOT/deploy/nginx/c168-mobile-locations.inc"
 MOBILE_INC_DST="/etc/nginx/conf.d/c168-mobile-locations.inc"
+LYNX_INC_SRC="$APP_ROOT/deploy/nginx/c168-lynx-locations.inc"
+LYNX_INC_DST="/etc/nginx/conf.d/c168-lynx-locations.inc"
 NGINX_SSL="/etc/nginx/conf.d/count168.site-le-ssl.conf"
 NGINX_SRC="$APP_ROOT/deploy/nginx/count168.site.amazon-linux.conf"
 NGINX_DST="/etc/nginx/conf.d/count168.site.conf"
@@ -73,6 +75,19 @@ patch_mobile_spa_maintenance() {
     sudo sed -i 's/|account|more|reset-password|/|account|maintenance|more|reset-password|/g' "$f"
   fi
 }
+
+if [[ -f "$LYNX_INC_SRC" ]]; then
+  echo "==> sync c168 lynx nginx include"
+  sudo cp "$LYNX_INC_SRC" "$LYNX_INC_DST"
+  if [[ -f "$NGINX_SSL" ]] && ! sudo grep -q 'c168-lynx-locations.inc' "$NGINX_SSL"; then
+    echo "==> patch count168.site-le-ssl.conf for /c168_lynx/"
+    sudo sed -i '/server_name count168.site/a \    include /etc/nginx/conf.d/c168-lynx-locations.inc;' "$NGINX_SSL"
+  fi
+  if [[ -f "$NGINX_DST" ]] && ! sudo grep -q 'c168-lynx-locations.inc' "$NGINX_DST" && ! sudo grep -q 'location ^~ /c168_lynx/web/' "$NGINX_DST"; then
+    echo "==> patch count168.site.conf for /c168_lynx/"
+    sudo sed -i '/server_name count168.site/a \    include /etc/nginx/conf.d/c168-lynx-locations.inc;' "$NGINX_DST"
+  fi
+fi
 
 if [[ -f "$MOBILE_INC_SRC" ]]; then
   echo "==> sync c168 mobile nginx include"

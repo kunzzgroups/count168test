@@ -1,0 +1,4 @@
+AddType application/wasm .wasm
+AddType application/javascript .js
+AddType application/octet-stream .bundle
+DirectoryIndex index.html
