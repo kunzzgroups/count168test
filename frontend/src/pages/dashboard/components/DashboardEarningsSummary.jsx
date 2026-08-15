@@ -81,6 +81,7 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   exchangeRates,
   exchangeRatesLoading,
   exchangeRateScopeKey = "",
+  scopeKey = "",
   showSummaryPanelTabs = false,
   showEarningPanelTab = false,
   showNetProfitForTab = false,
@@ -156,11 +157,16 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   // Once the card has revealed for THIS scope, keep it visible: a transient pending
   // (slow FX / earnings refresh flips `kpiChartReady` off and on) must not hide the
   // already-painted pie only to bloom it back in — the "flickers after it's already
-  // up" bug. Only a real scope change (currencyCode changes, or first appearance)
-  // re-arms the 450ms reveal hold; same-scope updates stay visible and update in place.
+  // up" bug. Only a real scope change re-arms the 450ms reveal hold; same-scope
+  // updates stay visible and update in place.
+  //
+  // The scope identity is the PAINTED scope key (company|dates|currency|group), not
+  // just currencyCode: switching company/date/group with the same display currency
+  // must still replay the reveal animation (currencyCode alone would look frozen),
+  // while FX/earnings refreshes within one scope keep the key stable and stay put.
   const [kpiChartReadyPaced, setKpiChartReadyPaced] = useState(false);
   const [revealedPieScope, setRevealedPieScope] = useState("");
-  const pieScopeId = currencyCode || "pie";
+  const pieScopeId = scopeKey || currencyCode || "pie";
   useEffect(() => {
     // Scope changed → re-arm the reveal hold for the new scope.
     if (revealedPieScope !== "" && revealedPieScope !== pieScopeId) {
