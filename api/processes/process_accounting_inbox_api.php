@@ -482,13 +482,28 @@ function bmpIssueFlagIsLocking(?string $normalizedFlag): bool
 /**
  * Feature 2：纯 Active（无 issue_flag）且 day_end 旁开关 OFF 时，合同/day_end 到期后不再停止出账。
  * 该开关仅对 1st_of_every_month 可编辑，其余 frequency 恒为 OFF（前端表单已保证），因此本判断天然对所有 frequency 生效。
+ * 建档时合同已过期（旧记录事后补录，纯记录用途）：不适用本 Feature，维持「到期即停」旧行为，
+ * 避免把只作记录、从未打算出账的旧合同也拉进持续出账。
  */
-function bmpRowUnlimitedWindow(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row): bool
+function bmpRowUnlimitedWindow(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row, string $today): bool
 {
     if (bmpIssueFlagIsLocking($normalizedFlag)) {
         return false;
     }
-    return !inboxDayEndTailSwitchOn($hasDayEndMonthlyCapCol, $row);
+    if (inboxDayEndTailSwitchOn($hasDayEndMonthlyCapCol, $row)) {
+        return false;
+    }
+    $dayStart = $row['day_start'] ?? null;
+    $frequency = $row['day_start_frequency'] ?? '1st_of_every_month';
+    $contractEndYmd = bmpRecurringBillingWindowEndYmd($dayStart, $row['contract'] ?? null, $row['day_end'] ?? null, $frequency);
+    if ($contractEndYmd !== null) {
+        $parsedDayStartYmd = $dayStart !== null ? inboxBankProcessDateFieldToYmd($dayStart) : null;
+        $createdYmd = inboxEffectiveCreatedYmdForProcess($row, $today, $parsedDayStartYmd);
+        if ($createdYmd > $contractEndYmd) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
@@ -2452,7 +2467,7 @@ try {
     foreach ($rows as $i => $row) {
         $normalizedFlag = normalizeBankIssueFlagValueForInbox($row['issue_flag'] ?? null);
         bmpApplyIssueFlagBillingLock($pdo, $row, $company_id, $today, $hasIssueFlagLockCol);
-        $row['__unlimited_window'] = bmpRowUnlimitedWindow($normalizedFlag, $hasDayEndMonthlyCapCol, $row);
+        $row['__unlimited_window'] = bmpRowUnlimitedWindow($normalizedFlag, $hasDayEndMonthlyCapCol, $row, $today);
         $rows[$i] = $row;
     }
     $needToday = [];

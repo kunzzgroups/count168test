@@ -435,13 +435,25 @@ function bmpIssueFlagIsLockingForTxn(?string $normalizedFlag): bool
     return in_array($normalizedFlag, ['official', 'e_invoice', 'block'], true);
 }
 
-/** 与 process_accounting_inbox_api::bmpRowUnlimitedWindow 一致（Feature 2） */
-function bmpRowUnlimitedWindowForTxn(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row): bool
+/**
+ * 与 process_accounting_inbox_api::bmpRowUnlimitedWindow 一致（Feature 2）。
+ * 建档时合同已过期（旧记录事后补录，纯记录用途）：不适用本 Feature，维持「到期即停」旧行为。
+ */
+function bmpRowUnlimitedWindowForTxn(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row, string $createdYmd): bool
 {
     if (bmpIssueFlagIsLockingForTxn($normalizedFlag)) {
         return false;
     }
-    return !txnDayEndMonthlyCapOn($hasDayEndMonthlyCapCol, $row);
+    if (txnDayEndMonthlyCapOn($hasDayEndMonthlyCapCol, $row)) {
+        return false;
+    }
+    $dayStart = $row['day_start'] ?? null;
+    $frequency = $row['day_start_frequency'] ?? '1st_of_every_month';
+    $contractEndYmd = bmpRecurringBillingWindowEndYmdForTxn($dayStart, $row['contract'] ?? null, $row['day_end'] ?? null, $frequency);
+    if ($contractEndYmd !== null && $createdYmd > $contractEndYmd) {
+        return false;
+    }
+    return true;
 }
 
 /** 与 process_accounting_inbox_api::bmpRecurringBillingWindowEndYmd 一致 */
@@ -752,7 +764,7 @@ function inferOpenMonthlyBillingMonthYn(PDO $pdo, int $companyId, array $r, stri
     $resendSinglePeriod = !empty($r['accounting_resend_single_period_from_schedule']);
     $hasDayEndMonthlyCapColForRow = array_key_exists('day_end_monthly_cap_enabled', $r);
     $normalizedFlagForRow = normalizeBankIssueFlagValueForTxn($r['issue_flag'] ?? null);
-    $unlimitedWindow = bmpRowUnlimitedWindowForTxn($normalizedFlagForRow, $hasDayEndMonthlyCapColForRow, $r);
+    $unlimitedWindow = bmpRowUnlimitedWindowForTxn($normalizedFlagForRow, $hasDayEndMonthlyCapColForRow, $r, $createdYmd);
 
     if ($frequency === '1st_of_every_month') {
         $resendRelax = !empty($r['accounting_resend_relax_created_floor']);
@@ -1473,7 +1485,7 @@ try {
             // 尾段概念不再适用，防止与继续出的整月账重复。仅两种会被 unlimitedWindow 影响的 frequency 生效。
             if (in_array($frequency, ['1st_of_every_month', 'monthly'], true)) {
                 $normalizedFlagTail = normalizeBankIssueFlagValueForTxn($p['issue_flag'] ?? null);
-                if (bmpRowUnlimitedWindowForTxn($normalizedFlagTail, $has_day_end_tail_switch_col, $p)) {
+                if (bmpRowUnlimitedWindowForTxn($normalizedFlagTail, $has_day_end_tail_switch_col, $p, $createdYmd)) {
                     continue;
                 }
             }
