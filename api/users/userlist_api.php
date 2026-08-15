@@ -2418,7 +2418,7 @@ try {
             // 获取原有的 login_id 并验证用户是否存在
             // 注意：用户可能属于多个公司，所以不限制在当前公司
             $stmt = $pdo->prepare("
-                SELECT u.login_id, u.role
+                SELECT u.login_id, u.role, u.id
                 FROM user u
                 WHERE u.id = ?
             ");
@@ -2460,6 +2460,17 @@ try {
                 if (!$belongsToCurrentCompany) {
                     sendResponse(false, 'User not found or access denied');
                 }
+            }
+
+            // 角色层级校验：只有严格上级或本人可以编辑（含改密码）。
+            // owner 影子记录走上面的 isOwnerShadow 分支（仅 owner 本人），此处只覆盖 user 表记录。
+            $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
+            $targetUserId = (int) $input['id'];
+            $isSelfUpdate = $currentUserId > 0 && $targetUserId === $currentUserId;
+            $currentRoleLevel = userlistRoleLevel((string) $current_user_role);
+            $targetRoleLevel = userlistRoleLevel((string) ($originalUser['role'] ?? ''));
+            if (!$isSelfUpdate && $targetRoleLevel <= $currentRoleLevel) {
+                sendResponse(false, '无权限修改同级或上级账号');
             }
             
             // 如果没有提交 login_id，使用原有的

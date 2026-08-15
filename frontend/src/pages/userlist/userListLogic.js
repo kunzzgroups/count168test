@@ -251,8 +251,12 @@ export function computeRowCapabilities(row, currentUserId, currentUserRole) {
     canEditDelete = false;
     canDelete = false;
   } else if (isSameLevel) {
+    // 同级不可互改（仅本人可编辑自己）：与后端 userlist_api 层级校验一致
+    canEditDelete = false;
     canDelete = false;
   } else if (isHigherLevel) {
+    // 不可编辑上级（含改密码）：与后端 userlist_api 层级校验一致
+    canEditDelete = false;
     canDelete = false;
   }
 

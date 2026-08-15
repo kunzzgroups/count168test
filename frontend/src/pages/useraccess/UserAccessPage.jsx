@@ -212,20 +212,7 @@ export default function UserAccessPage() {
   }
 
   function handleRequestUpdate() {
-    if (sourceType === "template" && !templateUserId) {
-      setNotice("Please select a template user");
-      return;
-    }
-    if (!selectedUserIds.size) {
-      setNotice("Please select at least one affected user");
-      return;
-    }
-    const sourceDesc =
-      sourceType === "template" && templateUser
-        ? `template user "${templateUser.name || templateUser.login_id}"`
-        : `manual selection (${effectivePermissions.length} permissions)`;
-    setConfirmMessage(`Are you sure you want to copy permissions from ${sourceDesc} to ${selectedUserIds.size} selected user(s)?`);
-    setConfirmOpen(true);
+    setNotice("此页面已停用：Account/Process 权限请在 User List 的编辑弹窗中设置");
   }
 
   function selectAllVisibleAccounts() {
@@ -256,6 +243,19 @@ export default function UserAccessPage() {
     <div style={{ marginLeft: 260, padding: 16 }}>
       <div style={{ marginBottom: 12, display: "flex", gap: 8 }}>
         <button onClick={() => navigate(spaPath("userlist"))}>Back</button>
+      </div>
+
+      <div style={{ marginBottom: 16, border: "1px solid #d9a400", background: "#fff8e1", borderRadius: 8, padding: "12px 16px" }}>
+        <strong style={{ fontSize: 15 }}>Account / Process 权限管理已迁移至 User List</strong>
+        <div style={{ marginTop: 4, color: "#555", fontSize: 13 }}>
+          此页面已停用。请在 <strong>User List</strong> 中打开用户的编辑弹窗，在 Account Permissions / Process Permissions 中设置显示权限（仅可操作严格下级）。
+          <button
+            style={{ marginLeft: 10, fontSize: 13, padding: "3px 10px" }}
+            onClick={() => navigate(spaPath("userlist"))}
+          >
+            前往 User List
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 16 }}>

@@ -143,6 +143,8 @@ try {
 
     switch ($action) {
         case 'copy_permissions':
+            sendResponse(false, '权限管理已迁移至 User List，请在用户列表的编辑弹窗中设置 Account/Process 权限');
+            // 保留原逻辑作参考（不再可达）
             if (!isset($input['affected_user_ids']) || !isset($input['permissions']) || !isset($input['source_type'])) {
                 sendResponse(false, 'Missing required parameters', null);
             }
@@ -255,6 +257,7 @@ try {
             break;
 
         case 'get_user_permissions':
+            sendResponse(false, '权限管理已迁移至 User List，请在用户列表的编辑弹窗中设置 Account/Process 权限');
             if (!isset($input['user_id']) || !is_numeric($input['user_id']) || $input['user_id'] <= 0) {
                 sendResponse(false, $input['user_id'] ? 'Invalid user ID' : 'User ID is required', null);
             }
@@ -267,6 +270,7 @@ try {
             break;
 
         case 'get_all_users':
+            sendResponse(false, '权限管理已迁移至 User List，请在用户列表的编辑弹窗中设置 Account/Process 权限');
             $users = dbGetAllUsersByCompany($pdo, $current_company_id);
             foreach ($users as &$u) {
                 $u['permissions'] = $u['permissions'] ? (json_decode($u['permissions'], true) ?? []) : [];
