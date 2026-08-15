@@ -54,9 +54,12 @@ export function readCurrencyDisplayOrder(orderKey) {
 
 /**
  * Saved pill order for this company / group ledger key.
- * localStorage wins when present (last drag on this browser); otherwise use API (other devices).
+ * Priority: user-global order (any page drag) → localStorage for this scope → API (other devices).
+ * The user-global order is the cross-page sync carrier: wherever the user drags, every page follows.
  */
 export function resolveSavedCurrencyOrder(orderKey, apiOrder) {
+  const userGlobal = readUserCurrencyDisplayOrder();
+  if (userGlobal?.length) return userGlobal;
   const fromLs = readCurrencyDisplayOrder(orderKey);
   if (fromLs?.length) return fromLs;
   const fromApi = Array.isArray(apiOrder)
@@ -100,46 +103,11 @@ export function readUserCurrencyDisplayOrder() {
   }
 }
 
-export const PAYMENT_MAINTENANCE_CURRENCY_ORDER_LS_PREFIX =
-  "eazycount:payment_maintenance_currency_order:";
-
-/** Payment Maintenance's own drag order (per company/group) — never written to Dashboard's keys. */
-export function persistPaymentMaintenanceCurrencyOrder(orderKey, order) {
-  const key = currencyOrderStorageSuffix(orderKey);
-  if (!key || !Array.isArray(order) || !order.length) return;
-  try {
-    localStorage.setItem(
-      `${PAYMENT_MAINTENANCE_CURRENCY_ORDER_LS_PREFIX}${key}`,
-      JSON.stringify(order.map((c) => String(c).trim().toUpperCase()).filter(Boolean)),
-    );
-  } catch {
-    /* ignore quota / private mode */
-  }
-}
-
-export function readPaymentMaintenanceCurrencyOrder(orderKey) {
-  const key = currencyOrderStorageSuffix(orderKey);
-  if (!key) return null;
-  try {
-    const raw = localStorage.getItem(`${PAYMENT_MAINTENANCE_CURRENCY_ORDER_LS_PREFIX}${key}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.map((c) => String(c).trim().toUpperCase()).filter(Boolean)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Payment Maintenance pill order: page-local drag override (per company/group) wins when present;
- * otherwise falls back to the shared Dashboard order (global user order, then per-company/group),
- * so the two stay in sync until the user drags inside Payment Maintenance for this scope.
+ * Payment Maintenance pill order: follows the shared cross-page order so drags on any
+ * page stay in sync — user-global order wins, then this scope's localStorage order.
  */
 export function resolvePaymentMaintenanceCurrencyOrder(orderKey) {
-  const local = readPaymentMaintenanceCurrencyOrder(orderKey);
-  if (local?.length) return local;
   const userGlobal = readUserCurrencyDisplayOrder();
   if (userGlobal?.length) return userGlobal;
   return readCurrencyDisplayOrder(orderKey);

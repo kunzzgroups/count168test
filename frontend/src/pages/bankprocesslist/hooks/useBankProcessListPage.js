@@ -34,6 +34,7 @@ import { isCapitalLettersOnly, sanitizeCapitalLettersOnly } from "../../../utils
 import {
   mergeCurrencyCodesWithSavedOrder,
   persistCurrencyDisplayOrder,
+  persistUserCurrencyDisplayOrder,
   resolveSavedCurrencyOrder,
 } from "../../../utils/company/currencyDisplayOrder.js";
 import { saveUserCurrencyOrder, getUserCurrencyOrder } from "../../transaction/lib/transactionApi.js";
@@ -2449,6 +2450,8 @@ export function useBankProcessListPage() {
       const [moved] = next.splice(fromI, 1);
       next.splice(toI, 0, moved);
       setCurrencyPillDisplayOrder(next);
+      // Cross-page sync: keep the user-global order in step so every page follows this drag.
+      persistUserCurrencyDisplayOrder(next);
       const cid = Number(companyId);
       if (Number.isFinite(cid) && cid > 0) {
         persistCurrencyDisplayOrder(cid, next);

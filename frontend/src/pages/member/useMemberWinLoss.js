@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildApiUrl } from "../../utils/core/apiUrl.js";
+import {
+  persistUserCurrencyDisplayOrder,
+  readUserCurrencyDisplayOrder,
+} from "../../utils/company/currencyDisplayOrder.js";
 import { getMemberText, translateMemberApiMessage } from "../../translateFile/pages/memberTranslate.js";
 import {
   MINI_GRID_SHELL_CCY,
@@ -106,6 +110,12 @@ export function useMemberWinLoss({ showNotification, lang }) {
   linkedAccountCurrenciesMapRef.current = linkedAccountCurrenciesMap;
 
   const loadCurrencyOrder = useCallback(async () => {
+    // Cross-page sync: the user-global order (any page drag) wins on this browser.
+    const userGlobal = readUserCurrencyDisplayOrder();
+    if (userGlobal?.length) {
+      setCurrencyOrder(userGlobal);
+      return;
+    }
     try {
       const params = new URLSearchParams(groupId ? { view_group: groupId } : {});
       const qs = params.toString();
@@ -912,6 +922,8 @@ export function useMemberWinLoss({ showNotification, lang }) {
 
   const persistCurrencyOrder = useCallback(
     async (nextOrder) => {
+      // Cross-page sync: write the user-global order too, so every page follows this drag.
+      persistUserCurrencyDisplayOrder(nextOrder);
       try {
         const res = await fetch(buildApiUrl("api/transactions/user_currency_order_api.php"), {
           method: "POST",

@@ -82,6 +82,7 @@ function syncCaptureDateDom(dateFromDmy, dateToDmy) {
 }
 import {
   persistCurrencyDisplayOrder,
+  persistUserCurrencyDisplayOrder,
   resolveSavedCurrencyOrder,
 } from "../../../utils/company/currencyDisplayOrder.js";
 import { useCrossPageCurrencySync } from "../../../utils/company/useCrossPageCurrencySync.js";
@@ -477,6 +478,8 @@ export function useTransactionSearch({
 
       setCurrencyRowsOrdered(list);
       const codes = list.map((x) => String(x.code || x.currency || "").trim().toUpperCase()).filter(Boolean);
+      // Cross-page sync: keep the user-global order in step so every page follows this drag.
+      persistUserCurrencyDisplayOrder(codes);
       if (orderCacheKey != null) {
         persistCurrencyDisplayOrder(orderCacheKey, codes);
       }
