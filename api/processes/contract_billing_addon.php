@@ -86,8 +86,9 @@ function billingCalendarMonthDueYmd(int $year, int $month, int $dueDay): string
 
 /**
  * Frequency=monthly（先付 / prepaid）：应付日当天付连续 1 个月服务。
- * 任意 due（不论首期还是链式后续期）的区间一律为 [due, due+1月-1日]（5/22→5/22–6/21；6/1→6/1–6/30）。
- * 与 $contractStartYmd 无关：一旦拿到真实 due 日期，该期区间就是从这天起满一个自然月，不需要按 day-of-month 特判。
+ * 首期（due=day_start）：[due, due+1月-1日]（5/22→5/22–6/21）。
+ * 链式后续期（due>首段）：[due, due+1月]（6/21→6/21–7/21）；下一期应付 = 上期末日。
+ * day_start 为每月 1 号时，后续期末固定取下一自然月月末，避免从 30 日起链式后一直固定为 30 日。
  *
  * @return array{0:string,1:string}
  */
@@ -95,9 +96,20 @@ function billingMonthlyChainedInclusiveRangeFromDue(string $dueYmd, string $cont
 {
     try {
         $due = new DateTimeImmutable($dueYmd);
-        $periodEnd = $due->modify('+1 month')->modify('-1 day')->format('Y-m-d');
+        if ($dueYmd === $contractStartYmd) {
+            return [$dueYmd, $due->modify('+1 month')->modify('-1 day')->format('Y-m-d')];
+        }
 
-        return [$dueYmd, $periodEnd];
+        $contractStart = new DateTimeImmutable($contractStartYmd);
+        if ((int) $contractStart->format('j') === 1) {
+            $nextMonthEnd = $due
+                ->modify('first day of next month')
+                ->modify('last day of this month')
+                ->format('Y-m-d');
+            return [$dueYmd, $nextMonthEnd];
+        }
+
+        return [$dueYmd, $due->modify('+1 month')->format('Y-m-d')];
     } catch (Throwable $e) {
         return [$dueYmd, $dueYmd];
     }
@@ -112,7 +124,7 @@ function billingMonthlyAnniversaryInclusiveRangeFromDue(string $dueYmd, string $
     return billingMonthlyChainedInclusiveRangeFromDue($dueYmd, $contractStartYmd);
 }
 
-/** 链式 monthly：本期末日（用于 proration 区间展示，非下一期应付日——两者相差 1 天）。 */
+/** 链式 monthly：本期末日 = 下一期应付日。 */
 function billingMonthlyChainedPeriodEndYmd(string $dueYmd, string $contractStartYmd): ?string
 {
     [, $end] = billingMonthlyChainedInclusiveRangeFromDue($dueYmd, $contractStartYmd);
@@ -120,19 +132,9 @@ function billingMonthlyChainedPeriodEndYmd(string $dueYmd, string $contractStart
     return $end;
 }
 
-/**
- * 下一期应付日 = 本期应付日 + 1 个月（对日锚点，不经过「本期末日」中转）。
- * 之前误用 billingMonthlyChainedPeriodEndYmd（本期末日 = due+1月-1日）当作下一期应付日，
- * 会导致链条从第二期起固定偏移到月末（day_start=1 号时更被 -1 天特判进一步推成永远命中不了「今天」，
- * 表现为 Accounting Due 整月都不出账，直到月底最后一天）。
- */
 function billingMonthlyChainedNextDueYmd(string $currentDueYmd, string $contractStartYmd): ?string
 {
-    try {
-        return (new DateTimeImmutable($currentDueYmd))->modify('+1 month')->format('Y-m-d');
-    } catch (Throwable $e) {
-        return null;
-    }
+    return billingMonthlyChainedPeriodEndYmd($currentDueYmd, $contractStartYmd);
 }
 
 /**
@@ -181,6 +183,30 @@ function billingMonthlyFirstContractDueAfterPartialFirst(string $dayStartYmd): ?
         return billingMonthlyChainedPeriodEndYmd($dayStartYmd, $dayStartYmd);
     } catch (Throwable $e) {
         return null;
+    }
+}
+
+/**
+ * 该应付日实际代表哪个自然月的账期（Y-n）。
+ * day_start 为每月 1 号时，第 2 期起应付日会提前 1 天落到上一自然月最后一天（如 8 月这期的应付日是 7/31）——
+ * 这是设计如此（提前一天出账），但它「实际代表」的仍是下一个自然月（7/31 代表 8 月），不是它自己表面所在的自然月（7 月）。
+ * 不这样换算的话，「今天所在月 vs 应付日所在月」的比对永远对不上，这笔账单会一直不出现，直到应付日本身也走到月底那天。
+ * day_start 非 1 号（或本身就是未偏移的首期）时不受影响，直接用应付日自己的自然月。
+ */
+function billingMonthlyChainedDueRepresentedYm(string $dueYmd, string $contractStartYmd): string
+{
+    try {
+        $due = new DateTimeImmutable($dueYmd);
+        if ($dueYmd !== $contractStartYmd) {
+            $contractStart = new DateTimeImmutable($contractStartYmd);
+            if ((int) $contractStart->format('j') === 1) {
+                return $due->modify('+1 day')->format('Y-n');
+            }
+        }
+
+        return $due->format('Y-n');
+    } catch (Throwable $e) {
+        return '';
     }
 }
 
@@ -236,7 +262,7 @@ function billingCollectMonthlyChainedDueAnchors(
             break;
         }
 
-        $dueYm = $dueDt->format('Y-n');
+        $dueYm = billingMonthlyChainedDueRepresentedYm($due, $startDate);
         $dueMonthFirst = $dueDt->modify('first day of this month')->format('Y-m-d');
 
         if ($onlyAnchorYm !== null && $dueYm !== $onlyAnchorYm) {
@@ -288,6 +314,10 @@ function billingCollectMonthlyChainedDueAnchors(
 
         $y = (int) $dueDt->format('Y');
         $mo = (int) $dueDt->format('n');
+        if (preg_match('/^(\d{4})-(\d{1,2})$/', $dueYm, $mYm)) {
+            $y = (int) $mYm[1];
+            $mo = (int) $mYm[2];
+        }
 
         if (($today >= $due || $resendRelax) && $shouldCollect($due, $y, $mo, $dueYm)) {
             $anchors[] = $due;
