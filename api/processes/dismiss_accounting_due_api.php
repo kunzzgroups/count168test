@@ -244,11 +244,13 @@ try {
             'billing_month' => isset($billingMonths[$i]) ? trim((string) $billingMonths[$i]) : '',
         ];
     }
+    // 与 process_post_to_transaction_api 一致：monthly / resend_monthly_reopen 按 billing_month 区分多期，
+    // 其它 period_type（本身单例）仍按 process_id + period_type 去重。
     $seen = [];
     $pairs = array_values(array_filter($pairs, function ($p) use (&$seen) {
         $bm = trim((string) ($p['billing_month'] ?? ''));
         $pt = (string) ($p['period_type'] ?? '');
-        $key = $p['id'] . '_' . $pt . '_' . ((($pt === 'weekly' || $pt === 'daily' || $pt === 'daily_consolidated') && $bm !== '') ? $bm : '');
+        $key = $p['id'] . '_' . $pt . '_' . ((($pt === 'monthly' || $pt === 'resend_monthly_reopen' || $pt === 'weekly' || $pt === 'daily' || $pt === 'daily_consolidated') && $bm !== '') ? $bm : '');
         if (isset($seen[$key])) {
             return false;
         }
