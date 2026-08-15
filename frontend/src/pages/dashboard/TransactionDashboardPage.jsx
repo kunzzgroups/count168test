@@ -295,6 +295,12 @@ export default function TransactionDashboardPage() {
                       exchangeRates={page.exchangeRates}
                       exchangeRatesLoading={page.exchangeRatesLoading}
                       exchangeRateScopeKey={page.exchangeRateScopeKey}
+                      // Painted-scope key (company|dates|currency|group) — used by the
+                      // Currency card's reveal animation to re-arm on real scope changes
+                      // (company/date/group switch) while staying visible through same-scope
+                      // FX/earnings refreshes. Same value as DashboardTrendChart's
+                      // chartScopeKey so pie and trend reveal in lockstep.
+                      scopeKey={page.displayScopeKey || page.dashboardScopeKey}
                       showSummaryPanelTabs={page.showSummaryPanelTabs}
                       showEarningPanelTab={page.showEarningPanelTab}
                       showNetProfitForTab={page.showNetProfitForTab}
