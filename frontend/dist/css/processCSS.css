@@ -1265,7 +1265,11 @@ body.process-page.process-page--bank.process-page--bank-show-all .bank-process-l
     --bank-list-pill-height: 20px;
     --bank-list-header-row-height: clamp(40px, 2.8vw, 48px);
     --bank-list-cell-line-height: 1.1;
-    --bank-virtual-table-min-width: 1440px;
+    /* 1440px 原是按约 1699px 窗口宽度换算出的可用宽度估的，余量很小；浏览器缩放到 90%/100% 时
+       同一物理窗口换算出的可用宽度会缩水，经常卡在 1440px 门槛下触发横向滚动。改成 1220px——
+       按最窄一档列宽（≤1439px 断点那组，全部为显式 px 下限）实际求和约 1120px 再加安全余量得出，
+       仍保留“横向滚动兜底”这个设计，只是把门槛从偏保守的估值改成贴近真实最小可读宽度 */
+    --bank-virtual-table-min-width: 1220px;
     /* Country / Insurance / Customer 列设最小像素宽，保证表头英文标题+排序角标完整显示 */
     --bank-virtual-grid-columns:
         minmax(36px, 0.34fr) minmax(0, 0.62fr) minmax(max-content, 0.44fr)
@@ -1302,7 +1306,7 @@ body.process-page.process-page--bank.process-page--bank-show-all .bank-process-l
     min-height: 0;
     height: auto;
     width: 100%;
-    min-width: max(100%, var(--bank-virtual-table-min-width, 1440px));
+    min-width: max(100%, var(--bank-virtual-table-min-width, 1220px));
     max-width: none;
     overflow: visible;
     -webkit-overflow-scrolling: touch;
@@ -9072,7 +9076,7 @@ html:has(body.process-page.process-page--bank:not(.process-page--bank-show-all))
 body.process-page.process-page--bank:not(.process-page--bank-show-all),
 body.dashboard-page.process-page.process-page--bank:not(.process-page--bank-show-all),
 body.ec-auth-shell.process-page.process-page--bank:not(.process-page--bank-show-all) {
-    --bank-virtual-table-min-width: 1440px;
+    --bank-virtual-table-min-width: 1220px;
     overflow-x: hidden !important;
     overflow-y: hidden !important;
     height: 100vh !important;
@@ -9106,7 +9110,7 @@ body.process-page.process-page--bank:not(.process-page--bank-show-all) .bank-pro
 }
 
 body.process-page.process-page--bank:not(.process-page--bank-show-all) .bank-virtual-table {
-    min-width: max(100%, var(--bank-virtual-table-min-width, 1440px)) !important;
+    min-width: max(100%, var(--bank-virtual-table-min-width, 1220px)) !important;
 }
 
 body.process-page.process-page--bank:not(.process-page--bank-show-all) .bank-virtual-scroll-clip,
