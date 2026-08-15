@@ -247,10 +247,17 @@ function filterAccountsByPermissions($pdo, $baseQuery, $params = [], $permission
         $currentUserId = $user['id'];
     }
 
-    // 从 user_company_permissions 表获取当前公司下的账户权限
-    $stmt = $pdo->prepare("SELECT account_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
-    $stmt->execute([$currentUserId, $companyId]);
-    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
+    // 同一请求内(如 dashboard 每 role×公司循环)对同一用户+公司只查一次
+    // user_company_permissions,避免重复往返;权限在单请求内不会变化。
+    static $permissionCache = [];
+    $permCacheKey = (int) $currentUserId . ':' . $companyId;
+    if (!array_key_exists($permCacheKey, $permissionCache)) {
+        $stmt = $pdo->prepare("SELECT account_permissions FROM user_company_permissions WHERE user_id = ? AND company_id = ?");
+        $stmt->execute([$currentUserId, $companyId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $permissionCache[$permCacheKey] = $row ?: null;
+    }
+    $permission = $permissionCache[$permCacheKey];
 
     // 如果 user_company_permissions 表中没有记录，或者 account_permissions 是 null（未设置），默认可以看到所有账户
     if (!$permission || $permission['account_permissions'] === null) {

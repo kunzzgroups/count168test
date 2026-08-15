@@ -5218,7 +5218,26 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       const tryGroupAllBootstrap = async () => {
         if (!ids.length || ids.length > 40) return null;
         if (ids.length >= 2) {
-          return null;
+          // Cold first paint stays FE-parallel — PHP group_all foreach is serial
+          // (wall ≈ Σ companies) and was the main Company All first-paint stall.
+          // Once every company's primary scope is warm (session cache populated =
+          // server dash_main_v1 APCu has answered it recently), one group_all batch
+          // answers ALL companies in a single HTTP instead of N round-trips, and each
+          // in-process capture hits APCu — the "All Company is slow on repeat views"
+          // path. Cold = parallel; warm = single batch.
+          const curKey = cur ? String(cur).trim().toUpperCase() : "";
+          const allWarm = ids.every((cid) => {
+            const key = buildDashboardCacheKey({
+              companyId: cid,
+              dateFrom: rangeFrom,
+              dateTo: rangeTo,
+              currencyCode: curKey,
+              selectedGroup: viewGroupHint,
+              groupAllMode: false,
+            });
+            return getDashboardCache(key)?.current != null;
+          });
+          if (!allWarm) return null;
         }
         // Heterogeneous view_group (Groups All) — keep parallel per-company fetches.
         const sameViewGroup = accessible.every((c) => {

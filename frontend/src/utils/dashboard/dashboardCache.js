@@ -3,6 +3,11 @@ const MAX_ENTRIES = 512;
 /** Per-company dashboard_api payload dedupe (session-sized LRU). */
 const MAX_PAYLOAD_ENTRIES = 1024;
 
+/** sessionStorage persistence (same-tab refresh / remount fast path). */
+const SESSION_STORAGE_PREFIX = "ec:dash:v1:";
+/** Stale after 2 minutes — backend APCu (60s) + realtime invalidate keep it fresh enough. */
+const SESSION_CACHE_TTL_MS = 2 * 60 * 1000;
+
 let sessionOwnerKey = "";
 let sessionBootstrapDone = false;
 let sessionWarmDone = false;
@@ -13,6 +18,61 @@ const store = new Map();
 /** In-memory dedupe for dashboard_api.php payloads (same query = one network call). */
 /** @type {Map<string, unknown>} */
 const payloadStore = new Map();
+
+function sessionStorageKey(ownerKey) {
+  return `${SESSION_STORAGE_PREFIX}${String(ownerKey || "").trim()}`;
+}
+
+/** Persist the scope cache to sessionStorage (best-effort; quota/JSON failures are silent). */
+function persistStore() {
+  if (typeof sessionStorage === "undefined" || !sessionOwnerKey) return;
+  try {
+    const payload = { ts: Date.now(), entries: Array.from(store.entries()) };
+    sessionStorage.setItem(sessionStorageKey(sessionOwnerKey), JSON.stringify(payload));
+  } catch {
+    /* quota / serialization — keep the in-memory cache working */
+  }
+}
+
+/**
+ * Restore a previously persisted scope cache for this login. Applies the TTL and
+ * silently ignores corrupt / oversized payloads. Returns true when entries loaded.
+ */
+function loadStoreFromSession(ownerKey) {
+  if (typeof sessionStorage === "undefined") return false;
+  let raw;
+  try {
+    raw = sessionStorage.getItem(sessionStorageKey(ownerKey));
+  } catch {
+    return false;
+  }
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.entries) || !parsed.ts) return false;
+    if (Date.now() - Number(parsed.ts) > SESSION_CACHE_TTL_MS) {
+      sessionStorage.removeItem(sessionStorageKey(ownerKey));
+      return false;
+    }
+    let loaded = 0;
+    for (const [k, v] of parsed.entries) {
+      if (!k || !v || typeof v !== "object") continue;
+      store.set(k, v);
+      loaded += 1;
+      if (store.size > MAX_ENTRIES) {
+        store.delete(store.keys().next().value);
+      }
+    }
+    return loaded > 0;
+  } catch {
+    try {
+      sessionStorage.removeItem(sessionStorageKey(ownerKey));
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+}
 
 export function buildDashboardCacheKey({
   companyId,
@@ -51,6 +111,10 @@ export function bindDashboardSessionCache(ownerKey) {
     sessionBootstrapDone = false;
   }
   sessionOwnerKey = key;
+  // Restore this login's persisted scope cache (same-tab refresh fast path).
+  if (store.size === 0) {
+    loadStoreFromSession(key);
+  }
 }
 
 export function isDashboardSessionBootstrapped(ownerKey) {
@@ -76,6 +140,13 @@ export function markDashboardSessionWarmDone() {
 export function resetDashboardSessionCaches() {
   store.clear();
   payloadStore.clear();
+  if (typeof sessionStorage !== "undefined" && sessionOwnerKey) {
+    try {
+      sessionStorage.removeItem(sessionStorageKey(sessionOwnerKey));
+    } catch {
+      /* ignore */
+    }
+  }
   sessionOwnerKey = "";
   sessionBootstrapDone = false;
   sessionWarmDone = false;
@@ -92,6 +163,7 @@ export function setDashboardCache(key, entry) {
     const oldest = store.keys().next().value;
     store.delete(oldest);
   }
+  persistStore();
 }
 
 export function patchDashboardCache(key, patch) {
@@ -267,6 +339,13 @@ export function clearDashboardPayloadCache() {
 
 export function clearDashboardCache() {
   store.clear();
+  if (typeof sessionStorage !== "undefined" && sessionOwnerKey) {
+    try {
+      sessionStorage.removeItem(sessionStorageKey(sessionOwnerKey));
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 /** Bumped when ledger caches are dropped — prefetch must not write after a newer generation. */
@@ -285,4 +364,11 @@ export function invalidateDashboardCachesForLedgerChange() {
   ledgerCacheGeneration += 1;
   store.clear();
   payloadStore.clear();
+  if (typeof sessionStorage !== "undefined" && sessionOwnerKey) {
+    try {
+      sessionStorage.removeItem(sessionStorageKey(sessionOwnerKey));
+    } catch {
+      /* ignore */
+    }
+  }
 }

@@ -3563,6 +3563,69 @@ function dashboard_earnings_cache_set(string $key, array $value): void
     apcu_store($key, $value, DASHBOARD_EARNINGS_CACHE_TTL_SECONDS);
 }
 
+/**
+ * APCu cache for the full dashboard_api.php response (KPI / full / chart and
+ * earnings-only, single- and multi-currency, group-ledger included).
+ *
+ * The earnings cache above only covers the slim earnings_only path; the primary
+ * KPI/full/chart request re-ran the whole role × company × SQL pipeline on every
+ * company/currency/date switch. Multi-currency `currencies=` packs (Company All
+ * pie) and group-ledger requests were equally uncached — each scope switch was a
+ * full recompute even when the same (user, company, range, currency) had just
+ * been answered. This cache answers those from APCu.
+ *
+ * Key includes user + company + view_group/group_id + currency (+ currencies
+ * list) + dates + subsidiary flag + mode flags (kpi_only / earnings_only /
+ * chart_monthly). TTL is short (60s) so permission whitelist changes propagate
+ * quickly; invalidated wholesale with the other dashboard caches on ledger /
+ * ownership writes (see dashboard_subsidiary_capture_cache_clear in
+ * api/includes/realtime.php). No-ops silently when apcu is absent.
+ */
+const DASHBOARD_MAIN_CACHE_PREFIX = 'dash_main_v1:';
+const DASHBOARD_MAIN_CACHE_TTL_SECONDS = 60;
+
+function dashboard_main_cache_key(
+    int $userId,
+    array $params
+): string {
+    $signature = [
+        'u' => $userId,
+        'c' => $params['company_id'] ?? '',
+        'vg' => $params['view_group'] ?? '',
+        'gid' => $params['group_id'] ?? '',
+        'cur' => $params['currency'] ?? '',
+        'curs' => $params['currencies'] ?? '',
+        'df' => $params['date_from'] ?? '',
+        'dt' => $params['date_to'] ?? '',
+        'sub' => $params['subsidiary_accounts_only'] ?? '',
+        'kpi' => $params['kpi_only'] ?? '',
+        'eo' => $params['earnings_only'] ?? '',
+        'cm' => $params['chart_monthly'] ?? '',
+    ];
+    ksort($signature);
+
+    return DASHBOARD_MAIN_CACHE_PREFIX . md5((string) json_encode($signature));
+}
+
+function dashboard_main_cache_get(string $key): ?array
+{
+    if (!function_exists('apcu_fetch')) {
+        return null;
+    }
+    $success = false;
+    $value = apcu_fetch($key, $success);
+
+    return ($success && is_array($value)) ? $value : null;
+}
+
+function dashboard_main_cache_set(string $key, array $value): void
+{
+    if (!function_exists('apcu_store')) {
+        return;
+    }
+    apcu_store($key, $value, DASHBOARD_MAIN_CACHE_TTL_SECONDS);
+}
+
 function dashboard_api_main(): void
 {
     global $pdo;
@@ -3708,6 +3771,33 @@ try {
         }
     }
 
+    // Full-response cache (dash_main_v1:) — KPI / full / chart / earnings-only,
+    // single-currency, multi-currency `currencies=` packs and group-ledger packs.
+    // Checked before any heavy SQL so every scope switch that was just answered
+    // (same user + company/group + range + currency) returns from APCu. The TTL is
+    // short (60s) so permission-whitelist changes still propagate quickly.
+    $mainCacheKey = null;
+    if (isset($_SESSION['user_id'])) {
+        $mainCacheKey = dashboard_main_cache_key((int) $_SESSION['user_id'], [
+            'company_id' => $company_id !== null ? (string) $company_id : '',
+            'view_group' => $_GET['view_group'] ?? '',
+            'group_id' => $_GET['group_id'] ?? '',
+            'currency' => $_GET['currency'] ?? '',
+            'currencies' => $_GET['currencies'] ?? '',
+            'date_from' => (string) ($_GET['date_from'] ?? ''),
+            'date_to' => (string) ($_GET['date_to'] ?? ''),
+            'subsidiary_accounts_only' => $_GET['subsidiary_accounts_only'] ?? '',
+            'kpi_only' => $kpiOnly ? '1' : '',
+            'earnings_only' => $earningsOnly ? '1' : '',
+            'chart_monthly' => $chartMonthly ? '1' : '',
+        ]);
+        $mainCacheHit = dashboard_main_cache_get($mainCacheKey);
+        if ($mainCacheHit !== null) {
+            echo json_encode($mainCacheHit, JSON_UNESCAPED_UNICODE);
+            return;
+        }
+    }
+
     // Multi-currency earnings aggregation (Group/Company All pie):
     // one HTTP request returns every requested currency's earnings for this
     // company, instead of the frontend fanning out N separate round-trips
@@ -3761,6 +3851,9 @@ try {
                 ],
             ],
         ];
+        if ($mainCacheKey !== null) {
+            dashboard_main_cache_set($mainCacheKey, $multiPayload);
+        }
         echo json_encode($multiPayload, JSON_UNESCAPED_UNICODE);
         return;
     }
@@ -3859,7 +3952,7 @@ try {
         $hasGroupAccountOwnership = !empty($viewerGroupShare['has']);
         $subsidiaryCompanyEarningsTotal = (string) ($subsidiaryEarnings['company_earnings_total'] ?? '0');
         $groupKpiProfit = $subsidiaryCompanyEarningsTotal;
-        echo json_encode([
+        $groupLedgerPayload = [
             'success' => true,
             'data' => [
                 'capital' => $groupResult['capital']['total_balance'],
@@ -3899,7 +3992,11 @@ try {
                     'to' => $date_to
                 ]
             ]
-        ], JSON_UNESCAPED_UNICODE);
+        ];
+        if ($mainCacheKey !== null) {
+            dashboard_main_cache_set($mainCacheKey, $groupLedgerPayload);
+        }
+        echo json_encode($groupLedgerPayload, JSON_UNESCAPED_UNICODE);
         return;
     }
 
@@ -4650,6 +4747,9 @@ try {
             ]
         ]
     ];
+    if ($mainCacheKey !== null) {
+        dashboard_main_cache_set($mainCacheKey, $responsePayload);
+    }
     if ($earningsCacheKey !== null) {
         dashboard_earnings_cache_set($earningsCacheKey, $responsePayload);
     }
