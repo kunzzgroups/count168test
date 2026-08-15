@@ -1089,6 +1089,19 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     height: 28px;
 }
 
+/* FX rates still loading: keep the previous painted amount but dim it (no shimmer
+   replacement — swapping the number for a shimmer and back read as flicker on slow
+   connections). The value updates in place when rates land / useConvertedEarnings flips. */
+.dashboard-amount-pending-fx {
+    opacity: 0.45;
+    transition: opacity 0.35s ease;
+}
+
+.dashboard-amount-pending-fx.dashboard-summary-hero-value-anim,
+.dashboard-summary-currency-amount.dashboard-amount-pending-fx {
+    opacity: 0.45;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .dashboard-skel-bar {
         animation: none;

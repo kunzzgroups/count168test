@@ -136,6 +136,8 @@ if (!function_exists('dashboard_subsidiary_capture_cache_clear')) {
      * Clears dashboard_api.php's APCu per-subsidiary capture cache (prefix 'dash_cap_v1:').
      * Called from realtime_publish() below for ledger/ownership writes — every dashboard
      * number derived from transactions or equity % becomes stale the moment either changes.
+     * Also clears the full-response cache (prefix 'dash_main_v1:') so KPI/full/chart
+     * answers do not serve stale figures after a write.
      * Defined here (not in dashboard_api.php) because dashboard_api.php runs top-level
      * request bootstrap on require — it must never be included from another endpoint.
      */
@@ -146,6 +148,29 @@ if (!function_exists('dashboard_subsidiary_capture_cache_clear')) {
         }
         try {
             apcu_delete(new APCUIterator('/^dash_cap_v1:/'));
+            apcu_delete(new APCUIterator('/^dash_main_v1:/'));
+        } catch (\Throwable $e) {
+            // Best-effort — a cache-clear failure must never break the write request.
+        }
+    }
+}
+
+if (!function_exists('dashboard_main_cache_clear')) {
+    /**
+     * Clears dashboard_api.php's full-response APCu cache (prefix 'dash_main_v1:').
+     * Called from realtime_publish() for account / process / user permission writes —
+     * the dashboard's account whitelist (filterAccountsByPermissions) is derived from
+     * user_company_permissions, so any of those changes must not serve a stale
+     * full-response cache. Also invoked from dashboard_subsidiary_capture_cache_clear()
+     * on ledger/ownership writes (numeric staleness).
+     */
+    function dashboard_main_cache_clear(): void
+    {
+        if (!class_exists('APCUIterator') || !function_exists('apcu_delete')) {
+            return;
+        }
+        try {
+            apcu_delete(new APCUIterator('/^dash_main_v1:/'));
         } catch (\Throwable $e) {
             // Best-effort — a cache-clear failure must never break the write request.
         }
@@ -166,9 +191,20 @@ if (!function_exists('realtime_publish')) {
     ): void {
         // Dashboard cache invalidation runs regardless of the realtime broadcast toggle
         // below — unrelated concerns that happen to share this chokepoint.
+        // Numeric dashboard data (transactions / equity) is invalidated on ledger +
+        // ownership writes; account / process / user permission changes also affect
+        // what a viewer may see on the dashboard (filterAccountsByPermissions), so
+        // they invalidate the full-response cache too — never serve a whitelist that
+        // is no longer current.
         $invalidateDomain = strtolower(trim($domain));
         if ($invalidateDomain === 'ledger' || $invalidateDomain === 'ownership') {
             dashboard_subsidiary_capture_cache_clear();
+        } elseif (
+            $invalidateDomain === 'accounts'
+            || $invalidateDomain === 'processes'
+            || $invalidateDomain === 'users'
+        ) {
+            dashboard_main_cache_clear();
         }
 
         $channels = array_values(array_filter(array_map(static function ($c) {

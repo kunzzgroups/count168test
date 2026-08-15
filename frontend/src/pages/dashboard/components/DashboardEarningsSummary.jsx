@@ -151,28 +151,45 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   // Holds `kpiChartReady` back by a fixed minimum beat so the Currency card never
   // reveals in the same tick as KPI/chart, even when its own data was already sitting
   // ready (the atomic-paint fetch now starts almost alongside KPI/chart, so this can
-  // genuinely happen). Snaps back to false immediately when KPI/chart go pending again
-  // — only the reveal itself is paced, same rule as the reveal animation's own timing.
+  // genuinely happen).
+  //
+  // Once the card has revealed for THIS scope, keep it visible: a transient pending
+  // (slow FX / earnings refresh flips `kpiChartReady` off and on) must not hide the
+  // already-painted pie only to bloom it back in — the "flickers after it's already
+  // up" bug. Only a real scope change (currencyCode changes, or first appearance)
+  // re-arms the 450ms reveal hold; same-scope updates stay visible and update in place.
   const [kpiChartReadyPaced, setKpiChartReadyPaced] = useState(false);
+  const [revealedPieScope, setRevealedPieScope] = useState("");
+  const pieScopeId = currencyCode || "pie";
   useEffect(() => {
-    if (!kpiChartReady) {
+    // Scope changed → re-arm the reveal hold for the new scope.
+    if (revealedPieScope !== "" && revealedPieScope !== pieScopeId) {
       setKpiChartReadyPaced(false);
+      setRevealedPieScope("");
       return undefined;
     }
+    // Already revealed for this scope — stay visible through transient pendings.
+    if (kpiChartReady && revealedPieScope === pieScopeId) {
+      setKpiChartReadyPaced(true);
+      return undefined;
+    }
+    if (!kpiChartReady) return undefined; // keep current visibility; pending stays
     const timer = window.setTimeout(() => {
+      setRevealedPieScope(pieScopeId);
       setKpiChartReadyPaced(true);
     }, CURRENCY_CARD_MIN_GAP_AFTER_KPI_MS);
     return () => window.clearTimeout(timer);
-  }, [kpiChartReady]);
+  }, [kpiChartReady, pieScopeId, revealedPieScope]);
 
   const showMultiCurrencyBreakdown = currencies.length > 1;
 
-  // FX still resolving for a multi-currency scope: hold amounts on a shimmer instead of
-  // painting native figures that jump to converted the moment rates land (the
-  // dashboard-currency-lag look). Once rates are usable (useConvertedEarnings flips) or
-  // the request settles, amounts render as before.
+  // FX still resolving for a multi-currency scope: instead of replacing amounts with
+  // a shimmer (which read as a flicker when the rates land a moment later), keep the
+  // previous painted amount and dim it. The amount updates in place when rates become
+  // usable (useConvertedEarnings flips) — no hide-then-show jump.
   const fxAmountPending =
     showMultiCurrencyBreakdown && exchangeRatesLoading && !useConvertedEarnings;
+  const fxAmountDimmed = fxAmountPending ? " dashboard-amount-pending-fx" : "";
 
   // Card-level readiness gate — hide only while the first multi-currency paint is
   // still pending. Do NOT require every currency row to be non-null: after a date
@@ -184,11 +201,15 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
   // `kpiChartReadyPaced` pins this card to a fixed reveal order (never before, never
   // simultaneous with KPI/chart), even when its own data resolves first — otherwise
   // the reveal order/timing flips depending on how many currencies this scope has.
+  // `earningsByCurrencyLoading` is intentionally NOT a hide condition here: a slow
+  // earnings refresh (network) would flip it on and snap the already-revealed card
+  // (pie + list) back to opacity 0, then bloom it in again when the fetch lands —
+  // the visible "pie flickers on slow connections" bug. Once any row has a real
+  // figure, keep showing what we have and update rows in place as batches land.
   const currencyCardReady =
     kpiChartReadyPaced &&
     (showMultiCurrencyBreakdown
-      ? !earningsByCurrencyLoading &&
-        panelCurrencyRows.length > 0 &&
+      ? panelCurrencyRows.length > 0 &&
         panelCurrencyRows.some((row) => row.earnings != null)
       : !summaryEarningsLoading);
 
@@ -278,13 +299,12 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
         {currencyCode ? ` · ${currencyCode}` : ""}
       </span>
       <div className="dashboard-summary-hero-value">
-        {fxAmountPending ? (
-          <span className="dashboard-amount-shimmer" aria-hidden="true" />
-        ) : (
-          <span className="dashboard-animated-value dashboard-summary-hero-value-anim">
-            {formatCurrency(parseFloat(summaryEarningsValue) || 0)}
-          </span>
-        )}
+        <span
+          className={`dashboard-animated-value dashboard-summary-hero-value-anim${fxAmountDimmed}`}
+          aria-busy={fxAmountPending ? "true" : undefined}
+        >
+          {formatCurrency(parseFloat(summaryEarningsValue) || 0)}
+        </span>
       </div>
       {summaryConversionNote && (
         <span className="dashboard-summary-hero-conversion-note">{summaryConversionNote}</span>
@@ -507,13 +527,12 @@ export const DashboardEarningsSummary = memo(function DashboardEarningsSummary({
                     <span className="dashboard-summary-currency-code">{row.code}</span>
                   </div>
                   <div className="dashboard-summary-currency-amount-col">
-                    {fxAmountPending ? (
-                      <span className="dashboard-amount-shimmer" aria-hidden="true" />
-                    ) : (
-                      <span className="dashboard-summary-currency-amount">
-                        {primary != null ? formatCurrency(primary) : "—"}
-                      </span>
-                    )}
+                    <span
+                      className={`dashboard-summary-currency-amount${fxAmountDimmed}`}
+                      aria-busy={fxAmountPending ? "true" : undefined}
+                    >
+                      {primary != null ? formatCurrency(primary) : "—"}
+                    </span>
                   </div>
                   {(earningsBreakdownShowsRate || isCompanyBreakdownView) && (
                     <div className="dashboard-summary-currency-original-col">

@@ -197,20 +197,12 @@ export default function TransactionDashboardPage() {
   const filterGroupAll = freezeFilter ? painted.groupAllMode : page.groupAllMode;
   const filterCompanyId = freezeFilter ? painted.companyId : page.companyId;
 
-  const kpiForDisplay = useMemo(
-    () =>
-      page.scopeDataPending
-        ? {
-            profit: 0,
-            expenses: 0,
-            earnings: 0,
-            netProfit: 0,
-            showEarnings: page.kpi.showEarnings,
-            comparisons: null,
-          }
-        : page.kpi,
-    [page.scopeDataPending, page.kpi]
-  );
+  // Keep the previous painted KPI values while the next scope loads (network) — do
+  // NOT zero them out: zeroing made the cards flash to 0.00 on every slow company /
+  // currency / date switch, then animate back up. dashboardData stays painted during
+  // scopeDataPending (loadDashboard only blanks it when there is nothing at all), so
+  // page.kpi already holds the frozen previous figures — just surface them as-is.
+  const kpiForDisplay = page.kpi;
 
   const kpiChartReady = !(page.loading || page.scopeDataPending);
 
@@ -272,7 +264,12 @@ export default function TransactionDashboardPage() {
                   >
                     <DashboardTrendChart
                       i18n={i18n}
-                      chartRows={page.scopeDataPending ? [] : page.chartRows}
+                      // Keep previous painted chart rows during scope load (network) —
+                      // passing [] blanked the whole trend area to skeleton on every slow
+                      // company/currency/date switch, then re-drew it when data landed
+                      // (visible flash). dashboardData stays painted, so chartRows already
+                      // holds the previous figures; they update in place when new data lands.
+                      chartRows={page.chartRows}
                       chartSeries={page.chartSeries}
                       chartVisible={page.chartVisible}
                       onToggleSeries={page.toggleChartSeries}
