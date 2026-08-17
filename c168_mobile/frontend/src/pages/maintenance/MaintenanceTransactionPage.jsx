@@ -14,7 +14,7 @@ import {
   ymdToDmy,
 } from "../../lib/mobileMaintenanceScope.js";
 import { canAccessTransactionMaintenance } from "../../utils/mobilePermissions.js";
-import { MaintenanceFilterBar, MaintenanceFilterSheet } from "./MaintenanceSheets.jsx";
+import { MaintenanceFilterBar, MaintenanceFilterSheet, MaintenanceSearchBar } from "./MaintenanceSheets.jsx";
 import "./maintenance.css";
 
 const SEARCH_FIELDS = [
@@ -110,12 +110,6 @@ export default function MaintenanceTransactionPage() {
         backTo="/maintenance"
         backAriaLabel={i18n.backToHub}
         title={i18n.txMaintenanceTitle}
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: i18n.searchPlaceholder,
-          clearAriaLabel: i18n.reset,
-        }}
       />
       <MaintenanceFilterBar
         i18n={i18n}
@@ -125,6 +119,12 @@ export default function MaintenanceTransactionPage() {
         selectedGroup={s.selectedGroup}
         selectedCompany={s.selectedCompany}
         onOpen={() => setFilterOpen(true)}
+      />
+      <MaintenanceSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder={i18n.searchPlaceholder}
+        clearAriaLabel={i18n.reset}
       />
     </div>
   );

@@ -22,7 +22,7 @@ import {
 } from "../../lib/mobileMaintenanceScope.js";
 import { getMaintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import { canAccessBankprocessMaintenance } from "../../utils/mobilePermissions.js";
-import { MaintenanceFilterBar, MaintenanceFilterSheet } from "./MaintenanceSheets.jsx";
+import { MaintenanceFilterBar, MaintenanceFilterSheet, MaintenanceSearchBar } from "./MaintenanceSheets.jsx";
 import "./maintenance.css";
 
 export default function MaintenanceBankprocessPage() {
@@ -215,12 +215,6 @@ export default function MaintenanceBankprocessPage() {
         backTo="/maintenance"
         backAriaLabel={i18n.backToHub}
         title={i18n.bpMaintenanceTitle}
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: i18n.bpSearchPlaceholder,
-          clearAriaLabel: i18n.reset,
-        }}
       />
       <MaintenanceFilterBar
         i18n={i18n}
@@ -230,6 +224,12 @@ export default function MaintenanceBankprocessPage() {
         selectedGroup={s.selectedGroup}
         selectedCompany={s.selectedCompany}
         onOpen={() => setFilterOpen(true)}
+      />
+      <MaintenanceSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder={i18n.bpSearchPlaceholder}
+        clearAriaLabel={i18n.reset}
       />
     </div>
   );

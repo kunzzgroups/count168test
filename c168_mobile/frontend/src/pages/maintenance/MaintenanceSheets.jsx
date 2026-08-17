@@ -21,6 +21,28 @@ import {
 } from "../dashboard/FilterSheet.jsx";
 import ScopeBreadcrumb from "../dashboard/ScopeBreadcrumb.jsx";
 
+export function MaintenanceSearchBar({ value, onChange, placeholder, clearAriaLabel }) {
+  return (
+    <label className="m-mt-search">
+      <i className="fas fa-magnifying-glass" aria-hidden="true" />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label={clearAriaLabel || "Clear"}
+        >
+          <i className="fas fa-xmark" aria-hidden="true" />
+        </button>
+      ) : null}
+    </label>
+  );
+}
+
 /**
  * Dashboard/Transaction-style sticky filter bar: one button (date range +
  * scope breadcrumb + Switch) opening the unified maintenance filter sheet.

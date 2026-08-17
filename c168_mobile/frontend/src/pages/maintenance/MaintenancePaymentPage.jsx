@@ -22,7 +22,7 @@ import {
   PAYMENT_MAINTENANCE_TYPES,
 } from "../../translateFile/maintenanceTranslate.js";
 import { canAccessPaymentMaintenance } from "../../utils/mobilePermissions.js";
-import { MaintenanceFilterBar, MaintenanceFilterSheet } from "./MaintenanceSheets.jsx";
+import { MaintenanceFilterBar, MaintenanceFilterSheet, MaintenanceSearchBar } from "./MaintenanceSheets.jsx";
 import "./maintenance.css";
 
 const SEARCH_FIELDS = [
@@ -167,12 +167,6 @@ export default function MaintenancePaymentPage() {
         backTo="/maintenance"
         backAriaLabel={i18n.backToHub}
         title={i18n.payMaintenanceTitle}
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: i18n.searchPlaceholder,
-          clearAriaLabel: i18n.reset,
-        }}
       />
       <MaintenanceFilterBar
         i18n={i18n}
@@ -182,6 +176,12 @@ export default function MaintenancePaymentPage() {
         selectedGroup={s.selectedGroup}
         selectedCompany={s.selectedCompany}
         onOpen={() => setFilterOpen(true)}
+      />
+      <MaintenanceSearchBar
+        value={query}
+        onChange={setQuery}
+        placeholder={i18n.searchPlaceholder}
+        clearAriaLabel={i18n.reset}
       />
     </div>
   );
