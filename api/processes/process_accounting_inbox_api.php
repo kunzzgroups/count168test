@@ -1382,6 +1382,23 @@ function inboxAppendResendOpenAnchorRows(
         if (bmp_hasMonthlyPostedOrSkippedForDueYmd($pdo, $companyId, $processId, $anchorYmd)) {
             continue;
         }
+        // 1st_of_every_month + 非1号真实 day_start：该锚点落在首月（partial first month）区间时，
+        // 已由 Step 1「Partial first month」块负责生成（含 relax/resendSinglePeriod 情形），
+        // 此处不再重复生成，否则同一期会在 Accounting Due 出现两行重复账单。
+        if ($frequency === '1st_of_every_month' && $storedYmd !== null) {
+            $storedTs = strtotime($storedYmd);
+            if ($storedTs !== false && (int) date('j', $storedTs) !== 1) {
+                try {
+                    $storedYm = (new DateTimeImmutable($storedYmd))->format('Y-n');
+                    $anchorYm = (new DateTimeImmutable($anchorYmd))->format('Y-n');
+                    if ($storedYm === $anchorYm) {
+                        continue;
+                    }
+                } catch (Throwable $e) {
+                    // fall through and let normal dedupe/appending logic handle it
+                }
+            }
+        }
         $anchorTs = strtotime($anchorYmd);
         if ($anchorTs === false) {
             continue;
