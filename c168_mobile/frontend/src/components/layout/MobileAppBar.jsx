@@ -3,7 +3,6 @@ import "./mobile-app-bar.css";
 
 export default function MobileAppBar({
   i18n,
-  onOpenSidebar,
   onOpenNotifications,
   onRefresh,
   refreshing = false,
@@ -14,14 +13,7 @@ export default function MobileAppBar({
   return (
     <header className="m-appbar">
       <div className="m-appbar-grid">
-        <button
-          type="button"
-          onClick={onOpenSidebar}
-          className="m-appbar-btn tap-scale"
-          aria-label={i18n?.openMenu || "Open menu"}
-        >
-          <i className="fas fa-bars text-[18px]" aria-hidden="true" />
-        </button>
+        <span className="m-appbar-spacer" aria-hidden="true" />
 
         <div className="m-appbar-center">
           {typeof onRefresh === "function" ? (

@@ -26,6 +26,11 @@
   color: #fff;
 }
 
+.m-appbar-spacer {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
 .m-appbar-btn--notify {
   position: relative;
 }
@@ -109,6 +114,11 @@
   }
 
   .m-appbar-btn {
+    width: 2.375rem;
+    height: 2.375rem;
+  }
+
+  .m-appbar-spacer {
     width: 2.375rem;
     height: 2.375rem;
   }

@@ -57,3 +57,17 @@
   outline: 2px solid rgba(99, 196, 255, 0.85);
   outline-offset: 1px;
 }
+
+.mobile-lang-switch--light {
+  border: 1px solid #d7deea;
+  background: #eef2f7;
+  box-shadow: none;
+}
+
+.mobile-lang-switch--light .mobile-lang-switch__seg {
+  color: #64748b;
+}
+
+.mobile-lang-switch--light .mobile-lang-switch__seg.is-active {
+  color: #fff;
+}

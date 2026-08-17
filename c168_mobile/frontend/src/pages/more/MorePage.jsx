@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import MobileShell from "../../components/layout/MobileShell.jsx";
+import MobileLangSwitch from "../../components/layout/MobileLangSwitch.jsx";
 import { fetchJson } from "../../lib/fetchJson.js";
 import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { MORE_I18N } from "../../translateFile/moreTranslate.js";
@@ -20,6 +21,16 @@ import {
 } from "../../utils/mobilePermissions.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import "./more.css";
+
+function initials(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+}
 
 export default function MorePage() {
   const navigate = useNavigate();
@@ -76,6 +87,9 @@ export default function MorePage() {
 
   const companyCode = String(me?.company_code || me?.company_id || "").toUpperCase();
   const groupId = String(me?.login_group_id || me?.login_identifier || "").toUpperCase();
+  const displayName = me?.nickname || me?.username || me?.name || "—";
+  const role = String(me?.role || me?.user_type || "").toUpperCase();
+  const scopeLabel = [companyCode, groupId].filter(Boolean).join(" · ");
   const mt = maintenanceText(lang);
   const tools = [];
   if (canAccessAdmin(me)) {
@@ -146,6 +160,23 @@ export default function MorePage() {
       onLangChange={setLang}
     >
       <main className="m-more-page">
+        <section className="m-more-profile">
+          <div className="m-more-avatar" aria-hidden="true">
+            {initials(displayName)}
+          </div>
+          <div className="m-more-profile-copy">
+            <strong>{displayName}</strong>
+            <span>{role || "USER"}</span>
+            {scopeLabel ? <em>{scopeLabel}</em> : null}
+          </div>
+          <MobileLangSwitch
+            lang={lang}
+            onChange={setLang}
+            ariaLabel={i18n.language}
+            tone="light"
+          />
+        </section>
+
         <header className="m-more-heading">
           <p>{i18n.moreSubtitle}</p>
           <h1>{i18n.more}</h1>
@@ -179,11 +210,15 @@ export default function MorePage() {
             ))}
           </div>
         ) : (
-          <div className="m-more-state">
-            <i className="fas fa-box-open" aria-hidden="true" />
+          <div className="m-more-state m-more-state--compact">
             <p>{i18n.noTools}</p>
           </div>
         )}
+
+        <button type="button" className="m-more-logout tap-scale" onClick={() => void logout()}>
+          <i className="fas fa-right-from-bracket" aria-hidden="true" />
+          {i18n.logout}
+        </button>
       </main>
     </MobileShell>
   );

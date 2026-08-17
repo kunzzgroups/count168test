@@ -12,7 +12,6 @@ function shouldShowBottomNav(pathname) {
   if (pathname.startsWith("/owner-secondary-password")) return false;
   if (pathname.startsWith("/user-secondary-password")) return false;
   if (pathname.startsWith("/reset-password")) return false;
-  if (pathname.startsWith("/member")) return false;
   if (pathname.startsWith("/transaction/history")) return false;
   return true;
 }

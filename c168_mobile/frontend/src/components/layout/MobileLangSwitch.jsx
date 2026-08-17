@@ -4,12 +4,12 @@ import "./MobileLangSwitch.css";
  * Compact EN / 中 segmented control for dark mobile sidebar.
  * Mirrors login switch density without the light-glass chrome.
  */
-export default function MobileLangSwitch({ lang = "en", onChange, ariaLabel = "Language" }) {
+export default function MobileLangSwitch({ lang = "en", onChange, ariaLabel = "Language", tone = "dark" }) {
   const isZh = lang === "zh";
 
   return (
     <div
-      className="mobile-lang-switch"
+      className={`mobile-lang-switch${tone === "light" ? " mobile-lang-switch--light" : ""}`}
       role="group"
       aria-label={ariaLabel}
       data-lang={isZh ? "zh" : "en"}

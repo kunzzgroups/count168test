@@ -308,7 +308,6 @@ export default function MemberPage() {
       stickyBar={stickyBar}
       lang={lang}
       onLangChange={api.setLang}
-      showBottomNav={false}
       overlayOpen={filterOpen || exportOpen}
       overlay={
         <>

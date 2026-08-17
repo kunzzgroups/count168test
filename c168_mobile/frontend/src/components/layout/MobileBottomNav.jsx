@@ -18,6 +18,7 @@ function navTabIsActive(to, pathname) {
       pathname.startsWith("/maintenance")
     );
   }
+  if (to === "/member") return pathname === "/member" || pathname.startsWith("/member/");
   if (to === "/dashboard") return pathname === "/dashboard" || pathname === "/home";
   if (to === "/transaction") {
     return pathname === "/transaction" || pathname.startsWith("/transaction/");

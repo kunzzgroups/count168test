@@ -61,8 +61,6 @@
 
   --m-shell-bg: #f2f5fb;
   --m-appbar-bg: #002d49;
-  --m-sidebar-accent: #0e93f3;
-  --m-sidebar-highlight: #63c4ff;
 
   /* Align main scroll content with sticky bar / bottom nav (32rem column) */
   --m-page-gutter: 0.875rem;

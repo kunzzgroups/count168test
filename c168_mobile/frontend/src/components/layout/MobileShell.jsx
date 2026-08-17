@@ -4,7 +4,6 @@ import { useDirectScrollChrome } from "../../hooks/useDirectScrollChrome.js";
 import { useScrollIdleVisible } from "../../hooks/useScrollIdleVisible.js";
 import MobileAppBar from "./MobileAppBar.jsx";
 import MobileNotifications, { fetchMobileAnnouncements } from "./MobileNotifications.jsx";
-import MobileSidebar from "./MobileSidebar.jsx";
 import PullRefreshIndicator from "./PullRefreshIndicator.jsx";
 import "./mobile-shell.css";
 
@@ -16,14 +15,9 @@ export default function MobileShell({
   onMainScrollStart,
   i18n,
   me,
-  companyCode = "",
-  groupId = "",
-  onLogout,
   onRefresh,
   refreshing = false,
   showBottomNav = true,
-  lang = "en",
-  onLangChange,
   onChromeOpen,
   overlayOpen = false,
 }) {
@@ -35,7 +29,6 @@ export default function MobileShell({
     navMore: "More",
     ...(i18n || {}),
   };
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [notifyLoading, setNotifyLoading] = useState(false);
@@ -88,7 +81,7 @@ export default function MobileShell({
   }, [stickyBar, gestureRefreshing]);
 
   const forceChrome =
-    active || isAnimating || overlayOpen || sidebarOpen || notifyOpen || gestureRefreshing;
+    active || isAnimating || overlayOpen || notifyOpen || gestureRefreshing;
 
   useDirectScrollChrome({
     scrollRef: mainRef,
@@ -98,20 +91,13 @@ export default function MobileShell({
     paused: forceChrome,
   });
 
-  const openSidebar = () => {
-    onChromeOpen?.();
-    setNotifyOpen(false);
-    setSidebarOpen(true);
-  };
   const openNotifications = () => {
     onChromeOpen?.();
-    setSidebarOpen(false);
     setNotifyOpen(true);
   };
 
   useEffect(() => {
     if (!overlayOpen) return;
-    setSidebarOpen(false);
     setNotifyOpen(false);
   }, [overlayOpen]);
 
@@ -156,7 +142,6 @@ export default function MobileShell({
         <MobileAppBar
           i18n={labels}
           notificationCount={announcements.length}
-          onOpenSidebar={openSidebar}
           onOpenNotifications={openNotifications}
           onRefresh={typeof onRefresh === "function" ? refreshPage : undefined}
           refreshing={gestureRefreshing}
@@ -200,17 +185,6 @@ export default function MobileShell({
       ) : null}
 
       {overlay}
-      <MobileSidebar
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        i18n={labels}
-        me={me}
-        companyCode={companyCode}
-        groupId={groupId}
-        onLogout={onLogout}
-        lang={lang}
-        onLangChange={onLangChange}
-      />
       <MobileNotifications
         open={notifyOpen}
         onClose={() => setNotifyOpen(false)}
