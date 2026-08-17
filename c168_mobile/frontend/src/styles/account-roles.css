@@ -66,7 +66,7 @@
 }
 
 .m-account-role.transaction-role-debtor {
-  background-color: #f1f5f9;
+  background-color: var(--m-color-surface-muted);
   color: #475569;
   border-bottom: 1px solid #cbd5e1;
 }

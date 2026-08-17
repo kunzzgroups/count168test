@@ -104,8 +104,8 @@
 
 .m-contra-item {
   border-radius: var(--m-radius-card-lg);
-  border: 1px solid #e2e8f0;
-  background: #fff;
+  border: 1px solid var(--m-color-ring);
+  background: var(--m-color-surface);
   padding: 0.85rem 0.9rem;
   box-shadow: var(--m-shadow-card);
 }
@@ -169,7 +169,7 @@
   display: inline-flex;
   align-items: center;
   border-radius: var(--m-radius-pill);
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   color: #1d4ed8;
   padding: 0.1rem 0.45rem;
   font-size: var(--m-text-caption);
@@ -195,7 +195,7 @@
 .m-contra-item-details {
   margin-top: 0.65rem;
   padding-top: 0.55rem;
-  border-top: 1px dashed #e2e8f0;
+  border-top: 1px dashed var(--m-color-ring);
   display: grid;
   gap: 0.3rem;
 }

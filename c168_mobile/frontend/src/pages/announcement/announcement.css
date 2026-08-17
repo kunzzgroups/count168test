@@ -36,8 +36,8 @@
   justify-content: space-between;
   gap: 0.75rem;
   border-radius: 0.9rem;
-  background: #f8fafc;
-  outline: 1px solid rgba(226, 232, 240, 0.95);
+  background: var(--m-color-surface-muted);
+  outline: 1px solid var(--m-color-ring);
   padding: 0.65rem 0.8rem;
 }
 
@@ -88,7 +88,7 @@
   width: 1.45rem;
   height: 1.45rem;
   border-radius: 999px;
-  background: #fff;
+  background: var(--m-color-surface);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
   transition: transform 0.18s ease;
 }
@@ -123,7 +123,7 @@
   border-radius: 1.25rem;
   background: var(--m-color-surface);
   box-shadow: 0 8px 28px -12px #0f172a1f;
-  outline: 1px solid rgba(241, 245, 249, 0.9);
+  outline: 1px solid var(--m-color-ring);
   padding: 1rem 1.05rem 0.9rem;
 }
 
@@ -161,12 +161,12 @@
 }
 
 .m-ann-admin-btn--edit {
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   color: #2563eb;
 }
 
 .m-ann-admin-btn--delete {
-  background: #fff1f2;
+  background: var(--m-color-danger-soft);
   color: #e11d48;
 }
 
@@ -242,9 +242,9 @@
 
 .m-ann-field input {
   width: 100%;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-radius: 0.85rem;
-  background: #fff;
+  background: var(--m-color-surface);
   padding: 0.75rem 0.85rem;
   font-size: var(--m-text-body);
   font-weight: 600;
@@ -267,16 +267,16 @@
 }
 
 .m-ann-editor .ql-toolbar.ql-snow {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-radius: 0.85rem 0.85rem 0 0;
-  background: #f8fafc;
+  background: var(--m-color-surface-muted);
 }
 
 .m-ann-editor .ql-container.ql-snow {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-top: 0;
   border-radius: 0 0 0.85rem 0.85rem;
-  background: #fff;
+  background: var(--m-color-surface);
   min-height: 10rem;
   font-size: var(--m-text-body);
 }

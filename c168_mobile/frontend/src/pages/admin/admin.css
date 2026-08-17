@@ -79,7 +79,7 @@
 .m-admin-field-hint {
   margin: 0 0 0.65rem;
   border-radius: var(--m-radius-card);
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   padding: 0.55rem 0.7rem;
   color: #3560b8;
   font-size: var(--m-text-sub-ratio);
@@ -242,7 +242,7 @@
 
 .m-admin-picker-item.is-locked {
   opacity: 0.45;
-  background: #f1f5f9;
+  background: var(--m-color-surface-muted);
   color: #64748b;
 }
 

@@ -199,7 +199,7 @@
 
 .m-rpt-chip.is-on {
   border-color: #bfdbfe;
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   color: var(--m-color-primary);
 }
 
@@ -214,7 +214,7 @@
 .m-rpt-summary {
   border: 1px solid #93c5fd;
   border-radius: var(--m-radius-card);
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   padding: 0.55rem 0.65rem;
 }
 
@@ -326,7 +326,7 @@
 .m-rpt-error {
   margin-bottom: 0.75rem;
   border-radius: var(--m-radius-card);
-  background: #fef2f2;
+  background: var(--m-color-danger-soft);
   padding: 0.7rem 0.85rem;
   color: #b91c1c;
   font-size: var(--m-text-sub-ratio);
@@ -343,7 +343,7 @@
 }
 
 .m-rpt-toast.is-error {
-  background: #fef2f2;
+  background: var(--m-color-danger-soft);
   color: #b91c1c;
 }
 
@@ -419,7 +419,7 @@
 .m-rpt-total-sticky {
   border: 1px solid #bfdbfe;
   border-radius: var(--m-radius-card);
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   padding: 0.55rem 0.7rem;
 }
 
@@ -440,7 +440,7 @@
   margin-top: 0.35rem;
   border: 1px solid #bfdbfe;
   border-radius: var(--m-radius-card-lg);
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   padding: 0.85rem;
 }
 
@@ -485,7 +485,7 @@
   margin: 0;
   padding: 0.45rem 0.7rem 0.2rem;
   border-bottom: 1px solid rgb(148 163 184 / 18%);
-  background: #f8fafc;
+  background: var(--m-color-surface-muted);
 }
 
 .m-rpt-currency-block + .m-rpt-currency-block .m-rpt-currency-head {
@@ -499,7 +499,7 @@
 .m-rpt-currency-subtotal {
   padding: 0.55rem 0.7rem 0.7rem;
   border-top: 1px dashed rgb(148 163 184 / 35%);
-  background: #f8fafc;
+  background: var(--m-color-surface-muted);
 }
 
 .m-rpt-currency-block:last-child .m-rpt-line:last-child {
@@ -555,7 +555,7 @@
   width: 1.15rem;
   height: 1.15rem;
   border-radius: 50%;
-  background: #fff;
+  background: var(--m-color-surface);
   box-shadow: 0 1px 2px rgb(15 23 42 / 18%);
   transition: transform 0.15s ease;
 }

@@ -2,7 +2,7 @@
 
 .m-filter-pill {
   border-radius: 0.75rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   padding: 0.625rem 0.75rem;
   font-size: var(--m-text-body);
   font-weight: 600;
@@ -98,8 +98,8 @@
   align-items: stretch;
   gap: 0.5rem;
   border-radius: var(--m-radius-card-lg);
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border: 1px solid var(--m-color-ring);
+  background: var(--m-color-surface-muted);
   padding: 0.375rem;
   text-align: left;
   transition: border-color 0.15s ease, background-color 0.15s ease;
@@ -111,7 +111,7 @@
 }
 
 .m-filter-range-row:not(.m-filter-range-row--active):active {
-  background: #f1f5f9;
+  background: var(--m-color-surface-muted);
 }
 
 .m-filter-range-icon {
@@ -223,8 +223,8 @@
 .m-filter-cal-draft {
   border-radius: 0.75rem;
   padding: 0.5rem 0.75rem;
-  outline: 1px solid #e2e8f0;
-  background: #f8fafc;
+  outline: 1px solid var(--m-color-ring);
+  background: var(--m-color-surface-muted);
 }
 
 .m-filter-cal-draft--active {
@@ -323,7 +323,7 @@
 }
 
 .m-filter-cal-day:not(.m-filter-cal-day--disabled):not(.m-filter-cal-day--edge):not(.m-filter-cal-day--mid):active {
-  background: #f1f5f9;
+  background: var(--m-color-surface-muted);
 }
 
 .m-filter-cal-footer {

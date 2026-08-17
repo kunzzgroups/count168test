@@ -85,7 +85,7 @@ const DashboardTrendChart = memo(function DashboardTrendChart({
       );
     }
     return (
-      <text x={x} y={y} dy={12} textAnchor="middle" fill="#94a3b8" fontSize={10} fontWeight={600}>
+      <text x={x} y={y} dy={12} textAnchor="middle" fill="var(--m-color-label)" fontSize={10} fontWeight={600}>
         {text}
       </text>
     );
@@ -160,8 +160,8 @@ const DashboardTrendChart = memo(function DashboardTrendChart({
                   <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
-              <ReferenceLine y={0} stroke="#cbd5e1" strokeWidth={1.25} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--m-color-chart-grid)" vertical={false} />
+              <ReferenceLine y={0} stroke="var(--m-color-chart-zero)" strokeWidth={1.25} />
               <XAxis
                 dataKey="label"
                 interval={xAxisLayout.interval}
@@ -173,7 +173,7 @@ const DashboardTrendChart = memo(function DashboardTrendChart({
               />
               <YAxis
                 domain={yDomain}
-                tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 600 }}
+                tick={{ fontSize: 10, fill: "var(--m-color-label)", fontWeight: 600 }}
                 tickFormatter={(v) => formatCompactAxis(v)}
                 width={44}
                 axisLine={false}
@@ -189,7 +189,7 @@ const DashboardTrendChart = memo(function DashboardTrendChart({
                   fill={s.fill}
                   strokeWidth={s.dataKey === "netProfit" ? 2.5 : 2}
                   dot={false}
-                  activeDot={{ r: 5, strokeWidth: 2, stroke: s.color, fill: "#fff" }}
+                  activeDot={{ r: 5, strokeWidth: 2, stroke: s.color, fill: "var(--m-color-surface)" }}
                   isAnimationActive={false}
                   cursor="pointer"
                 />

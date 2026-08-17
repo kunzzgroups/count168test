@@ -59,8 +59,8 @@
 }
 
 .mobile-lang-switch--light {
-  border: 1px solid #e2e8f0;
-  background: #f1f5f9;
+  border: 1px solid var(--m-color-ring);
+  background: var(--m-color-surface-muted);
   box-shadow: none;
 }
 
@@ -69,9 +69,26 @@
 }
 
 .mobile-lang-switch--light .mobile-lang-switch__seg {
-  color: #64748b;
+  color: var(--m-color-muted);
 }
 
 .mobile-lang-switch--light .mobile-lang-switch__seg.is-active {
   color: #fff;
+}
+
+.mobile-theme-switch {
+  width: 7.6rem;
+}
+
+.mobile-theme-switch .mobile-lang-switch__seg {
+  font-size: var(--m-text-micro);
+  letter-spacing: 0.01em;
+}
+
+.mobile-theme-switch[data-theme="dark"] .mobile-lang-switch__thumb {
+  transform: translateX(100%);
+}
+
+.mobile-theme-switch[data-theme="dark"] .mobile-lang-switch__thumb {
+  transform: translateX(100%);
 }

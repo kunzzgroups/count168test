@@ -23,7 +23,7 @@
   padding: 0.25rem 0.65rem;
   border: 1px solid #d7deea;
   border-radius: 999px;
-  background: #fff;
+  background: var(--m-color-surface);
   color: #475569;
   font-size: var(--m-text-secondary);
   font-weight: 600;
@@ -34,7 +34,7 @@
   min-width: 1rem;
   padding: 0.05rem 0.28rem;
   border-radius: 999px;
-  background: #e8efff;
+  background: var(--m-color-primary-soft);
   color: var(--m-color-primary, #2563eb);
   font-size: var(--m-text-caption);
   font-weight: 800;
@@ -43,12 +43,12 @@
 
 .m-ar-chip.is-active {
   border-color: #bfd0ff;
-  background: #eef3ff;
+  background: var(--m-color-primary-soft);
   color: #1e3a8a;
 }
 
 .m-ar-chip.is-active em {
-  background: #fff;
+  background: var(--m-color-surface);
 }
 
 .m-ar-seg-label {
@@ -90,9 +90,9 @@
   gap: 0.45rem;
   width: 100%;
   padding: 0.75rem 0.85rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-radius: 0.9rem;
-  background: #fff;
+  background: var(--m-color-surface);
   text-align: left;
   color: inherit;
 }
@@ -157,7 +157,7 @@
 }
 
 .m-ar-status--rejected {
-  background: #fff1f2;
+  background: var(--m-color-danger-soft);
   color: #be123c;
 }
 
@@ -195,7 +195,7 @@
   gap: 0.1rem;
   padding: 0.55rem 0.65rem;
   border-radius: 0.7rem;
-  background: #f8fafc;
+  background: var(--m-color-surface-muted);
 }
 
 .m-ar-meta dt {

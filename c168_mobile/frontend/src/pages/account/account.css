@@ -130,7 +130,7 @@
   flex: 0 0 2.4rem;
   place-items: center;
   border-radius: 50%;
-  background: #e8efff;
+  background: var(--m-color-primary-soft);
   color: #2959c7;
   font-size: var(--m-text-sub-ratio);
   font-weight: 800;
@@ -176,7 +176,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid rgba(226, 232, 240, 0.75);
+  border-top: 1px solid var(--m-color-ring);
   padding: 0.45rem 0.75rem;
   background: rgba(255, 255, 255, 0.76);
 }
@@ -207,7 +207,7 @@
 }
 
 .m-account-status.inactive {
-  background: #e2e8f0;
+  background: var(--m-color-ring);
   color: #64748b;
 }
 
@@ -226,7 +226,7 @@
   width: 0.86rem;
   height: 0.86rem;
   border-radius: 50%;
-  background: #fff;
+  background: var(--m-color-surface);
   transition: transform 0.15s;
 }
 
@@ -299,7 +299,7 @@
 .m-account-sheet-footer {
   border-top: 1px solid var(--m-color-ring);
   padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
-  background: #fff;
+  background: var(--m-color-surface);
   font-size: var(--m-text-compact);
 }
 
@@ -323,7 +323,7 @@
 
 .m-account-secondary-btn {
   border: 1px solid var(--m-color-primary);
-  background: #fff;
+  background: var(--m-color-surface);
   color: var(--m-color-primary);
 }
 
@@ -387,7 +387,7 @@
 
 .m-account-sheet-hint {
   border-radius: var(--m-radius-card);
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   padding: 0.7rem;
   color: #3560b8;
   font-size: var(--m-text-sub-ratio);
@@ -418,7 +418,7 @@
 }
 
 .m-account-role-badge {
-  background: #e8efff;
+  background: var(--m-color-primary-soft);
   color: #2959c7;
 }
 
@@ -496,10 +496,10 @@
 .m-account-form-field select,
 .m-account-form-field textarea {
   width: 100%;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-radius: 0.75rem;
   outline: 0;
-  background: #fff;
+  background: var(--m-color-surface);
   padding: 0.75rem;
   color: var(--m-color-text);
   font-size: 0.875rem;
@@ -509,7 +509,7 @@
 }
 
 .m-account-form-field select {
-  background: #f8fafc;
+  background: var(--m-color-surface-muted);
 }
 
 .m-account-form-field input:focus,
@@ -548,7 +548,7 @@
 .m-account-currency-create input {
   min-width: 0;
   flex: 1;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-radius: 0.75rem;
   padding: 0.75rem;
   outline: 0;
@@ -558,7 +558,7 @@
 
 .m-account-currency-create button {
   border-radius: 0.75rem;
-  background: #e8efff;
+  background: var(--m-color-primary-soft);
   padding: 0.625rem 0.875rem;
   color: var(--m-color-primary);
   font-size: var(--m-text-secondary);
@@ -610,7 +610,7 @@
 
 .m-account-form-card {
   margin: 1rem 0;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-radius: 0.75rem;
   padding: 0.75rem;
 }
@@ -637,7 +637,7 @@
 }
 
 .m-account-segment button.is-active {
-  background: #fff;
+  background: var(--m-color-surface);
   color: var(--m-color-primary);
   box-shadow: var(--m-shadow-card);
 }

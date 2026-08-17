@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import DevPhoneFrame from "./components/dev/DevPhoneFrame.jsx";
+import { applyLoginTheme, readLoginTheme } from "./lib/loginTheme.js";
 import "./styles/tokens.css";
 import "./styles/page-body.css";
 import "./styles/account-roles.css";
@@ -14,6 +15,8 @@ import "./styles/filter-sheet.css";
 import "./styles/login.css";
 import "./styles/password-field.css";
 import "./index.css";
+
+applyLoginTheme(readLoginTheme());
 
 const routerBasename = import.meta.env.PROD ? "/c168_mobile" : undefined;
 

@@ -126,7 +126,7 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                     <PieChart margin={{ top: 2, right: 2, bottom: 2, left: 2 }} style={{ outline: "none" }}>
                       <Pie
                         key={isCompanyBreakdown ? "company" : "currency"}
-                        data={slices.length ? slices : [{ code: "—", value: 1, fill: "#e2e8f0" }]}
+                        data={slices.length ? slices : [{ code: "—", value: 1, fill: "var(--m-color-ring)" }]}
                         dataKey="value"
                         nameKey="code"
                         cx="50%"
@@ -134,14 +134,14 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                         innerRadius="66%"
                         outerRadius="88%"
                         paddingAngle={slices.length > 3 ? 2 : 3}
-                        stroke="#fff"
+                        stroke="var(--m-color-surface)"
                         strokeWidth={2}
                         activeShape={false}
                         isAnimationActive
                         label={false}
                       >
-                        {(slices.length ? slices : [{ code: "empty", fill: "#e2e8f0" }]).map((entry, index) => (
-                          <Cell key={entry.code || index} fill={entry.fill} stroke="#fff" strokeWidth={2} />
+                        {(slices.length ? slices : [{ code: "empty", fill: "var(--m-color-ring)" }]).map((entry, index) => (
+                          <Cell key={entry.code || index} fill={entry.fill} stroke="var(--m-color-surface)" strokeWidth={2} />
                         ))}
                       </Pie>
                     </PieChart>
@@ -160,7 +160,7 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
 
             <ul className="m-dash-pie-legend">
               {(loading
-                ? Array.from({ length: 4 }, (_, i) => ({ code: `s${i}`, pct: 0, color: "#e2e8f0" }))
+                ? Array.from({ length: 4 }, (_, i) => ({ code: `s${i}`, pct: 0, color: "var(--m-color-ring)" }))
                 : legend
               ).map((item) => (
                 <li key={item.code} className="m-dash-pie-legend-item">

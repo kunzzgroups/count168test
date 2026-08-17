@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx";
 import MobileLangSwitch from "../../components/layout/MobileLangSwitch.jsx";
+import MobileThemeSwitch from "../../components/layout/MobileThemeSwitch.jsx";
 import { fetchJson } from "../../lib/fetchJson.js";
 import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
+import { readLoginTheme, writeLoginTheme } from "../../lib/loginTheme.js";
 import { MORE_I18N } from "../../translateFile/moreTranslate.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
 import "./more.css";
@@ -24,10 +26,15 @@ export default function SettingsPage() {
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lang, setLangState] = useState(() => readLoginLang());
+  const [theme, setThemeState] = useState(() => readLoginTheme());
   const i18n = useMemo(() => MORE_I18N[lang] || MORE_I18N.en, [lang]);
 
   const setLang = useCallback((next) => {
     setLangState(writeLoginLang(next));
+  }, []);
+
+  const setTheme = useCallback((next) => {
+    setThemeState(writeLoginTheme(next));
   }, []);
 
   useEffect(() => {
@@ -101,7 +108,7 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <section className="m-more-settings-group" aria-label={i18n.language}>
+            <section className="m-more-settings-group" aria-label={i18n.settings}>
               <div className="m-more-settings-row">
                 <span>{i18n.language}</span>
                 <MobileLangSwitch
@@ -109,6 +116,16 @@ export default function SettingsPage() {
                   onChange={setLang}
                   ariaLabel={i18n.language}
                   tone="light"
+                />
+              </div>
+              <div className="m-more-settings-row">
+                <span>{i18n.appearance}</span>
+                <MobileThemeSwitch
+                  theme={theme}
+                  onChange={setTheme}
+                  ariaLabel={i18n.appearance}
+                  lightLabel={i18n.themeLight}
+                  darkLabel={i18n.themeDark}
                 />
               </div>
             </section>

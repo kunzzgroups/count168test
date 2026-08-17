@@ -11,6 +11,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#004ff9" />
     <title>C168 Mobile</title>
+    <script>
+      try {
+        if (localStorage.getItem("login_theme") === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -21,8 +28,8 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
       rel="stylesheet"
     />
-    <script type="module" data-cfasync="false" crossorigin src="/c168_mobile/frontend/dist/assets/index-7XuLudkO.js"></script>
-    <link rel="stylesheet" data-cfasync="false" crossorigin href="/c168_mobile/frontend/dist/assets/index-BrPDp4Mg.css">
+    <script type="module" data-cfasync="false" crossorigin src="/c168_mobile/frontend/dist/assets/index-DYts6ShA.js"></script>
+    <link rel="stylesheet" data-cfasync="false" crossorigin href="/c168_mobile/frontend/dist/assets/index-D9LpN9_q.css">
   </head>
   <body>
     <div id="root"></div>

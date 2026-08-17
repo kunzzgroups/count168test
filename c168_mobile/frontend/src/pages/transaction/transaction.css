@@ -218,7 +218,7 @@
   background: transparent;
   padding: 0;
   outline: none;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  border-bottom: 1px solid var(--m-color-ring);
 }
 
 .m-tx-side-tab {
@@ -265,7 +265,7 @@
   font-size: var(--m-text-secondary);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  background: rgba(226, 232, 240, 0.8);
+  background: var(--m-color-ring);
   color: var(--m-color-muted);
 }
 
@@ -377,7 +377,7 @@
 .m-tx-total-card {
   overflow: hidden;
   border-radius: 0.625rem;
-  background: #fff;
+  background: var(--m-color-surface);
   border: 1px solid #cbd5e1;
   box-shadow: 0 8px 20px -14px rgba(15, 23, 42, 0.35);
 }
@@ -401,17 +401,17 @@
 }
 
 .m-tx-total-card-row {
-  background: #fff;
+  background: var(--m-color-surface);
 }
 
 .m-tx-total-card-row--alt {
-  background: #eef2ff;
+  background: var(--m-color-primary-soft);
 }
 
 .m-tx-total-card-label,
 .m-tx-total-card-value {
   padding: 0.5rem 0.75rem;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--m-color-ring);
   font-weight: 700;
   line-height: 1.25;
   vertical-align: middle;
@@ -421,7 +421,7 @@
   width: 42%;
   text-align: left;
   color: #334155;
-  border-right: 1px solid #e2e8f0;
+  border-right: 1px solid var(--m-color-ring);
 }
 
 .m-tx-total-card-value {
@@ -434,7 +434,7 @@
 /* Per-side Total row under Acc headers (current Balance+/− tab) */
 .m-tx-dense-row--total > .m-tx-dense-td,
 .m-tx-dense-row--total > .m-tx-dense-td--total-label {
-  background: #eef2ff;
+  background: var(--m-color-primary-soft);
   font-weight: 800;
   border-top: 1px solid #cbd5e1;
 }
@@ -446,7 +446,7 @@
   text-transform: uppercase;
   letter-spacing: -0.01em;
   color: #1e293b;
-  background: #eef2ff;
+  background: var(--m-color-primary-soft);
 }
 
 .m-tx-dense-td--acc.m-tx-dense-td--total-label {
@@ -460,11 +460,11 @@
 
 /* Zebra on money columns; Acc keeps role tint backgrounds */
 .m-tx-dense-table tbody .m-tx-dense-row:nth-child(odd) > .m-tx-dense-td:not(.m-account-role) {
-  background: #fff;
+  background: var(--m-color-surface);
 }
 
 .m-tx-dense-table tbody .m-tx-dense-row:nth-child(even) > .m-tx-dense-td:not(.m-account-role) {
-  background: #eef2ff;
+  background: var(--m-color-primary-soft);
 }
 
 /* Payment Alert — match desktop transaction-alert-row (red row, white text) */
@@ -515,7 +515,7 @@
   text-align: center;
   font-weight: 500;
   color: var(--m-color-label);
-  background: #fff;
+  background: var(--m-color-surface);
 }
 
 .m-tx-dense-acc {
@@ -571,5 +571,5 @@
 }
 
 .m-tx-dense-bal:active {
-  background: rgba(241, 245, 249, 0.9);
+  background: var(--m-color-surface-muted);
 }

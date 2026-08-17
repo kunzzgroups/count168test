@@ -34,7 +34,7 @@
   width: 2.35rem;
   height: 2.35rem;
   border-radius: 0.75rem;
-  background: #eef3ff;
+  background: var(--m-color-primary-soft);
   color: var(--m-color-primary, #2563eb);
   font-size: 0.9rem;
 }
@@ -46,9 +46,9 @@
   width: 100%;
   min-height: 2.35rem;
   padding: 0.45rem 0.75rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-radius: 0.85rem;
-  background: #fff;
+  background: var(--m-color-surface);
   color: #475569;
   font-size: var(--m-text-secondary);
   font-weight: 600;
@@ -83,7 +83,7 @@
 }
 
 .m-member-ccy .m-tx-hist-row--total > .m-tx-hist-dense-td {
-  background: #eef2ff;
+  background: var(--m-color-primary-soft);
   font-weight: 800;
   border-top: 1px solid #cbd5e1;
 }
@@ -166,7 +166,7 @@
 
 .m-member-balances-panel {
   border-top: 1px solid #dbe3f0;
-  background: #fff;
+  background: var(--m-color-surface);
   padding: 0.55rem 0.55rem 0.65rem;
   border-radius: 0 0 0.9rem 0.9rem;
   overflow: hidden;
@@ -183,7 +183,7 @@
 .m-member-balances-table-wrap {
   overflow: hidden;
   border-radius: 0.65rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
 }
 
 .m-member-balances-table-wrap--scroll {
@@ -212,7 +212,7 @@
 .m-member-balances-table th,
 .m-member-balances-table td {
   padding: 0.45rem 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--m-color-ring);
   vertical-align: middle;
 }
 
@@ -238,11 +238,11 @@
   z-index: 2;
   min-width: 4.75rem;
   max-width: 5.5rem;
-  box-shadow: 1px 0 0 #e2e8f0;
+  box-shadow: 1px 0 0 var(--m-color-ring);
 }
 
 .m-member-balances-table thead th {
-  background: #eef2ff;
+  background: var(--m-color-primary-soft);
   color: #1e3a8a;
   font-weight: 800;
   text-align: left;
@@ -252,18 +252,18 @@
 
 .m-member-balances-table--matrix thead th:first-child {
   z-index: 3;
-  background: #eef2ff;
+  background: var(--m-color-primary-soft);
 }
 
 .m-member-balances-table tbody th {
   text-align: left;
   font-weight: 700;
   color: #334155;
-  background: #fff;
+  background: var(--m-color-surface);
 }
 
 .m-member-balances-table tbody tr.is-alt th[scope="row"] {
-  background: #f8fafc;
+  background: var(--m-color-surface-muted);
 }
 
 .m-member-balances-num {
@@ -275,18 +275,18 @@
 
 .m-member-balances-table tbody tr.is-alt th,
 .m-member-balances-table tbody tr.is-alt td {
-  background: #f8fafc;
+  background: var(--m-color-surface-muted);
 }
 
 .m-member-balances-total th,
 .m-member-balances-total td {
-  background: #eef2ff !important;
+  background: var(--m-color-primary-soft) !important;
   border-bottom: none;
   font-weight: 800;
   color: #1e3a8a;
 }
 
 .m-member-balances-table--matrix .m-member-balances-total th[scope="row"] {
-  background: #eef2ff !important;
+  background: var(--m-color-primary-soft) !important;
   z-index: 2;
 }

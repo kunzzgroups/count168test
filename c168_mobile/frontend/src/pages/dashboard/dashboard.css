@@ -119,7 +119,7 @@
 
 .m-dash-empty {
   border-radius: 22px;
-  border: 1px dashed #e2e8f0;
+  border: 1px dashed var(--m-color-ring);
   background: rgba(255, 255, 255, 0.8);
   padding: 1.5rem 1.25rem;
   text-align: center;
@@ -425,7 +425,7 @@
   background: var(--m-color-surface);
   padding: 0.75rem 0.875rem;
   box-shadow: 0 8px 24px -14px rgba(15, 23, 42, 0.18);
-  outline: 1px solid rgba(241, 245, 249, 0.9);
+  outline: 1px solid var(--m-color-ring);
   text-align: left;
   cursor: pointer;
 }
@@ -470,12 +470,12 @@
 }
 
 .m-dash-kpi-icon--profit {
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   color: #2563eb;
 }
 
 .m-dash-kpi-icon--expense {
-  background: #fff1f2;
+  background: var(--m-color-danger-soft);
   color: #e11d48;
 }
 
@@ -547,7 +547,7 @@
 }
 
 .m-dash-kpi-pct--down {
-  background: #fff1f2;
+  background: var(--m-color-danger-soft);
   color: #be123c;
 }
 
@@ -598,7 +598,7 @@
   border-radius: 24px;
   background: var(--m-color-surface);
   box-shadow: 0 8px 28px -12px rgba(15, 23, 42, 0.12);
-  outline: 1px solid rgba(241, 245, 249, 0.8);
+  outline: 1px solid var(--m-color-ring);
 }
 
 .m-dash-card--padded {
@@ -665,7 +665,7 @@
   align-items: center;
   gap: 0.375rem;
   border-radius: var(--m-radius-pill);
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   padding: 0.25rem 0.625rem;
   font-size: var(--m-text-secondary);
   font-weight: 700;
@@ -765,7 +765,7 @@
 
 .m-dash-trend-tooltip {
   border-radius: 0.75rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   background: rgba(255, 255, 255, 0.95);
   padding: 0.5rem 0.75rem;
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
@@ -830,7 +830,7 @@
 }
 
 .m-dash-currency-rows > li + li {
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--m-color-ring);
 }
 
 .m-dash-currency-row {
@@ -930,7 +930,7 @@
   left: 2px;
   width: calc((100% - 4px) / var(--seg-count));
   border-radius: 7px;
-  background: #fff;
+  background: var(--m-color-surface);
   box-shadow:
     0 1px 1px rgba(0, 0, 0, 0.04),
     0 1px 3px rgba(0, 0, 0, 0.1);
@@ -985,7 +985,7 @@
   flex-shrink: 0;
   place-items: center;
   border-radius: var(--m-radius-pill);
-  background: #f8fafc;
+  background: var(--m-color-surface-muted);
   font-size: 1.125rem;
   outline: 1px solid var(--m-color-ring-soft);
 }
@@ -1179,7 +1179,7 @@
 .m-dash-access-box {
   width: min(100%, 22rem);
   border-radius: 1.25rem;
-  background: #fff;
+  background: var(--m-color-surface);
   padding: 1.5rem 1.25rem 1.25rem;
   box-shadow: 0 1.25rem 2.5rem rgba(15, 23, 42, 0.18);
   text-align: center;

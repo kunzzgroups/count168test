@@ -390,7 +390,7 @@
 .m-mt-type-tag.is-amber { background: #fef3c7; color: #b45309; }
 .m-mt-type-tag.is-teal { background: #ccfbf1; color: #0f766e; }
 .m-mt-type-tag.is-violet { background: var(--m-grad-brand); color: #fff; }
-.m-mt-type-tag.is-slate { background: #e2e8f0; color: #475569; }
+.m-mt-type-tag.is-slate { background: var(--m-color-ring); color: #475569; }
 
 /* ---- Action bar (delete) ---- */
 .m-mt-actionbar {
@@ -483,10 +483,10 @@
 
 .m-mt-field select {
   width: 100%;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-color-ring);
   border-radius: 0.7rem;
   outline: 0;
-  background: #fff;
+  background: var(--m-color-surface);
   padding: 0.7rem;
   color: var(--m-color-text);
   font-size: 0.875rem;
@@ -504,7 +504,7 @@
   align-items: center;
   gap: 0.5rem;
   border-radius: var(--m-radius-card);
-  background: #eff6ff;
+  background: var(--m-color-primary-soft);
   padding: 0.7rem;
   color: #3560b8;
   font-size: var(--m-text-sub-ratio);
