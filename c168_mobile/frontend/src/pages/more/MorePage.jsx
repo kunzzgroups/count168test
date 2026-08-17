@@ -12,7 +12,12 @@ import {
   fetchOwnerCompaniesForDomain,
 } from "../../lib/c168DomainAccess.js";
 import { fetchAutoRenewPendingCount } from "../../lib/autoRenewApi.js";
-import { canAccessAdmin, canAccessMaintenance, canShowReportEntry } from "../../utils/mobilePermissions.js";
+import {
+  canAccessAdmin,
+  canAccessMaintenance,
+  canAccessOwnership,
+  canShowReportEntry,
+} from "../../utils/mobilePermissions.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import "./more.css";
 
@@ -79,6 +84,14 @@ export default function MorePage() {
       icon: "fa-user-gear",
       title: i18n.userManagement,
       description: i18n.userManagementDescription,
+    });
+  }
+  if (canAccessOwnership(me)) {
+    tools.push({
+      to: "/more/ownership",
+      icon: "fa-sitemap",
+      title: i18n.ownership,
+      description: i18n.ownershipDescription,
     });
   }
   if (canAccessMaintenance(me)) {

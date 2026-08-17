@@ -15,6 +15,7 @@ import AdminUsersPage from "./pages/admin/AdminUsersPage.jsx";
 import DomainPage from "./pages/domain/DomainPage.jsx";
 import AnnouncementPage from "./pages/announcement/AnnouncementPage.jsx";
 import AutoRenewPage from "./pages/autorenew/AutoRenewPage.jsx";
+import OwnershipPage from "./pages/ownership/OwnershipPage.jsx";
 import MaintenanceHubPage from "./pages/maintenance/MaintenanceHubPage.jsx";
 import MaintenanceTransactionPage from "./pages/maintenance/MaintenanceTransactionPage.jsx";
 import MaintenancePaymentPage from "./pages/maintenance/MaintenancePaymentPage.jsx";
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="/more/domain" element={<DomainPage />} />
         <Route path="/more/announcement" element={<AnnouncementPage />} />
         <Route path="/more/auto-renew" element={<AutoRenewPage />} />
+        <Route path="/more/ownership" element={<OwnershipPage />} />
         <Route path="/reset-password" element={<StubPage title="重置密码" />} />
         <Route
           path="/owner-secondary-password"

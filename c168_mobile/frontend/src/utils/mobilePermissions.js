@@ -64,6 +64,13 @@ export function canAccessAdmin(me) {
   return canAccessPermission(me, "admin");
 }
 
+/** Ownership page — owner / partnership only, same as desktop sidebar. */
+export function canAccessOwnership(me) {
+  const role = normRole(me?.role);
+  if (role !== "owner" && role !== "partnership") return false;
+  return canAccessPermission(me, "ownership");
+}
+
 /** Full Maintenance: owner / unrestricted, or explicit "maintenance" permission. */
 export function canAccessFullMaintenance(me) {
   if (hasFullPermissions(me)) return true;
