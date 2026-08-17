@@ -270,13 +270,13 @@
 }
 
 .m-tx-side-tab-count--left-active {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--m-color-info-soft);
+  color: var(--m-color-info-text);
 }
 
 .m-tx-side-tab-count--right-active {
-  background: #ffe4e6;
-  color: #be123c;
+  background: var(--m-color-danger-soft);
+  color: var(--m-color-danger-text);
 }
 
 /* Dense ledger: Acc · B/F · W/L · CR/DR · Bal fit viewport (no horizontal scroll) */
@@ -287,7 +287,7 @@
   overflow-x: hidden;
   border-radius: 0.5rem;
   background: var(--m-color-surface);
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--m-color-ring);
 }
 
 .m-tx-dense-table {
@@ -309,8 +309,8 @@
 
 .m-tx-dense-th,
 .m-tx-dense-td {
-  border-right: 1px solid #cbd5e1;
-  border-bottom: 1px solid #cbd5e1;
+  border-right: 1px solid var(--m-color-ring);
+  border-bottom: 1px solid var(--m-color-ring);
   vertical-align: middle;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
@@ -318,12 +318,12 @@
 
 .m-tx-dense-th:first-child,
 .m-tx-dense-td:first-child {
-  border-left: 1px solid #cbd5e1;
+  border-left: 1px solid var(--m-color-ring);
 }
 
 .m-tx-dense-th:last-child,
 .m-tx-dense-td:last-child {
-  border-right: 1px solid #cbd5e1;
+  border-right: 1px solid var(--m-color-ring);
 }
 
 /* Header + Total stick as one block (avoids dual-sticky white seam) */
@@ -378,7 +378,7 @@
   overflow: hidden;
   border-radius: 0.625rem;
   background: var(--m-color-surface);
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--m-color-ring);
   box-shadow: 0 8px 20px -14px rgba(15, 23, 42, 0.35);
 }
 
@@ -420,7 +420,7 @@
 .m-tx-total-card-label {
   width: 42%;
   text-align: left;
-  color: #334155;
+  color: var(--m-color-text-secondary);
   border-right: 1px solid var(--m-color-ring);
 }
 
@@ -436,7 +436,7 @@
 .m-tx-dense-row--total > .m-tx-dense-td--total-label {
   background: var(--m-color-primary-soft);
   font-weight: 800;
-  border-top: 1px solid #cbd5e1;
+  border-top: 1px solid var(--m-color-ring);
 }
 
 .m-tx-dense-td--total-label {
@@ -445,7 +445,7 @@
   font-size: inherit;
   text-transform: uppercase;
   letter-spacing: -0.01em;
-  color: #1e293b;
+  color: var(--m-color-text);
   background: var(--m-color-primary-soft);
 }
 

@@ -337,7 +337,7 @@
   border-radius: var(--m-radius-card);
   background: #ecfdf5;
   padding: 0.7rem 0.85rem;
-  color: #047857;
+  color: var(--m-color-success-text);
   font-size: var(--m-text-sub-ratio);
   font-weight: 700;
 }

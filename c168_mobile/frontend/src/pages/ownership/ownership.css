@@ -236,12 +236,12 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.35rem;
-  color: #64748b;
+  color: var(--m-color-muted);
   font-size: var(--m-text-caption);
 }
 
 .m-own-alloc-meta strong {
-  color: #0f172a;
+  color: var(--m-color-text);
   font-size: var(--m-text-body);
 }
 
@@ -291,7 +291,7 @@
   place-items: center;
   border-radius: 999px;
   background: var(--m-color-surface-muted);
-  color: #334155;
+  color: var(--m-color-text-secondary);
 }
 
 .m-own-year-btn:disabled {
@@ -309,7 +309,7 @@
   border: 1px solid var(--m-color-ring);
   border-radius: 0.75rem;
   background: var(--m-color-surface);
-  color: #0f172a;
+  color: var(--m-color-text);
   font-weight: 700;
 }
 
@@ -345,7 +345,7 @@
   border: 1px solid #d7deea;
   border-radius: 0.7rem;
   background: var(--m-color-surface);
-  color: #0f172a;
+  color: var(--m-color-text);
   font-size: var(--m-text-body);
 }
 
@@ -419,7 +419,7 @@
 
 .m-own-partner p {
   margin: 0;
-  color: #64748b;
+  color: var(--m-color-muted);
   font-size: var(--m-text-caption);
 }
 
@@ -453,7 +453,7 @@
 }
 
 .m-own-warn small {
-  color: #64748b;
+  color: var(--m-color-muted);
   font-weight: 600;
 }
 
@@ -495,7 +495,7 @@
 }
 
 .m-own-conflict-btn span {
-  color: #64748b;
+  color: var(--m-color-muted);
   font-size: var(--m-text-caption);
   font-weight: 600;
 }

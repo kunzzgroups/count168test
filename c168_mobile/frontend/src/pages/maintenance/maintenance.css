@@ -385,12 +385,15 @@
   font-weight: 800;
 }
 
-.m-mt-type-tag.is-blue { background: #dbeafe; color: #1d4ed8; }
-.m-mt-type-tag.is-green { background: #dcfce7; color: #047857; }
-.m-mt-type-tag.is-amber { background: #fef3c7; color: #b45309; }
-.m-mt-type-tag.is-teal { background: #ccfbf1; color: #0f766e; }
+.m-mt-type-tag.is-blue { background: var(--m-color-info-soft); color: var(--m-color-info-text); }
+.m-mt-type-tag.is-green { background: var(--m-color-success-soft); color: var(--m-color-success-text); }
+.m-mt-type-tag.is-amber { background: rgba(253, 224, 71, 0.28); color: #b45309; }
+.m-mt-type-tag.is-teal { background: rgba(45, 212, 191, 0.22); color: #0f766e; }
 .m-mt-type-tag.is-violet { background: var(--m-grad-brand); color: #fff; }
-.m-mt-type-tag.is-slate { background: var(--m-color-ring); color: #475569; }
+.m-mt-type-tag.is-slate { background: var(--m-color-ring); color: var(--m-color-muted); }
+
+html[data-theme="dark"] .m-mt-type-tag.is-amber { background: rgba(253, 224, 71, 0.16); color: #fde68a; }
+html[data-theme="dark"] .m-mt-type-tag.is-teal { background: rgba(45, 212, 191, 0.16); color: #5eead4; }
 
 /* ---- Action bar (delete) ---- */
 .m-mt-actionbar {
@@ -449,7 +452,7 @@
 
 .m-mt-toast {
   background: #dcfce7;
-  color: #047857;
+  color: var(--m-color-success-text);
 }
 
 .m-mt-toast.is-error,
@@ -506,7 +509,7 @@
   border-radius: var(--m-radius-card);
   background: var(--m-color-primary-soft);
   padding: 0.7rem;
-  color: #3560b8;
+  color: var(--m-color-primary-soft-text);
   font-size: var(--m-text-sub-ratio);
   font-weight: 600;
 }

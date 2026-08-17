@@ -85,7 +85,7 @@
 .m-member-ccy .m-tx-hist-row--total > .m-tx-hist-dense-td {
   background: var(--m-color-primary-soft);
   font-weight: 800;
-  border-top: 1px solid #cbd5e1;
+  border-top: 1px solid var(--m-color-ring);
 }
 
 .m-member-ccy .m-tx-hist-dense-td--total-label {
@@ -142,7 +142,7 @@
 
 .m-member-balances-toggle-left > i {
   font-size: 0.7rem;
-  color: #64748b;
+  color: var(--m-color-muted);
 }
 
 .m-member-balances-title {
@@ -153,7 +153,7 @@
 .m-member-balances-count {
   font-size: var(--m-text-caption);
   font-weight: 600;
-  color: #64748b;
+  color: var(--m-color-muted);
   white-space: nowrap;
 }
 
@@ -175,7 +175,7 @@
 .m-member-balances-empty {
   margin: 0;
   padding: 0.55rem 0.35rem;
-  color: #64748b;
+  color: var(--m-color-muted);
   font-size: var(--m-text-caption);
   font-weight: 600;
 }
@@ -258,7 +258,7 @@
 .m-member-balances-table tbody th {
   text-align: left;
   font-weight: 700;
-  color: #334155;
+  color: var(--m-color-text-secondary);
   background: var(--m-color-surface);
 }
 

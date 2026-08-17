@@ -543,7 +543,7 @@
 
 .m-dash-kpi-pct--up {
   background: #ecfdf5;
-  color: #047857;
+  color: var(--m-color-success-text);
 }
 
 .m-dash-kpi-pct--down {

@@ -459,7 +459,7 @@
 
 .m-domain-share-badge--profit {
   background: #dcfce7;
-  color: #047857;
+  color: var(--m-color-success-text);
 }
 
 .m-domain-share-badge--sales {
