@@ -198,7 +198,7 @@
 }
 
 .m-rpt-chip.is-on {
-  border-color: #bfdbfe;
+  border-color: var(--m-color-primary-border);
   background: var(--m-color-primary-soft);
   color: var(--m-color-primary);
 }
@@ -212,7 +212,7 @@
 
 /* Domain: humane 2-line rows — process + labeled metrics, no horizontal scroll */
 .m-rpt-summary {
-  border: 1px solid #93c5fd;
+  border: 1px solid var(--m-color-primary-border);
   border-radius: var(--m-radius-card);
   background: var(--m-color-primary-soft);
   padding: 0.55rem 0.65rem;
@@ -270,13 +270,13 @@
   white-space: nowrap;
 }
 
-/* Match desktop domain/customer report: win/positive #172a9f, lose/negative #b91c1c */
+/* Win/positive and lose/negative follow theme tokens (readable in dark). */
 .m-rpt-metric.is-pos strong {
-  color: #172a9f;
+  color: var(--m-color-primary);
 }
 
 .m-rpt-metric.is-neg strong {
-  color: #b91c1c;
+  color: var(--m-color-danger);
 }
 
 .m-rpt-lines {
@@ -296,7 +296,7 @@
 }
 
 .m-rpt-line:nth-child(even) {
-  background: #f3faff;
+  background: var(--m-color-primary-soft);
 }
 
 .m-rpt-line:last-child {
@@ -328,7 +328,7 @@
   border-radius: var(--m-radius-card);
   background: var(--m-color-danger-soft);
   padding: 0.7rem 0.85rem;
-  color: #b91c1c;
+  color: var(--m-color-danger-text);
   font-size: var(--m-text-sub-ratio);
 }
 
@@ -344,7 +344,7 @@
 
 .m-rpt-toast.is-error {
   background: var(--m-color-danger-soft);
-  color: #b91c1c;
+  color: var(--m-color-danger-text);
 }
 
 .m-rpt-list {
@@ -417,7 +417,7 @@
 }
 
 .m-rpt-total-sticky {
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--m-color-primary-border);
   border-radius: var(--m-radius-card);
   background: var(--m-color-primary-soft);
   padding: 0.55rem 0.7rem;
@@ -438,7 +438,7 @@
 
 .m-rpt-total-bar {
   margin-top: 0.35rem;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--m-color-primary-border);
   border-radius: var(--m-radius-card-lg);
   background: var(--m-color-primary-soft);
   padding: 0.85rem;
@@ -465,11 +465,11 @@
 }
 
 .m-rpt-metrics strong.is-pos {
-  color: #172a9f;
+  color: var(--m-color-primary);
 }
 
 .m-rpt-metrics strong.is-neg {
-  color: #b91c1c;
+  color: var(--m-color-danger);
 }
 
 .m-rpt-currency-head {
@@ -543,7 +543,7 @@
   height: 1.45rem;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: #cbd5e1;
+  background: var(--m-color-label);
   transition: background 0.15s ease;
 }
 
