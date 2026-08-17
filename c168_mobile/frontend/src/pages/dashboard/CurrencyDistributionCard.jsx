@@ -167,7 +167,7 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                   <span className="m-dash-pie-legend-dot" style={{ backgroundColor: item.color }} aria-hidden="true" />
                   <span className="m-dash-pie-legend-code">
                     {loading ? (
-                      <span className="inline-block h-3 w-8 animate-pulse rounded bg-slate-100" />
+                      <span className="m-dash-pie-legend-skel" />
                     ) : (
                       item.code
                     )}
@@ -178,7 +178,7 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                 </li>
               ))}
               {!loading && legend.length === 0 && (
-                <li className="text-[12px] font-semibold text-slate-400">{i18n.noData}</li>
+                <li className="m-dash-pie-legend-empty">{i18n.noData}</li>
               )}
             </ul>
           </div>

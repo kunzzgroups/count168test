@@ -59,6 +59,7 @@
 }
 
 .mobile-lang-switch--light {
+  width: 7.6rem;
   border: 1px solid var(--m-color-ring);
   background: var(--m-color-surface-muted);
   box-shadow: none;
@@ -76,17 +77,9 @@
   color: #fff;
 }
 
-.mobile-theme-switch {
-  width: 7.6rem;
-}
-
 .mobile-theme-switch .mobile-lang-switch__seg {
   font-size: var(--m-text-micro);
   letter-spacing: 0.01em;
-}
-
-.mobile-theme-switch[data-theme="dark"] .mobile-lang-switch__thumb {
-  transform: translateX(100%);
 }
 
 .mobile-theme-switch[data-theme="dark"] .mobile-lang-switch__thumb {
