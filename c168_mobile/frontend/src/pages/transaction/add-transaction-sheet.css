@@ -223,8 +223,8 @@
 }
 
 .m-tx-form-btn--warn {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--m-color-warning-soft);
+  color: var(--m-color-warning-text);
 }
 
 .m-tx-form-hint {
@@ -249,7 +249,7 @@
   width: 1.25rem;
   height: 1.25rem;
   border-radius: 0.25rem;
-  border-color: #cbd5e1;
+  border-color: var(--m-color-ring);
   accent-color: var(--m-color-primary);
 }
 
@@ -343,18 +343,18 @@
 .m-tx-date-badge {
   flex-shrink: 0;
   border-radius: 0.375rem;
-  background: #e0f2fe;
+  background: var(--m-color-info-soft);
   padding: 0.125rem 0.375rem;
   font-size: var(--m-text-caption);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #0369a1;
+  color: var(--m-color-info-text);
 }
 
 .m-tx-date-chevron {
   font-size: var(--m-text-secondary);
-  color: #cbd5e1;
+  color: var(--m-color-label);
 }
 
 .m-tx-date-input {

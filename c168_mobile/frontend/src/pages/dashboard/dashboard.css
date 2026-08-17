@@ -54,7 +54,7 @@
 .m-dash-error-title {
   font-size: var(--m-text-body);
   font-weight: 700;
-  color: #9f1239;
+  color: var(--m-color-danger-text);
 }
 
 .m-dash-error-body {
@@ -84,14 +84,14 @@
   gap: 0.625rem;
   border-radius: var(--m-radius-card-lg);
   border: 1px solid #fde68a;
-  background: #fffbeb;
+  background: var(--m-color-warning-soft);
   padding: 0.625rem 0.875rem;
 }
 
 .m-dash-rates-hint i {
   margin-top: 0.125rem;
   font-size: var(--m-text-secondary);
-  color: #d97706;
+  color: var(--m-color-warning-text);
 }
 
 .m-dash-rates-hint p {
@@ -100,7 +100,7 @@
   font-size: var(--m-text-secondary);
   font-weight: 600;
   line-height: 1.375;
-  color: #92400e;
+  color: var(--m-color-warning-text);
 }
 
 .m-dash-rates-dismiss {
@@ -480,13 +480,13 @@
 }
 
 .m-dash-kpi-icon--net {
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--m-color-success-soft);
+  color: var(--m-color-success-text);
 }
 
 .m-dash-kpi-icon--earnings {
-  background: #fffbeb;
-  color: #d97706;
+  background: var(--m-color-warning-soft);
+  color: var(--m-color-warning-text);
 }
 
 .m-dash-kpi-icon i {
@@ -542,7 +542,7 @@
 }
 
 .m-dash-kpi-pct--up {
-  background: #ecfdf5;
+  background: var(--m-color-success-soft);
   color: var(--m-color-success-text);
 }
 
@@ -564,7 +564,7 @@
 }
 
 .m-dash-kpi-delta--up {
-  color: #059669;
+  color: var(--m-color-success-text);
 }
 
 .m-dash-kpi-delta--down {
@@ -1215,8 +1215,8 @@ html[data-theme="dark"] .m-dash-currency-flag:not(.m-dash-currency-flag--company
   width: 3rem;
   height: 3rem;
   border-radius: 999px;
-  background: #fef3c7;
-  color: #d97706;
+  background: var(--m-color-warning-soft);
+  color: var(--m-color-warning-text);
   font-size: 1.35rem;
   margin-bottom: 0.75rem;
 }

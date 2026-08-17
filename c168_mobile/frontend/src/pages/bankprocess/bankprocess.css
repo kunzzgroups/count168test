@@ -90,17 +90,17 @@
 }
 
 .m-bp-status.is-official {
-  background: #dbeafe;
+  background: var(--m-color-info-soft);
   color: #1d4ed8;
 }
 
 .m-bp-status.is-einvoice {
-  background: #fef3c7;
+  background: var(--m-color-warning-soft);
   color: #b45309;
 }
 
 .m-bp-status.is-block {
-  background: #fee2e2;
+  background: var(--m-color-danger-soft);
   color: #b91c1c;
 }
 

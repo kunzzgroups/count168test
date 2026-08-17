@@ -463,12 +463,12 @@
 }
 
 .m-domain-share-badge--sales {
-  background: #dbeafe;
+  background: var(--m-color-info-soft);
   color: #1d4ed8;
 }
 
 .m-domain-share-badge--cs {
-  background: #fef3c7;
+  background: var(--m-color-warning-soft);
   color: #b45309;
 }
 

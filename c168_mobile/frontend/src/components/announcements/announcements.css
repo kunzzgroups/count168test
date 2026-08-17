@@ -124,7 +124,7 @@
 .m-ann-version {
   flex-shrink: 0;
   border-radius: var(--m-radius-pill);
-  background: #dbeafe;
+  background: var(--m-color-info-soft);
   padding: 0.125rem 0.5rem;
   font-size: var(--m-text-caption);
   font-weight: 700;
@@ -208,9 +208,9 @@
   align-items: flex-start;
   gap: 0.5rem;
   border-radius: 0.75rem;
-  background: #ecfdf5;
+  background: var(--m-color-success-soft);
   padding: 0.5rem 0.75rem;
-  color: #065f46;
+  color: var(--m-color-success-text);
 }
 
 .m-ann-thanks svg {

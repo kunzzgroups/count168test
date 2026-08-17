@@ -13,7 +13,7 @@
   align-items: center;
   gap: 0.85rem;
   border-radius: var(--m-radius-card-lg);
-  background: linear-gradient(120deg, #e8f0ff, #f4f8ff);
+  background: linear-gradient(120deg, var(--m-color-primary-soft), var(--m-color-surface-muted));
   padding: 1rem;
   margin-bottom: 1.1rem;
 }
@@ -25,7 +25,7 @@
   flex: 0 0 3rem;
   place-items: center;
   border-radius: 0.9rem;
-  background: #dbe7ff;
+  background: var(--m-color-primary-soft);
   color: var(--m-color-primary);
   font-size: 1.35rem;
 }
@@ -112,9 +112,9 @@
   justify-self: start;
   margin-top: 0.3rem;
   border-radius: var(--m-radius-pill);
-  background: #fef3c7;
+  background: var(--m-color-warning-soft);
   padding: 0.18rem 0.5rem;
-  color: #b45309;
+  color: var(--m-color-warning-text);
   font-size: var(--m-text-badge-ratio);
   font-weight: 800;
 }
@@ -222,7 +222,7 @@
 }
 
 .m-mt-card.is-deleted {
-  background: #fafafa;
+  background: var(--m-color-surface-muted);
   opacity: 0.82;
 }
 
@@ -315,7 +315,7 @@
 
 .m-mt-del-tag {
   border-radius: 0.35rem;
-  background: #fee2e2;
+  background: var(--m-color-danger-soft);
   padding: 0.12rem 0.4rem;
   color: #b91c1c;
   font-size: var(--m-text-badge-ratio);
@@ -387,7 +387,7 @@
 
 .m-mt-type-tag.is-blue { background: var(--m-color-info-soft); color: var(--m-color-info-text); }
 .m-mt-type-tag.is-green { background: var(--m-color-success-soft); color: var(--m-color-success-text); }
-.m-mt-type-tag.is-amber { background: rgba(253, 224, 71, 0.28); color: #b45309; }
+.m-mt-type-tag.is-amber { background: var(--m-color-warning-soft); color: var(--m-color-warning-text); }
 .m-mt-type-tag.is-teal { background: rgba(45, 212, 191, 0.22); color: #0f766e; }
 .m-mt-type-tag.is-violet { background: var(--m-grad-brand); color: #fff; }
 .m-mt-type-tag.is-slate { background: var(--m-color-ring); color: var(--m-color-muted); }
@@ -552,9 +552,9 @@ html[data-theme="dark"] .m-mt-type-tag.is-teal { background: rgba(45, 212, 191, 
   gap: 0.45rem;
   margin-top: 0.75rem;
   border-radius: var(--m-radius-card);
-  background: #fffbeb;
+  background: var(--m-color-warning-soft);
   padding: 0.55rem;
-  color: #b45309;
+  color: var(--m-color-warning-text);
   font-size: var(--m-text-sub-ratio);
   font-weight: 700;
 }

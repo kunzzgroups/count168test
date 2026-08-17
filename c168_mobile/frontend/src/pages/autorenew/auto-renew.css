@@ -21,7 +21,7 @@
   gap: 0.3rem;
   min-height: 1.75rem;
   padding: 0.25rem 0.65rem;
-  border: 1px solid #d7deea;
+  border: 1px solid var(--m-color-ring);
   border-radius: 999px;
   background: var(--m-color-surface);
   color: #475569;
@@ -44,7 +44,7 @@
 .m-ar-chip.is-active {
   border-color: #bfd0ff;
   background: var(--m-color-primary-soft);
-  color: #1e3a8a;
+  color: var(--m-color-primary-soft-text);
 }
 
 .m-ar-chip.is-active em {
@@ -75,8 +75,8 @@
   margin: 0;
   padding: 0.55rem 0.7rem;
   border-radius: 0.75rem;
-  background: #fff7ed;
-  color: #9a3412;
+  background: var(--m-color-warning-soft);
+  color: var(--m-color-warning-text);
   font-size: var(--m-text-secondary);
 }
 
@@ -147,12 +147,12 @@
 }
 
 .m-ar-status--pending {
-  background: #fff7ed;
+  background: var(--m-color-warning-soft);
   color: #c2410c;
 }
 
 .m-ar-status--approved {
-  background: #ecfdf5;
+  background: var(--m-color-success-soft);
   color: #047857;
 }
 
@@ -226,7 +226,7 @@
 
 .m-ar-hint {
   margin: 0;
-  color: #b45309;
+  color: var(--m-color-warning-text);
   font-size: var(--m-text-caption);
 }
 

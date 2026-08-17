@@ -12,7 +12,7 @@
   align-items: center;
   gap: 0.85rem;
   border-radius: var(--m-radius-card-lg);
-  background: linear-gradient(120deg, #e8f0ff, #f4f8ff);
+  background: linear-gradient(120deg, var(--m-color-primary-soft), var(--m-color-surface-muted));
   padding: 1rem;
   margin-bottom: 1.1rem;
 }
@@ -24,7 +24,7 @@
   flex: 0 0 3rem;
   place-items: center;
   border-radius: 0.9rem;
-  background: #dbe7ff;
+  background: var(--m-color-primary-soft);
   color: var(--m-color-primary);
   font-size: 1.35rem;
 }
@@ -335,7 +335,7 @@
 .m-rpt-toast {
   margin-bottom: 0.75rem;
   border-radius: var(--m-radius-card);
-  background: #ecfdf5;
+  background: var(--m-color-success-soft);
   padding: 0.7rem 0.85rem;
   color: var(--m-color-success-text);
   font-size: var(--m-text-sub-ratio);

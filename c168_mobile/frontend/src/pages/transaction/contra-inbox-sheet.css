@@ -141,16 +141,16 @@
 }
 
 .m-contra-item-acc--from {
-  color: #1d4ed8;
+  color: var(--m-color-primary-soft-text);
 }
 
 .m-contra-item-acc--to {
-  color: #0f766e;
+  color: var(--m-color-success-text);
 }
 
 .m-contra-item-arrow {
   flex-shrink: 0;
-  color: #94a3b8;
+  color: var(--m-color-label);
   font-weight: 700;
 }
 
@@ -170,7 +170,7 @@
   align-items: center;
   border-radius: var(--m-radius-pill);
   background: var(--m-color-primary-soft);
-  color: #1d4ed8;
+  color: var(--m-color-primary-soft-text);
   padding: 0.1rem 0.45rem;
   font-size: var(--m-text-caption);
   font-weight: 800;
