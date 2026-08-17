@@ -11,6 +11,7 @@ import TransactionPage from "./pages/transaction/TransactionPage.jsx";
 import TransactionHistoryPage from "./pages/transaction/TransactionHistoryPage.jsx";
 import AccountPage from "./pages/account/AccountPage.jsx";
 import MorePage from "./pages/more/MorePage.jsx";
+import SettingsPage from "./pages/more/SettingsPage.jsx";
 import AdminUsersPage from "./pages/admin/AdminUsersPage.jsx";
 import DomainPage from "./pages/domain/DomainPage.jsx";
 import AnnouncementPage from "./pages/announcement/AnnouncementPage.jsx";
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/maintenance/bankprocess" element={<MaintenanceBankprocessPage />} />
         <Route path="/maintenance/bank-process" element={<BankProcessListPage />} />
         <Route path="/more" element={<MorePage />} />
+        <Route path="/more/settings" element={<SettingsPage />} />
         <Route path="/more/users" element={<AdminUsersPage />} />
         <Route path="/more/domain" element={<DomainPage />} />
         <Route path="/more/announcement" element={<AnnouncementPage />} />

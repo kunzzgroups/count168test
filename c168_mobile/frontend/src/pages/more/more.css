@@ -1,18 +1,15 @@
 .m-more-page {
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
   width: min(100%, var(--m-page-max-width));
-  min-height: calc(
-    100dvh - env(safe-area-inset-top, 0px) - 3.25rem - var(--m-shell-main-pad-bottom-nav)
-  );
   margin-inline: auto;
-  padding: 1rem var(--m-page-gutter) 0.75rem;
+  padding: 1rem var(--m-page-gutter) 1.25rem;
   font-size: var(--m-text-compact);
 }
 
-.m-more-body {
-  flex: 1 1 auto;
+.m-more-page--settings {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: calc(100dvh - env(safe-area-inset-top, 0px) - 6.5rem - var(--m-shell-main-pad-bottom));
 }
 
 .m-more-profile {
@@ -182,9 +179,9 @@
 }
 
 @media (orientation: landscape) and (max-height: 500px) {
-  .m-more-page {
+  .m-more-page--settings {
     min-height: calc(
-      100dvh - env(safe-area-inset-top, 0px) - 2.75rem - var(--m-shell-main-pad-bottom-nav)
+      100dvh - env(safe-area-inset-top, 0px) - 5.5rem - var(--m-shell-main-pad-bottom)
     );
   }
 }
@@ -196,7 +193,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  margin-top: 1.25rem;
+  margin-top: auto;
   border-radius: var(--m-radius-card-lg);
   padding: 0.9rem 1rem;
   background: var(--m-grad-brand, linear-gradient(90deg, #63c4ff 0%, #0d60ff 100%));

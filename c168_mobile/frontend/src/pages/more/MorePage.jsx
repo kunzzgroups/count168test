@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import MobileShell from "../../components/layout/MobileShell.jsx";
-import MobileLangSwitch from "../../components/layout/MobileLangSwitch.jsx";
+import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx";
 import { fetchJson } from "../../lib/fetchJson.js";
 import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { MORE_I18N } from "../../translateFile/moreTranslate.js";
@@ -18,19 +18,10 @@ import {
   canAccessMaintenance,
   canAccessOwnership,
   canShowReportEntry,
+  resolveMobileMoreBackPath,
 } from "../../utils/mobilePermissions.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import "./more.css";
-
-function initials(name) {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!parts.length) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
-}
 
 export default function MorePage() {
   const navigate = useNavigate();
@@ -87,9 +78,7 @@ export default function MorePage() {
 
   const companyCode = String(me?.company_code || me?.company_id || "").toUpperCase();
   const groupId = String(me?.login_group_id || me?.login_identifier || "").toUpperCase();
-  const displayName = me?.nickname || me?.username || me?.name || "—";
-  const role = String(me?.role || me?.user_type || "").toUpperCase();
-  const scopeLabel = [companyCode, groupId].filter(Boolean).join(" · ");
+  const backTo = resolveMobileMoreBackPath(me);
   const mt = maintenanceText(lang);
   const tools = [];
   if (canAccessAdmin(me)) {
@@ -147,6 +136,12 @@ export default function MorePage() {
       badge: autoRenewPending > 0 ? autoRenewPending : null,
     });
   }
+  tools.push({
+    to: "/more/settings",
+    icon: "fa-gear",
+    title: i18n.settings,
+    description: i18n.settingsDescription,
+  });
 
   return (
     <MobileShell
@@ -158,69 +153,44 @@ export default function MorePage() {
       onRefresh={undefined}
       lang={lang}
       onLangChange={setLang}
+      stickyBar={
+        <MobileSubpageHeader
+          backTo={backTo}
+          backAriaLabel={i18n.back}
+          title={i18n.more}
+          subtitle={i18n.moreSubtitle}
+        />
+      }
     >
       <main className="m-more-page">
-        <section className="m-more-profile">
-          <div className="m-more-avatar" aria-hidden="true">
-            {initials(displayName)}
+        {loading ? (
+          <div className="m-more-state">
+            <i className="fas fa-spinner fa-spin" aria-hidden="true" />
           </div>
-          <div className="m-more-profile-copy">
-            <strong>{displayName}</strong>
-            <span>{role || "USER"}</span>
-            {scopeLabel ? <em>{scopeLabel}</em> : null}
+        ) : (
+          <div className="m-more-grid">
+            {tools.map((tool) => (
+              <Link key={tool.to} to={tool.to} className="m-more-card tap-scale">
+                <span className="m-more-icon">
+                  <i className={`fas ${tool.icon}`} aria-hidden="true" />
+                  {tool.badge != null ? (
+                    <span className="m-more-badge" aria-label={String(tool.badge)}>
+                      {tool.badge > 99 ? "99+" : tool.badge}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="m-more-copy">
+                  <strong>{tool.title}</strong>
+                  <small>{tool.description}</small>
+                </span>
+                <span className="m-more-open">
+                  {i18n.open}
+                  <i className="fas fa-chevron-right" aria-hidden="true" />
+                </span>
+              </Link>
+            ))}
           </div>
-          <MobileLangSwitch
-            lang={lang}
-            onChange={setLang}
-            ariaLabel={i18n.language}
-            tone="light"
-          />
-        </section>
-
-        <div className="m-more-body">
-          <header className="m-more-heading">
-            <p>{i18n.moreSubtitle}</p>
-            <h1>{i18n.more}</h1>
-          </header>
-
-          {loading ? (
-            <div className="m-more-state">
-              <i className="fas fa-spinner fa-spin" aria-hidden="true" />
-            </div>
-          ) : tools.length ? (
-            <div className="m-more-grid">
-              {tools.map((tool) => (
-                <Link key={tool.to} to={tool.to} className="m-more-card tap-scale">
-                  <span className="m-more-icon">
-                    <i className={`fas ${tool.icon}`} aria-hidden="true" />
-                    {tool.badge != null ? (
-                      <span className="m-more-badge" aria-label={String(tool.badge)}>
-                        {tool.badge > 99 ? "99+" : tool.badge}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="m-more-copy">
-                    <strong>{tool.title}</strong>
-                    <small>{tool.description}</small>
-                  </span>
-                  <span className="m-more-open">
-                    {i18n.open}
-                    <i className="fas fa-chevron-right" aria-hidden="true" />
-                  </span>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="m-more-state m-more-state--compact">
-              <p>{i18n.noTools}</p>
-            </div>
-          )}
-        </div>
-
-        <button type="button" className="m-more-logout tap-scale" onClick={() => void logout()}>
-          <i className="fas fa-right-from-bracket" aria-hidden="true" />
-          {i18n.logout}
-        </button>
+        )}
       </main>
     </MobileShell>
   );

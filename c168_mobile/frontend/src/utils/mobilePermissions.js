@@ -129,6 +129,24 @@ export function resolveMobileLandingPath(me) {
   return "/more";
 }
 
+/** More hub + pages opened from More — hide the tab bar. */
+export function isMobileMoreStackPath(pathname) {
+  const p = String(pathname || "");
+  return (
+    p === "/more" ||
+    p.startsWith("/more/") ||
+    p.startsWith("/report") ||
+    p.startsWith("/maintenance")
+  );
+}
+
+/** First bottom-nav tab besides More — used by the More back button. */
+export function resolveMobileMoreBackPath(me) {
+  if (!me) return "/dashboard";
+  const items = mobileNavItems(me).filter((item) => item.to !== "/more");
+  return items[0]?.to || "/dashboard";
+}
+
 export function mobileNavItems(me) {
   if (String(me?.user_type || "").toLowerCase() === "member") {
     return [

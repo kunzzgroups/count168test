@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useMobileSession } from "../../hooks/useMobileSession.js";
 import { LANGUAGE_UPDATED_EVENT, readLoginLang } from "../../lib/loginLang.js";
 import { DASHBOARD_I18N } from "../../translateFile/dashboardTranslate.js";
-import { mobileNavItems } from "../../utils/mobilePermissions.js";
+import { isMobileMoreStackPath, mobileNavItems } from "../../utils/mobilePermissions.js";
 import MobileBottomNav from "./MobileBottomNav.jsx";
 import "./mobile-shell.css";
 
@@ -13,6 +13,7 @@ function shouldShowBottomNav(pathname) {
   if (pathname.startsWith("/user-secondary-password")) return false;
   if (pathname.startsWith("/reset-password")) return false;
   if (pathname.startsWith("/transaction/history")) return false;
+  if (isMobileMoreStackPath(pathname)) return false;
   return true;
 }
 

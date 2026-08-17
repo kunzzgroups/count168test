@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh.js";
 import { useDirectScrollChrome } from "../../hooks/useDirectScrollChrome.js";
 import { useScrollIdleVisible } from "../../hooks/useScrollIdleVisible.js";
+import { isMobileMoreStackPath } from "../../utils/mobilePermissions.js";
 import MobileAppBar from "./MobileAppBar.jsx";
 import MobileNotifications, { fetchMobileAnnouncements } from "./MobileNotifications.jsx";
 import PullRefreshIndicator from "./PullRefreshIndicator.jsx";
@@ -21,6 +23,8 @@ export default function MobileShell({
   onChromeOpen,
   overlayOpen = false,
 }) {
+  const { pathname } = useLocation();
+  const navVisible = showBottomNav && !isMobileMoreStackPath(pathname);
   const labels = {
     navHome: "Home",
     navReport: "Report",
@@ -159,7 +163,7 @@ export default function MobileShell({
         className="m-shell-main"
         style={{
           paddingTop: mainPadTop,
-          paddingBottom: showBottomNav
+          paddingBottom: navVisible
             ? "var(--m-shell-main-pad-bottom-nav)"
             : "var(--m-shell-main-pad-bottom)",
         }}
