@@ -140,8 +140,14 @@ export default function MobileShell({
   const contentTransition = isAnimating && phase !== "pulling" && phase !== "armed";
   const mainPadTop = topChromeH;
 
+  const mainPadBottom = navVisible
+    ? "var(--m-shell-main-pad-bottom-nav)"
+    : floatingAction
+      ? "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)"
+      : "var(--m-shell-main-pad-bottom)";
+
   return (
-    <div className="m-shell">
+    <div className={`m-shell${navVisible ? "" : " m-shell--no-nav"}`}>
       <div ref={topChromeRef} className="m-shell-chrome">
         <MobileAppBar
           i18n={labels}
@@ -163,9 +169,7 @@ export default function MobileShell({
         className="m-shell-main"
         style={{
           paddingTop: mainPadTop,
-          paddingBottom: navVisible
-            ? "var(--m-shell-main-pad-bottom-nav)"
-            : "var(--m-shell-main-pad-bottom)",
+          paddingBottom: mainPadBottom,
         }}
       >
         <div

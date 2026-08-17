@@ -59,9 +59,13 @@
 }
 
 .mobile-lang-switch--light {
-  border: 1px solid #d7deea;
-  background: #eef2f7;
+  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
   box-shadow: none;
+}
+
+.mobile-lang-switch--light .mobile-lang-switch__thumb {
+  box-shadow: 0 1px 4px rgba(13, 96, 255, 0.28);
 }
 
 .mobile-lang-switch--light .mobile-lang-switch__seg {

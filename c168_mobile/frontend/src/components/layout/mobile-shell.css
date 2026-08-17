@@ -238,6 +238,10 @@
   opacity: 1;
 }
 
+.m-shell--no-nav .m-shell-fab-slot {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 1.15rem);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .m-shell-nav-link {
     transition: none;
@@ -289,5 +293,9 @@
 
   .m-shell-fab-slot {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 4.25rem);
+  }
+
+  .m-shell--no-nav .m-shell-fab-slot {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.85rem);
   }
 }

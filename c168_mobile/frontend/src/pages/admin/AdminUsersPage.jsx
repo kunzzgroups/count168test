@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
+import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx";
 import ScopeBreadcrumb from "../dashboard/ScopeBreadcrumb.jsx";
 import { getRoleClass } from "../../lib/transactionPaymentLogic.js";
 import { useIncrementalList } from "../../hooks/useIncrementalList.js";
@@ -101,6 +102,12 @@ export default function AdminUsersPage() {
 
   const stickyBar = (
     <div className="m-account-sticky">
+      <MobileSubpageHeader
+        backTo="/more"
+        backAriaLabel={i18n.backToMore}
+        title={i18n.users}
+        subtitle={i18n.usersSubtitle}
+      />
       <div className="m-account-scope-row">
         <button type="button" className="m-account-scope-btn tap-scale" onClick={() => setScopeOpen(true)}>
           <ScopeBreadcrumb

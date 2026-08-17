@@ -99,12 +99,18 @@ export default function SettingsPage() {
                 <span>{role || "USER"}</span>
                 {scopeLabel ? <em>{scopeLabel}</em> : null}
               </div>
-              <MobileLangSwitch
-                lang={lang}
-                onChange={setLang}
-                ariaLabel={i18n.language}
-                tone="light"
-              />
+            </section>
+
+            <section className="m-more-settings-group" aria-label={i18n.language}>
+              <div className="m-more-settings-row">
+                <span>{i18n.language}</span>
+                <MobileLangSwitch
+                  lang={lang}
+                  onChange={setLang}
+                  ariaLabel={i18n.language}
+                  tone="light"
+                />
+              </div>
             </section>
 
             <button type="button" className="m-more-logout tap-scale" onClick={() => void logout()}>
