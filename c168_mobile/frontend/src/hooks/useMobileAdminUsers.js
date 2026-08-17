@@ -14,8 +14,11 @@ import { accountScopeIsGroupOnly, resolveAccountScopeDraft } from "../lib/mobile
 import { isPartnershipAuditReadOnlyLocked } from "../lib/partnershipAuditReadOnly.js";
 import {
   applyUserFilters,
+  buildAccountPermissionPayload,
   buildAdminCompanyOptions,
   buildAdminGroupOptions,
+  buildProcessPermissionPayload,
+  canSelfEditAccountAccess,
   computeRowCapabilities,
   getAvailableRolesForCreation,
   getAvailableRolesForEdit,
@@ -24,7 +27,10 @@ import {
   getUserEditFieldLocks,
   getVisiblePermissionKeys,
   normRole,
+  parseAccessPermissionRaw,
+  parseAssignableIds,
   parseJsonArray,
+  partitionAccessRows,
   resolveAdminGroupCodes,
   resolveAdminGroupEntityIds,
   roleHasReadOnlyToggle,
@@ -95,6 +101,10 @@ export function useMobileAdminUsers() {
   const [formProcesses, setFormProcesses] = useState([]);
   const [selectedAccountIds, setSelectedAccountIds] = useState(() => new Set());
   const [selectedProcessIds, setSelectedProcessIds] = useState(() => new Set());
+  const [toggleableAccountIds, setToggleableAccountIds] = useState(null);
+  const [toggleableProcessIds, setToggleableProcessIds] = useState(null);
+  const [superiorClosedAccountIds, setSuperiorClosedAccountIds] = useState(() => new Set());
+  const [superiorClosedProcessIds, setSuperiorClosedProcessIds] = useState(() => new Set());
   const [selectedTenantGroupIds, setSelectedTenantGroupIds] = useState(() => new Set());
   const [selectedTenantCompanyIds, setSelectedTenantCompanyIds] = useState(() => new Set());
   const [saving, setSaving] = useState(false);
@@ -386,22 +396,35 @@ export function useMobileAdminUsers() {
   const loadFormOptions = useCallback(async () => {
     const cid = Number(companyId);
     const [accJson, procJson] = await Promise.all([
-      readJson(buildApiUrl(`api/accounts/accountlistapi.php?company_id=${cid}`)),
-      readJson(buildApiUrl(`api/processes/processlist_api.php?company_id=${cid}&showAll=1`)),
+      readJson(buildApiUrl(`api/accounts/accountlistapi.php?company_id=${cid}&for_assignment=1`)),
+      readJson(buildApiUrl(`api/processes/processlist_api.php?company_id=${cid}&showAll=1&for_assignment=1`)),
     ]);
     const accounts = (accJson?.data?.accounts || [])
       .filter((a) => String(a.status || "").toLowerCase() === "active")
       .map((a) => ({ id: Number(a.id), account_id: a.account_id, name: String(a.name || "").trim() }));
-    const processes = (Array.isArray(procJson?.data) ? procJson.data : [])
+    const procPayload = procJson?.data;
+    const procRows = Array.isArray(procPayload) ? procPayload : procPayload?.processes || [];
+    const processes = procRows
       .filter((p) => String(p.status || "").toLowerCase() === "active")
       .map((p) => ({
         id: Number(p.id),
         process_id: p.process_name || p.process_id || "",
         description: p.description_name || p.description || "",
       }));
+    const nextToggleableAccounts = parseAssignableIds(accJson?.data?.toggleable_ids);
+    const nextToggleableProcesses = Array.isArray(procPayload)
+      ? null
+      : parseAssignableIds(procPayload?.toggleable_ids);
     setFormAccounts(accounts);
     setFormProcesses(processes);
-    return { accounts, processes };
+    setToggleableAccountIds(nextToggleableAccounts);
+    setToggleableProcessIds(nextToggleableProcesses);
+    return {
+      accounts,
+      processes,
+      toggleableAccountIds: nextToggleableAccounts,
+      toggleableProcessIds: nextToggleableProcesses,
+    };
   }, [companyId]);
 
   const openCreate = useCallback(async () => {
@@ -428,6 +451,8 @@ export function useMobileAdminUsers() {
       const { accounts, processes } = await loadFormOptions();
       setSelectedAccountIds(new Set(accounts.map((a) => a.id)));
       setSelectedProcessIds(new Set(processes.map((p) => p.id)));
+      setSuperiorClosedAccountIds(new Set());
+      setSuperiorClosedProcessIds(new Set());
       return true;
     } catch (e) {
       notify(e?.message || i18n.loadError, "error");
@@ -484,13 +509,19 @@ export function useMobileAdminUsers() {
       setSelectedTenantCompanyIds(new Set());
     }
     try {
-      await loadFormOptions();
-      setSelectedAccountIds(
-        new Set(parseJsonArray(detail.account_permissions).map((x) => Number(x?.id ?? x))),
+      const { accounts, processes } = await loadFormOptions();
+      const accPartition = partitionAccessRows(
+        parseAccessPermissionRaw(detail.account_permissions),
+        accounts,
       );
-      setSelectedProcessIds(
-        new Set(parseJsonArray(detail.process_permissions).map((x) => Number(x?.id ?? x))),
+      const procPartition = partitionAccessRows(
+        parseAccessPermissionRaw(detail.process_permissions),
+        processes,
       );
+      setSelectedAccountIds(accPartition.selected);
+      setSuperiorClosedAccountIds(accPartition.superiorClosed);
+      setSelectedProcessIds(procPartition.selected);
+      setSuperiorClosedProcessIds(procPartition.superiorClosed);
       return true;
     } catch (e) {
       notify(e?.message || i18n.loadError, "error");
@@ -536,14 +567,19 @@ export function useMobileAdminUsers() {
       notify(i18n.invalidEmail, "error");
       return false;
     }
-    const accountPerms = [...selectedAccountIds].map((id) => {
-      const a = formAccounts.find((x) => Number(x.id) === Number(id));
-      return { id: Number(id), account_id: a?.account_id || "" };
-    });
-    const processPerms = [...selectedProcessIds].map((id) => {
-      const p = formProcesses.find((x) => Number(x.id) === Number(id));
-      return { id: Number(id), process_id: p?.process_id || "", description: p?.description || "" };
-    });
+    const selfAcc = editing && canSelfEditAccountAccess(editingRow, currentUserId, currentUserRole);
+    const accountPerms = buildAccountPermissionPayload(
+      formAccounts,
+      selectedAccountIds,
+      superiorClosedAccountIds,
+      { isSelf: selfAcc, toggleableIds: toggleableAccountIds },
+    );
+    const processPerms = buildProcessPermissionPayload(
+      formProcesses,
+      selectedProcessIds,
+      superiorClosedProcessIds,
+      { isSelf: selfAcc, toggleableIds: toggleableProcessIds },
+    );
     const payload = {
       action: editing ? "update" : "create",
       id: editing ? Number(form.id) : undefined,
@@ -570,7 +606,7 @@ export function useMobileAdminUsers() {
       if (isAdminOrOwner && !useDualTenantPicker) payload.company_ids = [Number(companyId)];
     } else if (!ownerShadow) {
       if (!fieldLocks.sidebar) payload.permissions = [...permSelected];
-      if (!fieldLocks.accountProcess) {
+      if (!fieldLocks.accountProcess || selfAcc) {
         payload.account_permissions = accountPerms;
         payload.process_permissions = processPerms;
       }
@@ -594,8 +630,9 @@ export function useMobileAdminUsers() {
   }, [
     canMutate,
     companyId,
+    currentUserId,
     currentUserRole,
-    editingRow?.is_owner_shadow,
+    editingRow,
     fieldLocks,
     form,
     formAccounts,
@@ -611,7 +648,11 @@ export function useMobileAdminUsers() {
     selectedTenantCompanyIds,
     selectedTenantGroupIds,
     showReadOnlyToggle,
+    superiorClosedAccountIds,
+    superiorClosedProcessIds,
     tenantGroupOptions,
+    toggleableAccountIds,
+    toggleableProcessIds,
     useDualTenantPicker,
   ]);
 
@@ -679,6 +720,13 @@ export function useMobileAdminUsers() {
     setSelectedAccountIds,
     selectedProcessIds,
     setSelectedProcessIds,
+    toggleableAccountIds,
+    toggleableProcessIds,
+    superiorClosedAccountIds,
+    setSuperiorClosedAccountIds,
+    superiorClosedProcessIds,
+    setSuperiorClosedProcessIds,
+    selfToggle: isEditMode && canSelfEditAccountAccess(editingRow, currentUserId, currentUserRole),
     useDualTenantPicker,
     tenantGroupOptions,
     tenantCompanyOptions,

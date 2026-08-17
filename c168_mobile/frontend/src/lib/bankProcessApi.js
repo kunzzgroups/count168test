@@ -1,6 +1,7 @@
 import { buildApiUrl } from "../utils/apiUrl.js";
 import { orderCurrencyCodesForCompany } from "./currencyOrder.js";
 import { fetchJson, assertApiOk } from "./fetchJson.js";
+import MoneyDecimal from "./money/moneyDecimal.js";
 
 export function normalizeBankIssueFlag(v) {
   const s = String(v || "")
@@ -447,9 +448,17 @@ export function formatBankMoneyFixed2(value, { emptyAsZero = true } = {}) {
     .trim()
     .replace(/,/g, "");
   if (!raw) return emptyAsZero ? "0.00" : "";
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return emptyAsZero ? "0.00" : "";
-  return n.toFixed(2);
+  if (!isValidBankMoneyInput(raw)) return emptyAsZero ? "0.00" : "";
+  return MoneyDecimal.formatFixedHalfUp(raw, 2);
+}
+
+export function isValidBankMoneyInput(value) {
+  try {
+    MoneyDecimal.toDecimal(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function sanitizeBankMoneyTyping(value) {

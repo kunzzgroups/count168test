@@ -240,6 +240,16 @@
   color: rgba(15, 23, 42, 0.35);
 }
 
+.m-admin-picker-item.is-locked {
+  opacity: 0.45;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.m-admin-picker-item.is-locked i {
+  color: #94a3b8;
+}
+
 .m-admin-sentinel {
   height: 1px;
 }

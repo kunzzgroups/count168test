@@ -142,8 +142,17 @@ export function getUserEditFieldLocks(row, currentUserId, currentUserRole) {
     password: false,
     sidebar: isSelf || isSame || isLower,
     company: isSelf || isSame || isLower || !canPickCompany,
+    // Process stays locked for self unless canSelfEditAccountAccess unlocks Acc/Process.
     accountProcess: isSelf,
   };
+}
+
+/** Non-owner editing themselves may hide/unhide Acc and Process. Owner / owner-shadow cannot. */
+export function canSelfEditAccountAccess(row, currentUserId, currentUserRole) {
+  if (!row || row.is_owner_shadow) return false;
+  if (normRole(currentUserRole) === "owner") return false;
+  if (row.id == null || currentUserId == null) return false;
+  return Number(row.id) === Number(currentUserId);
 }
 
 export function getCurrentUserRolePermissions(currentUserRole) {
@@ -282,6 +291,138 @@ export function parseJsonArray(value) {
   } catch {
     return [];
   }
+}
+
+/**
+ * Acc/Process JSON: null means “see all listed items”.
+ * Empty array means none selected. Flags (self_hidden / superior_closed) stay on rows.
+ */
+export function parseAccessPermissionRaw(value) {
+  if (value == null) return null;
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  if (trimmed.toLowerCase() === "null") return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed == null) return null;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Digit-first natural order: 2 < 10 < A < Z. */
+export function compareAccessCode(a, b) {
+  return String(a || "").localeCompare(String(b || ""), "en", { numeric: true, sensitivity: "base" });
+}
+
+/** Open (checked) items first, closed last; within each group numbers → A → Z. */
+export function sortAccessItems(items, selectedIds, codeKey) {
+  const selected = selectedIds instanceof Set ? selectedIds : new Set();
+  const list = Array.isArray(items) ? items : [];
+  return [...list].sort((a, b) => {
+    const aOn = selected.has(Number(a?.id)) ? 0 : 1;
+    const bOn = selected.has(Number(b?.id)) ? 0 : 1;
+    if (aOn !== bOn) return aOn - bOn;
+    const byCode = compareAccessCode(a?.[codeKey], b?.[codeKey]);
+    if (byCode !== 0) return byCode;
+    return Number(a?.id || 0) - Number(b?.id || 0);
+  });
+}
+
+/** null = editor may assign every listed item; Set = only those ids. */
+export function parseAssignableIds(raw) {
+  if (raw == null) return null;
+  if (!Array.isArray(raw)) return null;
+  return new Set(raw.map((id) => Number(id)).filter((id) => id > 0));
+}
+
+export function accessRowHasFlag(row, flag) {
+  return !!row && typeof row === "object" && (row[flag] === 1 || row[flag] === true || row[flag] === "1");
+}
+
+/**
+ * Split stored Acc/Process JSON into checked ids vs superior-closed ids.
+ * self_hidden rows stay listed but unchecked. null JSON = all listed selected.
+ */
+export function partitionAccessRows(raw, accList) {
+  if (raw == null) {
+    return {
+      selected: new Set((accList || []).map((a) => Number(a.id)).filter((id) => id > 0)),
+      superiorClosed: new Set(),
+    };
+  }
+  const selected = new Set();
+  const superiorClosed = new Set();
+  for (const row of Array.isArray(raw) ? raw : []) {
+    const id = Number(row?.id ?? row);
+    if (!(id > 0)) continue;
+    if (accessRowHasFlag(row, "superior_closed")) {
+      superiorClosed.add(id);
+      continue;
+    }
+    if (accessRowHasFlag(row, "self_hidden")) continue;
+    selected.add(id);
+  }
+  return { selected, superiorClosed };
+}
+
+/**
+ * Persist Acc/Process rows with flags. Only selected / superior-closed / self-hidden
+ * toggleable items are written — never the whole company catalog.
+ */
+export function buildAccessPermissionPayload(items, selectedIds, superiorClosedIds, options = {}) {
+  const { isSelf = false, toggleableIds = null, extraFields } = options;
+  const selected = selectedIds instanceof Set ? selectedIds : new Set();
+  const closed = superiorClosedIds instanceof Set ? superiorClosedIds : new Set();
+  const out = [];
+  for (const item of items || []) {
+    const id = Number(item.id);
+    if (!(id > 0)) continue;
+    const inSelected = selected.has(id);
+    const inClosed = closed.has(id);
+    const inToggle = toggleableIds == null || toggleableIds.has(id);
+    const extra = typeof extraFields === "function" ? extraFields(item) : {};
+    const row = { id, ...extra };
+    if (isSelf) {
+      if (!inToggle && !inSelected && !inClosed) continue;
+      if (inClosed) {
+        out.push({ ...row, superior_closed: 1 });
+        continue;
+      }
+      if (!inSelected) {
+        if (!inToggle) continue;
+        out.push({ ...row, self_hidden: 1 });
+        continue;
+      }
+      out.push(row);
+      continue;
+    }
+    if (inSelected) {
+      out.push(row);
+      continue;
+    }
+    if (inClosed) {
+      out.push({ ...row, superior_closed: 1 });
+    }
+  }
+  return out;
+}
+
+export function buildAccountPermissionPayload(accounts, selectedIds, superiorClosedIds, options = {}) {
+  return buildAccessPermissionPayload(accounts, selectedIds, superiorClosedIds, {
+    ...options,
+    extraFields: (a) => ({ account_id: a.account_id || "" }),
+  });
+}
+
+export function buildProcessPermissionPayload(processes, selectedIds, superiorClosedIds, options = {}) {
+  return buildAccessPermissionPayload(processes, selectedIds, superiorClosedIds, {
+    ...options,
+    extraFields: (p) => ({ process_id: p.process_id || "", description: p.description || "" }),
+  });
 }
 
 export function validateUserEmail(raw) {

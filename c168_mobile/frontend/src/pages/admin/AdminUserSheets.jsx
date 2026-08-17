@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOverlayLock } from "../../hooks/useOverlayLock.js";
-import { formatLastLogin, normRole } from "../../lib/mobileUserAdmin.js";
+import { formatLastLogin, normRole, sortAccessItems } from "../../lib/mobileUserAdmin.js";
 import PasswordInput from "../../components/PasswordInput.jsx";
 import "../transaction/add-transaction-sheet.css";
 
@@ -151,16 +151,87 @@ export function UserDetailSheet({ open, onClose, admin, onEdit }) {
   );
 }
 
-function AccessPickerSheet({ open, onClose, title, i18n, options, selected, setSelected, labelOf }) {
+function AccessPickerSheet({
+  open,
+  onClose,
+  title,
+  i18n,
+  options,
+  selected,
+  setSelected,
+  labelOf,
+  codeKey,
+  toggleableIds = null,
+  superiorClosedIds = null,
+  setSuperiorClosedIds = null,
+  selfToggle = false,
+  locked = false,
+}) {
   const [query, setQuery] = useState("");
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
+  const closedIds = superiorClosedIds instanceof Set ? superiorClosedIds : new Set();
+  const sorted = useMemo(
+    () => sortAccessItems(options, selected, codeKey),
+    [options, selected, codeKey],
+  );
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((opt) => labelOf(opt).toLowerCase().includes(q));
-  }, [options, query, labelOf]);
+    if (!q) return sorted;
+    return sorted.filter((opt) => labelOf(opt).toLowerCase().includes(q));
+  }, [sorted, query, labelOf]);
+  const bulkIdList = useMemo(() => {
+    const ids = (options || []).map((opt) => Number(opt.id)).filter((id) => id > 0);
+    const source = toggleableIds == null ? ids : ids.filter((id) => toggleableIds.has(id));
+    if (selfToggle) return source.filter((id) => !closedIds.has(id));
+    return source;
+  }, [closedIds, options, selfToggle, toggleableIds]);
+  const isItemLocked = (id) => {
+    if (locked) return true;
+    if (selfToggle && closedIds.has(id)) return true;
+    return toggleableIds != null && !toggleableIds.has(id);
+  };
+  const onToggle = (id) => {
+    const nid = Number(id);
+    if (isItemLocked(nid)) return;
+    const checked = !selected.has(nid);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(nid);
+      else next.delete(nid);
+      return next;
+    });
+    if (typeof setSuperiorClosedIds === "function" && !selfToggle) {
+      setSuperiorClosedIds((prev) => {
+        const next = new Set(prev);
+        if (checked) next.delete(nid);
+        else next.add(nid);
+        return next;
+      });
+    }
+  };
+  const runBulk = (selectAll) => {
+    if (locked) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      bulkIdList.forEach((id) => {
+        if (selectAll) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+    if (typeof setSuperiorClosedIds === "function" && !selfToggle) {
+      setSuperiorClosedIds((prev) => {
+        const next = new Set(prev);
+        bulkIdList.forEach((id) => {
+          if (selectAll) next.delete(id);
+          else next.add(id);
+        });
+        return next;
+      });
+    }
+  };
   return (
     <Sheet
       open={open}
@@ -178,14 +249,10 @@ function AccessPickerSheet({ open, onClose, title, i18n, options, selected, setS
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={i18n.searchOptions} />
       </label>
       <div className="m-admin-picker-bulk">
-        <button
-          type="button"
-          className="m-admin-btn"
-          onClick={() => setSelected(new Set(options.map((opt) => Number(opt.id))))}
-        >
+        <button type="button" className="m-admin-btn" disabled={locked} onClick={() => runBulk(true)}>
           {i18n.selectAll}
         </button>
-        <button type="button" className="m-admin-btn" onClick={() => setSelected(new Set())}>
+        <button type="button" className="m-admin-btn" disabled={locked} onClick={() => runBulk(false)}>
           {i18n.clearAll}
         </button>
         <span className="m-admin-picker-count">
@@ -196,20 +263,18 @@ function AccessPickerSheet({ open, onClose, title, i18n, options, selected, setS
         {visible.map((opt) => {
           const id = Number(opt.id);
           const checked = selected.has(id);
+          const itemLocked = isItemLocked(id);
           return (
             <button
               type="button"
               key={id}
+              disabled={itemLocked}
               aria-pressed={checked}
-              className={`m-admin-picker-item tap-scale${checked ? " is-checked" : ""}`}
-              onClick={() =>
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(id)) next.delete(id);
-                  else next.add(id);
-                  return next;
-                })
-              }
+              aria-disabled={itemLocked}
+              className={`m-admin-picker-item tap-scale${checked ? " is-checked" : ""}${
+                itemLocked ? " is-locked" : ""
+              }`}
+              onClick={() => onToggle(id)}
             >
               <i className={`${checked ? "fas fa-square-check" : "far fa-square"}`} aria-hidden="true" />
               <span>{labelOf(opt)}</span>
@@ -348,6 +413,8 @@ export function UserFormSheet({ open, onClose, admin }) {
   const [processPickerOpen, setProcessPickerOpen] = useState(false);
   const [tenantPickerOpen, setTenantPickerOpen] = useState(false);
   const ownerShadow = !!admin.editingRow?.is_owner_shadow;
+  const selfToggle = !!admin.selfToggle;
+  const accessLocked = ownerShadow || (!!fieldLocks.accountProcess && !selfToggle);
   const groupLabel = String(
     admin.selectedGroup || admin.selectedCompany?.group_id || "",
   ).toUpperCase();
@@ -526,7 +593,7 @@ export function UserFormSheet({ open, onClose, admin }) {
               <button
                 type="button"
                 className="m-admin-access-row tap-scale"
-                disabled={fieldLocks.accountProcess}
+                disabled={accessLocked}
                 onClick={() => setAccountPickerOpen(true)}
               >
                 <span>{i18n.accountPermissions}</span>
@@ -538,7 +605,7 @@ export function UserFormSheet({ open, onClose, admin }) {
               <button
                 type="button"
                 className="m-admin-access-row tap-scale"
-                disabled={fieldLocks.accountProcess}
+                disabled={accessLocked}
                 onClick={() => setProcessPickerOpen(true)}
               >
                 <span>{i18n.processPermissions}</span>
@@ -566,6 +633,12 @@ export function UserFormSheet({ open, onClose, admin }) {
         selected={admin.selectedAccountIds}
         setSelected={admin.setSelectedAccountIds}
         labelOf={(opt) => `${String(opt.account_id || "").toUpperCase()} · ${String(opt.name || "").toUpperCase()}`}
+        codeKey="account_id"
+        toggleableIds={admin.toggleableAccountIds}
+        superiorClosedIds={admin.superiorClosedAccountIds}
+        setSuperiorClosedIds={admin.setSuperiorClosedAccountIds}
+        selfToggle={selfToggle}
+        locked={accessLocked}
       />
       <AccessPickerSheet
         open={processPickerOpen}
@@ -576,6 +649,12 @@ export function UserFormSheet({ open, onClose, admin }) {
         selected={admin.selectedProcessIds}
         setSelected={admin.setSelectedProcessIds}
         labelOf={(opt) => `${String(opt.process_id || "").toUpperCase()} · ${String(opt.description || "").toUpperCase()}`}
+        codeKey="process_id"
+        toggleableIds={admin.toggleableProcessIds}
+        superiorClosedIds={admin.superiorClosedProcessIds}
+        setSuperiorClosedIds={admin.setSuperiorClosedProcessIds}
+        selfToggle={selfToggle}
+        locked={accessLocked}
       />
     </>
   );

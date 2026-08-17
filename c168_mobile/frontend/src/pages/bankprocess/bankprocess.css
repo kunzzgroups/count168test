@@ -540,9 +540,44 @@
 
 .m-bp-ps-amount-wrap {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 0.45rem;
   align-items: end;
+}
+
+.m-bp-ps-percent-field {
+  min-width: 5.5rem;
+}
+
+.m-bp-ps-percent-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem;
+  align-items: stretch;
+}
+
+.m-bp-ps-percent-btn,
+.m-bp-ps-percent-suffix {
+  width: 2.6rem;
+  height: 2.6rem;
+  margin-bottom: 0.05rem;
+  border-radius: var(--m-radius-card);
+  border: 1px solid var(--m-color-ring);
+  background: var(--m-color-surface);
+  color: var(--m-color-primary);
+  font-size: var(--m-text-secondary);
+  font-weight: 800;
+}
+
+.m-bp-ps-percent-suffix {
+  width: 2.2rem;
+}
+
+.m-bp-ps-error {
+  margin: 0 0 0.7rem;
+  color: #b91c1c;
+  font-size: var(--m-text-sub-ratio);
+  font-weight: 700;
 }
 
 .m-bp-ps-remove {

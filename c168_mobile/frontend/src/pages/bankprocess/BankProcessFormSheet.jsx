@@ -658,6 +658,8 @@ export function BankProcessFormSheet({
         i18n={i18n}
         accounts={accounts}
         initialRows={psSeed}
+        cost={form.cost}
+        price={form.price}
         onConfirm={handlePsConfirm}
       />
       <BankProcessAccountQuickSheet

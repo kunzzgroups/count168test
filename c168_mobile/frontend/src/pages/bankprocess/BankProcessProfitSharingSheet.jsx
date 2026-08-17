@@ -3,15 +3,31 @@ import { useOverlayLock } from "../../hooks/useOverlayLock.js";
 import {
   formatBankAccountDisplay,
   formatBankMoneyFixed2,
+  isValidBankMoneyInput,
   sanitizeBankMoneyTyping,
 } from "../../lib/bankProcessApi.js";
+import MoneyDecimal from "../../lib/money/moneyDecimal.js";
 
 function accountOptionLabel(a) {
   return formatBankAccountDisplay(a.account_id || a.code, a.name, String(a.id));
 }
 
+function computeRemainingProfit(cost, price, rows, excludeIdx) {
+  const costDec = isValidBankMoneyInput(cost) ? MoneyDecimal.toDecimal(cost, 0) : MoneyDecimal.toDecimal("0", 0);
+  const priceDec = isValidBankMoneyInput(price) ? MoneyDecimal.toDecimal(price, 0) : MoneyDecimal.toDecimal("0", 0);
+  let shareDec = MoneyDecimal.toDecimal("0", 0);
+  (rows || []).forEach((row, idx) => {
+    if (idx === excludeIdx) return;
+    if (isValidBankMoneyInput(row.amount)) {
+      shareDec = shareDec.plus(MoneyDecimal.toDecimal(row.amount, 0));
+    }
+  });
+  return MoneyDecimal.max(MoneyDecimal.sub(priceDec, costDec).minus(shareDec), "0");
+}
+
 /**
  * Nested sheet: Account + Amount rows → confirm serializes to parent.
+ * Percent mode matches desktop: % of remaining profit (sell − buy − other shares).
  */
 export function BankProcessProfitSharingSheet({
   open,
@@ -19,21 +35,27 @@ export function BankProcessProfitSharingSheet({
   i18n,
   accounts,
   initialRows,
+  cost = "",
+  price = "",
   onConfirm,
 }) {
   useOverlayLock(open, onClose);
-  const [rows, setRows] = useState([{ accountId: "", accountLabel: "", amount: "" }]);
+  const [rows, setRows] = useState([{ accountId: "", accountLabel: "", amount: "", amountMode: "", percentInput: "" }]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
+    setError("");
     const seed =
       Array.isArray(initialRows) && initialRows.length > 0
         ? initialRows.map((r) => ({
             accountId: String(r.accountId || ""),
             accountLabel: String(r.accountLabel || ""),
             amount: String(r.amount || ""),
+            amountMode: String(r.amountMode || ""),
+            percentInput: String(r.percentInput || ""),
           }))
-        : [{ accountId: "", accountLabel: "", amount: "" }];
+        : [{ accountId: "", accountLabel: "", amount: "", amountMode: "", percentInput: "" }];
     setRows(seed);
   }, [open, initialRows]);
 
@@ -50,8 +72,44 @@ export function BankProcessProfitSharingSheet({
     patchRow(idx, { amount: formatBankMoneyFixed2(trimmed, { emptyAsZero: false }) });
   };
 
+  const handlePercentInputChange = (idx, rawText) => {
+    const sanitized = sanitizeBankMoneyTyping(rawText);
+    const trimmed = sanitized.trim();
+    if (!trimmed) {
+      patchRow(idx, { percentInput: sanitized, amount: "" });
+      setError("");
+      return;
+    }
+    if (!isValidBankMoneyInput(trimmed)) {
+      patchRow(idx, { percentInput: sanitized });
+      return;
+    }
+    if (MoneyDecimal.cmp(trimmed, "100") > 0) {
+      setError(i18n.bankProfitSharingPercentMax100);
+      return;
+    }
+    const remaining = computeRemainingProfit(cost, price, rows, idx);
+    const pctDec = MoneyDecimal.toDecimal(trimmed, 0);
+    const amountDec = remaining.times(pctDec).div(100);
+    if (MoneyDecimal.cmp(amountDec.toString(), remaining.toString()) > 0) {
+      setError(
+        (i18n.bankProfitSharingExceedsRemaining || "").replace(
+          "{remaining}",
+          formatBankMoneyFixed2(remaining.toString(), { emptyAsZero: false }) || "0.00",
+        ),
+      );
+      patchRow(idx, { percentInput: sanitized });
+      return;
+    }
+    setError("");
+    patchRow(idx, {
+      percentInput: sanitized,
+      amount: formatBankMoneyFixed2(amountDec.toString(), { emptyAsZero: false }),
+    });
+  };
+
   const addRow = () => {
-    setRows((prev) => [...prev, { accountId: "", accountLabel: "", amount: "" }]);
+    setRows((prev) => [...prev, { accountId: "", accountLabel: "", amount: "", amountMode: "", percentInput: "" }]);
   };
 
   const removeRow = (idx) => {
@@ -82,6 +140,7 @@ export function BankProcessProfitSharingSheet({
           </button>
         </header>
         <div className="m-sheet-body m-sheet-body--spaced">
+          {error ? <p className="m-bp-ps-error">{error}</p> : null}
           <div className="m-bp-ps-rows">
             {rows.map((row, idx) => (
               <div key={`ps-${idx}`} className="m-bp-ps-row">
@@ -113,11 +172,47 @@ export function BankProcessProfitSharingSheet({
                       type="text"
                       inputMode="decimal"
                       placeholder="0.00"
+                      readOnly={row.amountMode === "percent"}
                       value={row.amount || ""}
-                      onChange={(e) => patchRow(idx, { amount: sanitizeBankMoneyTyping(e.target.value) })}
+                      onChange={(e) => {
+                        patchRow(idx, { amount: sanitizeBankMoneyTyping(e.target.value), amountMode: "" });
+                        setError("");
+                      }}
                       onBlur={(e) => blurAmount(idx, e.target.value)}
                     />
                   </label>
+                  {row.amountMode === "percent" ? (
+                    <label className="m-bp-field m-bp-ps-percent-field">
+                      <span>%</span>
+                      <div className="m-bp-ps-percent-input-wrap">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={row.percentInput || ""}
+                          onChange={(e) => handlePercentInputChange(idx, e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="m-bp-ps-percent-suffix tap-scale"
+                          onClick={() => patchRow(idx, { amountMode: "" })}
+                        >
+                          %
+                        </button>
+                      </div>
+                    </label>
+                  ) : (
+                    <button
+                      type="button"
+                      className="m-bp-ps-percent-btn tap-scale"
+                      onClick={() => {
+                        patchRow(idx, { amountMode: "percent" });
+                        if (row.percentInput) handlePercentInputChange(idx, row.percentInput);
+                      }}
+                    >
+                      %
+                    </button>
+                  )}
                   {idx > 0 ? (
                     <button
                       type="button"

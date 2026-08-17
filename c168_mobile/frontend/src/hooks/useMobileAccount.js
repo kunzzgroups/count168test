@@ -31,6 +31,19 @@ import { buildApiUrl } from "../utils/apiUrl.js";
 import { canAccessAccount, resolveMobileLandingPath } from "../utils/mobilePermissions.js";
 
 const COMPANIES_API = "api/transactions/get_owner_companies_api.php";
+
+function intersectAccountIdSets(sets) {
+  if (!Array.isArray(sets) || sets.length === 0) return new Set();
+  const [first, ...rest] = sets;
+  const out = new Set([...(first || [])].map(Number).filter((id) => id > 0));
+  for (const set of rest) {
+    const next = new Set([...(set || [])].map(Number));
+    for (const id of [...out]) {
+      if (!next.has(id)) out.delete(id);
+    }
+  }
+  return out;
+}
 const EMPTY_FORM = {
   id: "",
   account_id: "",
@@ -108,6 +121,8 @@ export function useMobileAccount() {
   const [linkType, setLinkType] = useState("bidirectional");
   const [currencyLinked, setCurrencyLinked] = useState(new Set());
   const [currencyInitial, setCurrencyInitial] = useState(new Set());
+  const [settingCurrencyIds, setSettingCurrencyIds] = useState(() => new Set());
+  const [settingInitialByCurrency, setSettingInitialByCurrency] = useState(() => new Map());
   const [saving, setSaving] = useState(false);
   const toastTimer = useRef(null);
   const listSeq = useRef(0);
@@ -778,6 +793,16 @@ export function useMobileAccount() {
     }
   }, [canMutate, detail, i18n.deleteError, i18n.deleteSuccess, notify, scopeFormData]);
 
+  const settingCurrencyIdsKey = useMemo(
+    () =>
+      [...settingCurrencyIds]
+        .map(Number)
+        .filter((id) => id > 0)
+        .sort((a, b) => a - b)
+        .join(","),
+    [settingCurrencyIds],
+  );
+
   const loadCurrencyLinks = useCallback(
     async (currencyId) => {
       const url = new URL(buildApiUrl("api/accounts/bulk_account_currency_api.php"));
@@ -787,16 +812,49 @@ export function useMobileAccount() {
         url.searchParams.set(key, value),
       );
       const json = await readJson(url.toString(), { method: "POST" });
-      const ids = new Set((json?.data?.linked_account_ids || []).map(Number));
-      setCurrencyLinked(ids);
-      setCurrencyInitial(new Set(ids));
+      return (json?.data?.linked_account_ids || []).map(Number).filter((id) => id > 0);
     },
     [activeMutationPayload],
   );
 
+  useEffect(() => {
+    const currencyIds = settingCurrencyIdsKey
+      ? settingCurrencyIdsKey.split(",").map(Number).filter((id) => id > 0)
+      : [];
+    if (!currencyIds.length) {
+      setCurrencyLinked(new Set());
+      setCurrencyInitial(new Set());
+      setSettingInitialByCurrency(new Map());
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const entries = await Promise.all(
+          currencyIds.map(async (currencyId) => [currencyId, new Set(await loadCurrencyLinks(currencyId))]),
+        );
+        if (cancelled) return;
+        const nextInitial = new Map(entries);
+        const intersection = intersectAccountIdSets([...nextInitial.values()]);
+        setSettingInitialByCurrency(nextInitial);
+        setCurrencyInitial(intersection);
+        setCurrencyLinked(intersection);
+      } catch (e) {
+        if (!cancelled) notify(e?.message || i18n.currencyError, "error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [i18n.currencyError, loadCurrencyLinks, notify, settingCurrencyIdsKey]);
+
   const openCurrency = useCallback(async () => {
     if (!guarded(() => {})) return false;
     try {
+      setSettingCurrencyIds(new Set());
+      setCurrencyLinked(new Set());
+      setCurrencyInitial(new Set());
+      setSettingInitialByCurrency(new Map());
       await loadRolesAndCurrencies();
       return true;
     } catch (e) {
@@ -844,6 +902,11 @@ export function useMobileAccount() {
           body: JSON.stringify({ id: Number(currency.id), ...mutScope }),
         });
         setCurrencies((rows) => rows.filter((row) => Number(row.id) !== Number(currency.id)));
+        setSettingCurrencyIds((prev) => {
+          const next = new Set(prev);
+          next.delete(Number(currency.id));
+          return next;
+        });
         return true;
       } catch (e) {
         notify(e?.message || i18n.currencyError, "error");
@@ -854,7 +917,41 @@ export function useMobileAccount() {
   );
 
   const saveCurrencyLinks = useCallback(
-    async (currencyId) => {
+    async () => {
+      const currencyIds = [...settingCurrencyIds]
+        .map(Number)
+        .filter((id) => id > 0 && currencies.some((row) => Number(row.id) === id));
+      if (!currencyIds.length) {
+        notify(i18n.pleaseSelectCurrencyFirst, "error");
+        return false;
+      }
+      const baseline = intersectAccountIdSets(
+        currencyIds.map((currencyId) => settingInitialByCurrency.get(currencyId) || new Set()),
+      );
+      const toggledOn = [];
+      const toggledOff = [];
+      accounts.forEach((row) => {
+        const id = Number(row.id);
+        if (!(id > 0)) return;
+        const was = baseline.has(id);
+        const now = currencyLinked.has(id);
+        if (now && !was) toggledOn.push(id);
+        if (!now && was) toggledOff.push(id);
+      });
+      const updates = currencyIds
+        .map((currencyId) => {
+          const initial = settingInitialByCurrency.get(currencyId) || new Set();
+          return {
+            currencyId,
+            linked: toggledOn.filter((id) => !initial.has(id)),
+            unlinked: toggledOff.filter((id) => initial.has(id)),
+          };
+        })
+        .filter((row) => row.linked.length > 0 || row.unlinked.length > 0);
+      if (!updates.length) {
+        notify(i18n.pleaseSelectAccountFirst, "error");
+        return false;
+      }
       setSaving(true);
       try {
         const url = new URL(buildApiUrl("api/accounts/bulk_account_currency_api.php"));
@@ -862,17 +959,31 @@ export function useMobileAccount() {
         Object.entries(activeMutationPayload()).forEach(([key, value]) =>
           url.searchParams.set(key, value),
         );
-        const linked = [...currencyLinked].filter((id) => !currencyInitial.has(id));
-        const unlinked = [...currencyInitial].filter((id) => !currencyLinked.has(id));
-        await readJson(url.toString(), {
-          method: "POST",
-          body: JSON.stringify({
-            currency_id: Number(currencyId),
-            linked_account_ids: linked,
-            unlinked_account_ids: unlinked,
-          }),
+        for (const { currencyId, linked, unlinked } of updates) {
+          await readJson(url.toString(), {
+            method: "POST",
+            body: JSON.stringify({
+              currency_id: Number(currencyId),
+              linked_account_ids: linked,
+              unlinked_account_ids: unlinked,
+            }),
+          });
+        }
+        const nextInitial = new Map(settingInitialByCurrency);
+        currencyIds.forEach((currencyId) => {
+          const initial = new Set(nextInitial.get(currencyId) || []);
+          (updates.find((row) => row.currencyId === currencyId)?.linked || []).forEach((id) =>
+            initial.add(id),
+          );
+          (updates.find((row) => row.currencyId === currencyId)?.unlinked || []).forEach((id) =>
+            initial.delete(id),
+          );
+          nextInitial.set(currencyId, initial);
         });
-        setCurrencyInitial(new Set(currencyLinked));
+        const intersection = intersectAccountIdSets([...nextInitial.values()]);
+        setSettingInitialByCurrency(nextInitial);
+        setCurrencyInitial(intersection);
+        setCurrencyLinked(intersection);
         notify(i18n.currencySuccess);
         return true;
       } catch (e) {
@@ -883,12 +994,17 @@ export function useMobileAccount() {
       }
     },
     [
+      accounts,
       activeMutationPayload,
-      currencyInitial,
+      currencies,
       currencyLinked,
       i18n.currencyError,
       i18n.currencySuccess,
+      i18n.pleaseSelectAccountFirst,
+      i18n.pleaseSelectCurrencyFirst,
       notify,
+      settingCurrencyIds,
+      settingInitialByCurrency,
     ],
   );
 
@@ -967,6 +1083,9 @@ export function useMobileAccount() {
     deleteAccount,
     currencyLinked,
     setCurrencyLinked,
+    settingCurrencyIds,
+    setSettingCurrencyIds,
+    currencyInitial,
     loadCurrencyLinks,
     openCurrency,
     createCurrency,
