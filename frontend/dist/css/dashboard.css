@@ -536,6 +536,24 @@ body.dashboard-page.transaction-page .dashboard-filter-panel .user-gc-inline-pan
     background: transparent;
 }
 
+/* Pre-apply userlist.css's .user-gc-inline-label typography here too (dashboard.css loads
+ * eagerly via main.jsx → app-shell.css; userlist.css only loads as this route's lazy chunk).
+ * Without this, "Date Range/Group ID/Company/Currency" briefly paint at regular weight before
+ * the userlist.css chunk finishes loading, then snap to bold — a visible text flash/jump on
+ * every dashboard navigation. Keep in sync with body.dashboard-page .user-gc-inline-label in
+ * userlist.css; identical values so there is no second visual change once that chunk lands.
+ */
+body.dashboard-page .user-gc-inline-label {
+    justify-self: stretch;
+    width: 100%;
+    min-width: 0;
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-bold);
+    color: #1f2937;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
 /* 篩選列：併排觸發器 + 下拉（參考稿：藥丸摘要 + 雙欄 / 幣種網格） */
 .dashboard-filter-toolbar {
     display: flex;
