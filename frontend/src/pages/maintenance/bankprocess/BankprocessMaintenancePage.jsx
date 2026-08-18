@@ -132,6 +132,8 @@ export default function BankprocessMaintenancePage() {
   const initialBankprocessSearchDoneRef = useRef(false);
   const searchSeqRef = useRef(0);
   const searchAbortRef = useRef(null);
+  /** True right after the user explicitly picks "All" currencies — tells useCrossPageCurrencySync not to re-apply a persisted/default currency. */
+  const userSelectedAllCurrencyRef = useRef(false);
 
   const notify = useCallback((message, type = "success") => {
     const id = Date.now() + Math.random();
@@ -593,6 +595,7 @@ export default function BankprocessMaintenancePage() {
     [currencies],
   );
   const applyCrossPageCurrency = useCallback((code) => {
+    userSelectedAllCurrencyRef.current = false;
     setAllCurrenciesSelected(false);
     setSelectedCurrencies([code]);
   }, []);
@@ -605,11 +608,13 @@ export default function BankprocessMaintenancePage() {
     currentCode:
       !allCurrenciesSelected && selectedCurrencies.length === 1 ? selectedCurrencies[0] : "",
     onApplyCode: applyCrossPageCurrency,
+    respectEmptyRef: userSelectedAllCurrencyRef,
   });
 
   const toggleBankprocessCurrency = useCallback(
     (code) => {
       if (!code) return;
+      userSelectedAllCurrencyRef.current = false;
       setAllCurrenciesSelected(false);
       const prev = selectedCurrencies;
       const has = prev.includes(code);
@@ -658,6 +663,7 @@ export default function BankprocessMaintenancePage() {
   );
 
   const selectAllBankprocessCurrencies = useCallback(() => {
+    userSelectedAllCurrencyRef.current = true;
     setAllCurrenciesSelected(true);
     setSelectedCurrencies([]);
     clearDashboardSelectedCurrency();

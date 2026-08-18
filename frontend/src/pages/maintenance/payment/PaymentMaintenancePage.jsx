@@ -154,6 +154,8 @@ export default function PaymentMaintenancePage() {
   const onPrepareCompanySelectRef = useRef(() => {});
   const onClearCompanyRef = useRef(() => {});
   const sidebarSyncedCompanyIdRef = useRef(null);
+  /** True right after the user explicitly picks "All" currencies — tells useCrossPageCurrencySync not to re-apply a persisted/default currency. */
+  const userSelectedAllCurrencyRef = useRef(false);
 
   const {
     snapGroupIds,
@@ -608,6 +610,7 @@ export default function PaymentMaintenancePage() {
     [currencies],
   );
   const applyCrossPageCurrency = useCallback((code) => {
+    userSelectedAllCurrencyRef.current = false;
     setSelectedCurrency(code);
   }, []);
   const { persistSelection: persistCrossPageCurrency } = useCrossPageCurrencySync({
@@ -617,11 +620,13 @@ export default function PaymentMaintenancePage() {
     availableCodes: paymentCurrencyCodes,
     currentCode: selectedCurrency || "",
     onApplyCode: applyCrossPageCurrency,
+    respectEmptyRef: userSelectedAllCurrencyRef,
   });
 
   /** User clicked a currency pill: apply locally + broadcast so every page stays in sync. */
   const handlePickCurrency = useCallback(
     (code) => {
+      userSelectedAllCurrencyRef.current = false;
       setSelectedCurrency(code);
       persistCrossPageCurrency(code);
     },
@@ -741,6 +746,7 @@ export default function PaymentMaintenancePage() {
   followGroupRef.current = () => {};
 
   const handleCurrencySelectAll = useCallback(() => {
+    userSelectedAllCurrencyRef.current = true;
     setSelectedCurrency(null);
     clearDashboardSelectedCurrency();
   }, []);
