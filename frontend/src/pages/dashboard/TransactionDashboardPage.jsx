@@ -23,6 +23,12 @@ function currentStickyOwnerKey() {
   return String(sessionStorage.getItem(DASHBOARD_LOGIN_FILTER_APPLIED_KEY) || "").trim();
 }
 
+/** Complete filter package = currencies + (companies or genuinely no groups). */
+function isFilterPackageComplete(pkg) {
+  if (!pkg?.currencies?.length) return false;
+  return (pkg.companiesForPicker?.length || 0) > 0 || (pkg.groupIds?.length || 0) === 0;
+}
+
 function readStickyPackage() {
   if (typeof sessionStorage === "undefined") return null;
   try {
@@ -30,16 +36,16 @@ function readStickyPackage() {
     if (!raw) return null;
     const p = JSON.parse(raw);
     if (!p || typeof p !== "object") return null;
-    // Reject packages from another login, or pre-scoping legacy writes.
     const ownerKey = typeof p.ownerKey === "string" ? p.ownerKey.trim() : "";
     const currentOwner = currentStickyOwnerKey();
-    if (!ownerKey || !currentOwner || ownerKey !== currentOwner) return null;
+    // Hard reject only when both sides are known and differ (cross-login leakage).
+    // Empty currentOwner mid-bootstrap still restores same-tab package (Admin↔Home).
+    if (ownerKey && currentOwner && ownerKey !== currentOwner) return null;
+    if (currentOwner && !ownerKey) return null;
     const currencies = Array.isArray(p.currencies) ? p.currencies : [];
     const companiesForPicker = Array.isArray(p.companiesForPicker) ? p.companiesForPicker : [];
     const groupIds = Array.isArray(p.groupIds) ? p.groupIds : [];
-    if (!currencies.length) return null;
-    if (groupIds.length > 0 && !companiesForPicker.length) return null;
-    return {
+    const pkg = {
       ownerKey,
       groupIds,
       companiesForPicker,
@@ -51,6 +57,8 @@ function readStickyPackage() {
       companyId: p.companyId ?? null,
       dateText: typeof p.dateText === "string" ? p.dateText : "",
     };
+    if (!isFilterPackageComplete(pkg)) return null;
+    return pkg;
   } catch {
     return null;
   }
@@ -58,6 +66,7 @@ function readStickyPackage() {
 
 function writeStickyPackage(pkg) {
   if (typeof sessionStorage === "undefined" || !pkg) return;
+  if (!isFilterPackageComplete(pkg)) return;
   try {
     sessionStorage.setItem(DASHBOARD_FILTER_PAINT_PACKAGE_KEY, JSON.stringify(pkg));
   } catch {
@@ -87,21 +96,27 @@ export default function TransactionDashboardPage() {
     stickyRef.current = null;
   }
   const bootstrapped = Boolean(page.gcBootstrapReady);
+  const currencyListSettled = Boolean(page.currencyListSettled);
   const filterChromeReady =
     (page.companiesForPicker?.length || 0) > 0 || (page.groupIds?.length || 0) === 0;
-  // After bootstrap, also write when currencies settle to [] so independents:all does not
-  // keep a phantom MYR sticky after the live scope cleared.
+  // Write empty currencies only after this scope has committed (independents:all phantom MYR).
+  // Bank subsidiaries (IG+CX) must not treat in-flight [] as settled.
   const canWriteSticky =
     Boolean(ownerKey) &&
     filterChromeReady &&
     (page.currencies?.length ||
-      (bootstrapped && !page.loading && !page.scopeDataPending));
+      (bootstrapped && currencyListSettled && !page.loading && !page.scopeDataPending));
   if (canWriteSticky) {
     const sameOwner = stickyRef.current?.ownerKey === ownerKey;
     const prev = sameOwner ? stickyRef.current : null;
     // After GC bootstrap, empty groupIds/companies are truth for this account — do not
     // fall back to an older sticky set (that is how T1 leaked onto DEMO).
-    const nextCurrencies = Array.isArray(page.currencies) ? page.currencies : [];
+    const liveCurrencies = Array.isArray(page.currencies) ? page.currencies : [];
+    const nextCurrencies = liveCurrencies.length
+      ? liveCurrencies
+      : currencyListSettled
+        ? []
+        : prev?.currencies || [];
     stickyRef.current = {
       ownerKey,
       groupIds: page.groupIds?.length
@@ -126,8 +141,7 @@ export default function TransactionDashboardPage() {
     };
     if (nextCurrencies.length) {
       writeStickyPackage(stickyRef.current);
-    } else if (typeof sessionStorage !== "undefined") {
-      // Drop package so remount does not re-hydrate a stale Currency row.
+    } else if (currencyListSettled && typeof sessionStorage !== "undefined") {
       try {
         sessionStorage.removeItem(DASHBOARD_FILTER_PAINT_PACKAGE_KEY);
       } catch {
@@ -164,6 +178,8 @@ export default function TransactionDashboardPage() {
 
   // Freeze filter chrome while KPI/chart catch up — selection + pills stay put (dead board).
   const freezeFilter = page.loading || page.scopeDataPending;
+  // Bank CX: KPI can settle before Currency Setting API — hold the last Currency row.
+  const holdCurrencyPills = freezeFilter || !currencyListSettled;
   const painted = sticky || {
     groupIds: [],
     companiesForPicker: [],
@@ -182,15 +198,14 @@ export default function TransactionDashboardPage() {
   const filterCompanies = painted.companiesForPicker?.length
     ? painted.companiesForPicker
     : page.companiesForPicker || [];
-  // Live currencies win once the scope is not mid-swap — sticky must not re-paint a
-  // phantom MYR after independents:all / empty-account settle.
-  const filterCurrencies = freezeFilter
+  // Live currencies win only after this scope committed a list (incl. confirmed []).
+  const filterCurrencies = holdCurrencyPills
     ? painted.currencies?.length
       ? painted.currencies
       : page.currencies || []
     : page.currencies || [];
-  const filterCurrencyCode = freezeFilter
-    ? painted.currencyCode || page.currencyCode || ""
+  const filterCurrencyCode = holdCurrencyPills
+    ? page.currencyCode || painted.currencyCode || ""
     : page.currencyCode || "";
   const filterSelectedGroup = freezeFilter ? painted.selectedGroup : page.selectedGroup;
   const filterGroupsAll = freezeFilter ? painted.groupsAllMode : page.groupsAllMode;
