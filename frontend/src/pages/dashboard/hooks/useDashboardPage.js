@@ -1344,10 +1344,27 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
       const cur = overrides.currencyCode !== undefined ? overrides.currencyCode : currencyCode;
       let effectiveCur = cur ? String(cur).trim().toUpperCase() : "";
       const list = currenciesRef.current.length ? currenciesRef.current : currencies;
-      if (!effectiveCur && gaMode && cid == null && list[0]) {
-        effectiveCur = String(list[0]).trim().toUpperCase();
+      /**
+       * Before `currencyCode` state settles (first paint after reload, or before the pill
+       * list has loaded), prefer the user's persisted per-scope currency over list[0] —
+       * otherwise cache priming paints whatever currency happens to be first (usually MYR)
+       * under the already-correct pill label, then jumps once currencyCode catches up.
+       */
+      const resolveUnsettledCur = (scopeCid, scopeGroup) => {
+        const persistScopeKey = buildDashboardCurrencyScopeKey({
+          companyId: scopeCid,
+          selectedGroup: scopeGroup,
+        });
+        const persisted = persistScopeKey
+          ? resolveCrossPageCurrencyPreference({ scopeKey: persistScopeKey, availableCodes: list })
+          : "";
+        if (persisted) return persisted;
+        return list[0] ? String(list[0]).trim().toUpperCase() : "";
+      };
+      if (!effectiveCur && gaMode && cid == null) {
+        effectiveCur = resolveUnsettledCur(null, selGroup);
       }
-      if (!effectiveCur && cid != null && list[0]) {
+      if (!effectiveCur && cid != null) {
         const row = companies.find((c) => parseInt(c.id, 10) === parseInt(cid, 10));
         const usesLedger =
           !gAll &&
@@ -1356,7 +1373,7 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
           row &&
           companyRowIsGroupEntity(row, selGroup);
         if (!usesLedger) {
-          effectiveCur = String(list[0]).trim().toUpperCase();
+          effectiveCur = resolveUnsettledCur(cid, selGroup);
         }
       }
       const from = overrides.dateFrom ?? dateFrom;
@@ -1375,8 +1392,8 @@ export function useDashboardPage({ i18n, dateFrom, dateTo }) {
         const row = companies.find((c) => parseInt(c.id, 10) === parseInt(cid, 10));
         return companyRowIsGroupEntity(row, selGroup);
       })();
-      if (!effectiveCur && cid == null && usesLedger && list[0]) {
-        effectiveCur = String(list[0]).trim().toUpperCase();
+      if (!effectiveCur && cid == null && usesLedger) {
+        effectiveCur = resolveUnsettledCur(null, selGroup);
       }
       const subScope = cid != null && !gAll && !gaMode && selGroup && !usesLedger;
 

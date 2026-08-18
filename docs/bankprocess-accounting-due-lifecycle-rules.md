@@ -102,3 +102,31 @@
 ## 7. 回滚
 
 还原本次改动涉及的 5 个 PHP 文件即可；新增的两个字段留在表里不影响旧代码运行（旧代码不会读取这两列）。
+
+---
+
+## 8. 补充修复（2026-08）：Resend 覆盖 day_start/day_end 污染 unlimitedWindow 判断
+
+### 8.1 现象
+
+一份「建立时合同就已过期、纯记录用途」的 process（例如 day_start/day_end 都是很久以前，Day end 旁开关 OFF），本来应该永远不再自动出账（见第 3.3 节）。但只要对它执行过 Resend（`accounting_resend_relax_created_floor = 1` 仍未处理完），Accounting Due 会**额外多出一笔当月正常流程账单**，且这笔账单在下次读取时可能反复出现——不管 Resend 弹窗填的日期是过去还是未来。
+
+### 8.2 根因
+
+`fetchActiveBankProcessesForInbox()`（`process_accounting_inbox_api.php`）/ `fetchBankProcessesByIds()`（`process_post_to_transaction_api.php`）在抓取每一行数据时，只要该行 `accounting_resend_relax_created_floor=1`，就会调用 `bmp_mergeResendScheduleIntoBankProcessRowForAccounting()` 把 `day_start`/`day_end` **临时覆盖成 Resend 弹窗填的锚点日期**（真实原始值另存进 `bank_process_stored_day_start`/`bank_process_stored_day_end`/`bank_process_stored_day_start_frequency`）。
+
+问题是：这个覆盖发生在 `bmpRowUnlimitedWindow()` / `bmpRowUnlimitedWindowForTxn()`（第 3.3 节讲的「建档时合同已过期」判断）**之前**。这两个函数读到的 `day_start` 已经是 Resend 填的日期，不是合同真正的原始 day_start——用这个被覆盖的日期 + 合同期限去算「合同到期日」，只要 Resend 填的锚点落在未来（或距今够近），算出来的到期日会比真实建立日更晚，导致「建立时是否已过期」这条判断失效，本该被永久锁死的记录用合同又重新获得 `unlimitedWindow=true`，正常月度流程就被意外打开一次。
+
+（这个 bug 和第 3.3 节原本要防的问题是同一类：`day_start`/`day_end`/建立日 任何一个被 Resend 相关的临时覆盖污染，都会让「建档时是否已过期」这条判断失真。第 3.3 节当时只处理了「有效建立日被 relax 拉低」这一种污染路径，这次是另一条「day_start/day_end 本身被 merge 覆盖」的路径。）
+
+### 8.3 修复
+
+`bmpRowUnlimitedWindow()`（`process_accounting_inbox_api.php`）与 `bmpRowUnlimitedWindowForTxn()`（`process_post_to_transaction_api.php`）在算「合同到期日」这一步，判断 `accounting_resend_relax_created_floor` 是否为真：
+- 为真（有未处理的 Resend）→ 改用 merge 函数存下的原始值 `bank_process_stored_day_start`/`bank_process_stored_day_end`/`bank_process_stored_day_start_frequency`。
+- 为假（没有 Resend 在等）→ 照旧读 `day_start`/`day_end`/`day_start_frequency`，不受影响。
+
+Resend 锚点本身那笔补单不受此修复影响——它是走 `inboxAppendResendOpenAnchorRows()`/`inboxAppendMonthlyNeedToday()` 这条完全独立、不看 `unlimitedWindow` 的路径直接生成的。
+
+### 8.4 验收要点
+
+对一份建立时已过期、Day end 旁开关 OFF 的记录用合同执行 Resend（日期随便填过去或未来），确认 Accounting Due 只会出现你 Resend 的那几笔锚点，不会再多出当月/其他自然月的正常流程账单；对该笔 Resend 点 Transaction 入账，确认入账内容跟画面一致。

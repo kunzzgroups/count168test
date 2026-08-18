@@ -6,6 +6,14 @@ Route: `/bank-process-list` (see `App.jsx`). Entry: `BankProcessListPage.jsx`.
 
 Bank Process 入账金额：**DB 存 6 位**，前端 Half Up **仅展示 2 位**。详见 [`docs/bankprocess-transaction-amount-precision.md`](../../../../docs/bankprocess-transaction-amount-precision.md)。
 
+## Accounting Due / Resend 出账规则
+
+Status/issue_flag 到期停账、Resend 补单、unlimitedWindow 判断，详见 [`docs/bankprocess-accounting-due-lifecycle-rules.md`](../../../../docs/bankprocess-accounting-due-lifecycle-rules.md)。
+
+## 2026-08 前端 UI / 效能优化记录
+
+Date range 默认行为、跨页面日期污染、filter chips 收合行为、窄屏响应式、modal 滚动效能，详见 [`docs/bankprocess-list-ui-optimizations.md`](../../../../docs/bankprocess-list-ui-optimizations.md)。
+
 ## Where to change what
 
 | Task | Location |
