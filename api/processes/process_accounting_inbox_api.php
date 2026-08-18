@@ -484,6 +484,9 @@ function bmpIssueFlagIsLocking(?string $normalizedFlag): bool
  * 该开关仅对 1st_of_every_month 可编辑，其余 frequency 恒为 OFF（前端表单已保证），因此本判断天然对所有 frequency 生效。
  * 建档时合同已过期（旧记录事后补录，纯记录用途）：不适用本 Feature，维持「到期即停」旧行为，
  * 避免把只作记录、从未打算出账的旧合同也拉进持续出账。
+ * 此处必须用未被 Resend 放宽过的真实建立日（createdYmdOrFallbackToday，不含 accounting_resend_relax_created_floor
+ * 的 min(created, day_start) 调整），否则 Resend 会把「有效建立日」拉回 day_start，
+ * 反而让本该被挡住的记录用途合同重新获得 unlimitedWindow，导致 Resend 补的单期和持续出的正常流程账单同时出现。
  */
 function bmpRowUnlimitedWindow(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row, string $today): bool
 {
@@ -497,8 +500,7 @@ function bmpRowUnlimitedWindow(?string $normalizedFlag, bool $hasDayEndMonthlyCa
     $frequency = $row['day_start_frequency'] ?? '1st_of_every_month';
     $contractEndYmd = bmpRecurringBillingWindowEndYmd($dayStart, $row['contract'] ?? null, $row['day_end'] ?? null, $frequency);
     if ($contractEndYmd !== null) {
-        $parsedDayStartYmd = $dayStart !== null ? inboxBankProcessDateFieldToYmd($dayStart) : null;
-        $createdYmd = inboxEffectiveCreatedYmdForProcess($row, $today, $parsedDayStartYmd);
+        $createdYmd = createdYmdOrFallbackToday($row, $today);
         if ($createdYmd > $contractEndYmd) {
             return false;
         }
