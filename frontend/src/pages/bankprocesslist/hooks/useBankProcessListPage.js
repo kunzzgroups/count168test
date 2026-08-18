@@ -2511,12 +2511,16 @@ export function useBankProcessListPage() {
     // Show inactive / select column can alter effective row height.
     // Use real rendered rows to prevent clipped rows near page bottom.
     stableRowHeight: false,
+    // currentPage is deliberately excluded: remeasuring off the DOM rows of
+    // whichever page is currently on screen means the last (partial) page's
+    // smaller row sample can compute a different pageSize than a full page
+    // did, which shrinks totalPages and bounces the user back off the last
+    // page. Only remeasure on things that actually change the dataset/layout.
     remeasureDeps: [
       visibleRows.length,
       tableLoading,
       lang,
       cssReady,
-      currentPage,
       currencyFilterCode,
       showAll,
       showActive,
