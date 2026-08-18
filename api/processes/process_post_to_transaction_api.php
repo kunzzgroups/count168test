@@ -440,6 +440,10 @@ function bmpIssueFlagIsLockingForTxn(?string $normalizedFlag): bool
  * 建档时合同已过期（旧记录事后补录，纯记录用途）：不适用本 Feature，维持「到期即停」旧行为。
  * 调用方须传入未被 Resend 放宽过的真实建立日（不含 accounting_resend_relax_created_floor 的
  * min(created, day_start) 调整），否则 Resend 会让本该被挡住的记录用途合同重新获得 unlimitedWindow。
+ * day_start/day_end 同理：fetchBankProcessesByIds() 已用 bmp_mergeResendScheduleIntoBankProcessRowForAccounting()
+ * 把 relax=1 的行的 day_start/day_end 覆盖成 Resend 弹窗填的锚点，此处若照读会拿 Resend 锚点算合同到期日，
+ * 一旦锚点在未来会导致「建立时已过期」判断失效。relax=1 时改用 merge 函数存下的原始值
+ * bank_process_stored_day_start/day_end/day_start_frequency。
  */
 function bmpRowUnlimitedWindowForTxn(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row, string $createdYmd): bool
 {
@@ -449,9 +453,13 @@ function bmpRowUnlimitedWindowForTxn(?string $normalizedFlag, bool $hasDayEndMon
     if (txnDayEndMonthlyCapOn($hasDayEndMonthlyCapCol, $row)) {
         return false;
     }
-    $dayStart = $row['day_start'] ?? null;
-    $frequency = $row['day_start_frequency'] ?? '1st_of_every_month';
-    $contractEndYmd = bmpRecurringBillingWindowEndYmdForTxn($dayStart, $row['contract'] ?? null, $row['day_end'] ?? null, $frequency);
+    $hadResendMerge = !empty($row['accounting_resend_relax_created_floor']);
+    $dayStart = $hadResendMerge ? ($row['bank_process_stored_day_start'] ?? null) : ($row['day_start'] ?? null);
+    $dayEnd = $hadResendMerge ? ($row['bank_process_stored_day_end'] ?? null) : ($row['day_end'] ?? null);
+    $frequency = $hadResendMerge
+        ? ($row['bank_process_stored_day_start_frequency'] ?? '1st_of_every_month')
+        : ($row['day_start_frequency'] ?? '1st_of_every_month');
+    $contractEndYmd = bmpRecurringBillingWindowEndYmdForTxn($dayStart, $row['contract'] ?? null, $dayEnd, $frequency);
     if ($contractEndYmd !== null && $createdYmd > $contractEndYmd) {
         return false;
     }
