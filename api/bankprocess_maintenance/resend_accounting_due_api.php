@@ -297,9 +297,9 @@ try {
 
     $targetYear = (int) substr($effectiveDayStartYmd, 0, 4);
     $targetMonth = (int) substr($effectiveDayStartYmd, 5, 2);
-    // Monthly 弹窗同时填 day_start + day_end：清除该区间内各月 monthly 及 partial / tail / 合并期标记，便于生成单笔合并账单。
-    // 1st_of_every_month 不走此分支，避免误删同月正常流程账单。
-    if ($scheduleFromClient && $newDayStart !== null && $newDayEnd !== null && $newFrequency === 'monthly') {
+    // 1st_of_every_month 弹窗同时填 day_start + day_end：清除该区间内各月 monthly 及 partial / tail / 合并期标记，便于生成单笔合并账单。
+    // Monthly/Week/Day/Once 不走此分支（弹窗与上方已把这些频率的 day_end 强制清空，day_end 恒为 null，条件天然不成立）。
+    if ($scheduleFromClient && $newDayStart !== null && $newDayEnd !== null && $newFrequency === '1st_of_every_month') {
         $startYmInt = (int) substr($newDayStart, 0, 4) * 100 + (int) substr($newDayStart, 5, 2);
         $endYmInt = (int) substr($newDayEnd, 0, 4) * 100 + (int) substr($newDayEnd, 5, 2);
         $delMonthPap = $pdo->prepare(
@@ -445,10 +445,12 @@ try {
         );
         $flg->execute([$bankProcessId, $company_id]);
     }
-    // 单期 Resend（非 monthly 合并区间）：追加 open 锚点，多笔并存、同锚点拒绝重复。
+    // 单期 Resend（非 1st_of_every_month 合并区间）：追加 open 锚点，多笔并存、同锚点拒绝重复。
+    // 合并区间（1st_of_every_month + day_start + day_end）已由 consolidated_range 一次性生成，
+    // 若仍追加 open anchor 会与合并账单重复出账，须排除。
     if ($scheduleFromClient
         && $effectiveDayStartYmd !== null
-        && !($newFrequency === 'monthly' && $newDayStart !== null && $newDayEnd !== null)) {
+        && !($newFrequency === '1st_of_every_month' && $newDayStart !== null && $newDayEnd !== null)) {
         bmp_appendResendOpenAnchor($pdo, $bankProcessId, $company_id, $effectiveDayStartYmd, $newFrequency);
     }
     bmp_clearResendAnchorAccountingDueSideEffects($pdo, $bankProcessId, $company_id, $effectiveDayStartYmd);

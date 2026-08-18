@@ -631,9 +631,9 @@ if (!function_exists('bmp_mergeResendScheduleIntoBankProcessRowForAccounting')) 
             $row['day_end'] = preg_match('/^(\d{4}-\d{2}-\d{2})/', (string) $de, $m) ? $m[1] : $de;
         }
         $fq = isset($row['accounting_resend_schedule_frequency']) ? strtolower(trim((string) $row['accounting_resend_schedule_frequency'])) : '';
-        // 仅 Monthly 在同时填 day_start + day_end 时走 consolidated 合并账单。
-        // 1st_of_every_month 的 day_end 仅作合同窗口，须保留单期 resend + 正常流程并存。
-        if ($hadScheduleStart && $hadScheduleEnd && $fq === 'monthly') {
+        // 1st_of_every_month 同时填 day_start + day_end 时走 consolidated 合并账单（弹窗里唯一会真正带 day_end 到这里的频率；
+        // Monthly/Week/Day/Once 在弹窗与 resend_accounting_due_api 都会把 day_end 强制清空，走单期 resend）。
+        if ($hadScheduleStart && $hadScheduleEnd && $fq === '1st_of_every_month') {
             $row['accounting_resend_consolidated_range'] = 1;
         }
         if ($fq === 'monthly' || $fq === '1st_of_every_month' || $fq === 'week' || $fq === 'day' || $fq === 'once') {
