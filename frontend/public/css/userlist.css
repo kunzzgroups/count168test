@@ -905,18 +905,22 @@ body.dashboard-page .user-gc-segment:disabled {
     cursor: not-allowed;
 }
 
+/* Currency drag-reorder pills: same index-finger pointer as other GC segments (no grab/grabbing hand). */
+.user-gc-segment.user-gc-segment--draggable-pill:not(:disabled),
+.user-gc-segment.user-gc-segment--draggable-pill:not(:disabled):active,
 body.process-page .user-gc-segment--draggable-pill:not(:disabled),
 body.report-page .user-gc-segment--draggable-pill:not(:disabled),
 body.member-winloss-page .user-gc-segment--draggable-pill:not(:disabled),
-body.dashboard-page .user-gc-segment--draggable-pill:not(:disabled) {
-    cursor: grab;
-}
-
+body.dashboard-page .user-gc-segment--draggable-pill:not(:disabled),
+body.transaction-page .user-gc-segment--draggable-pill:not(:disabled),
+body.maintenance-page .user-gc-segment--draggable-pill:not(:disabled),
 body.process-page .user-gc-segment--draggable-pill:not(:disabled):active,
 body.report-page .user-gc-segment--draggable-pill:not(:disabled):active,
 body.member-winloss-page .user-gc-segment--draggable-pill:not(:disabled):active,
-body.dashboard-page .user-gc-segment--draggable-pill:not(:disabled):active {
-    cursor: grabbing;
+body.dashboard-page .user-gc-segment--draggable-pill:not(:disabled):active,
+body.transaction-page .user-gc-segment--draggable-pill:not(:disabled):active,
+body.maintenance-page .user-gc-segment--draggable-pill:not(:disabled):active {
+    cursor: pointer;
 }
 
 .action-buttons {
