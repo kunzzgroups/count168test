@@ -468,7 +468,8 @@ export function useTransactionForm({
           setTxConfirm(false);
           setRateCurrencyFromAmount("");
           setRateFullAmount("");
-          setRateExchangeRateRaw("");
+          // Rate is left intact after submit — customers commonly repeat the same
+          // rate across several accounts, so re-entering it each time is friction.
           setRateCurrencyToAmount("");
           setRateToAmountGrossStr("");
           setRateFromAmountGrossStr("");
