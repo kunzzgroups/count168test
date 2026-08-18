@@ -2289,10 +2289,20 @@ body.ec-auth-shell.process-page.process-page--bank .bank-process-toolbar-primary
     top: auto;
     transform: none;
     flex: 0 0 auto;
-    width: clamp(14px, 1vw, 16px);
-    height: clamp(14px, 1vw, 16px);
+    width: clamp(16px, 1.15vw, 19px);
+    height: clamp(16px, 1.15vw, 19px);
     margin: 0 0 0 clamp(1px, 0.12vw, 2px);
-    font-size: clamp(12px, 0.85vw, 14px);
+    font-size: clamp(12px, 0.9vw, 15px);
+    /* 加一层浅底色让 × 更明显，不再是几乎看不见的浅灰字；clamp 尺寸缩放，小屏幕不受影响 */
+    background: rgba(100, 116, 139, 0.16);
+    border-radius: 50%;
+    color: #475569;
+}
+
+body.process-page.process-page--bank .bank-process-toolbar-primary .transaction-date-range-group .process-list-date-clear:hover,
+body.ec-auth-shell.process-page.process-page--bank .bank-process-toolbar-primary .transaction-date-range-group .process-list-date-clear:hover {
+    background: rgba(100, 116, 139, 0.3);
+    color: #1e293b;
 }
 
 body.process-page.process-page--bank .bank-process-toolbar-primary .transaction-date-range-group .transaction-date-range-chevron,
