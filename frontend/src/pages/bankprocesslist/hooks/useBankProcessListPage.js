@@ -2469,23 +2469,22 @@ export function useBankProcessListPage() {
   }, [currencyFilterCode, currencyPillCodes]);
 
   const visibleRows = useMemo(() => {
-    // No date range selected → show nothing until the user picks one, rather
-    // than defaulting to "all rows, unfiltered by date".
-    if (!dateFrom && !dateTo) return [];
     const filterState = { showAll, showActive, showInactive, showOfficial, showEInvoice, showBlock };
     let filtered = filterBankProcessRowsBySearch(sortedRows, search).filter((r) =>
       matchesCurrentBankFilters(r, filterState),
     );
-    const fromMs = dateFrom ? parseRowDateMs(dateFrom) : null;
-    const toMs = dateTo ? parseRowDateMs(dateTo) : null;
-    const toEnd = toMs != null ? toMs + 86400000 - 1 : null;
-    filtered = filtered.filter((r) => {
-      const ts = parseRowDateMs(r.date || r.day_start);
-      if (ts == null) return false;
-      if (fromMs !== null && ts < fromMs) return false;
-      if (toEnd !== null && ts > toEnd) return false;
-      return true;
-    });
+    if (dateFrom || dateTo) {
+      const fromMs = dateFrom ? parseRowDateMs(dateFrom) : null;
+      const toMs = dateTo ? parseRowDateMs(dateTo) : null;
+      const toEnd = toMs != null ? toMs + 86400000 - 1 : null;
+      filtered = filtered.filter((r) => {
+        const ts = parseRowDateMs(r.date || r.day_start);
+        if (ts == null) return false;
+        if (fromMs !== null && ts < fromMs) return false;
+        if (toEnd !== null && ts > toEnd) return false;
+        return true;
+      });
+    }
     if (currencyFilterCode) {
       filtered = filtered.filter((r) => String(r.country || "").trim().toUpperCase() === currencyFilterCode);
     }
