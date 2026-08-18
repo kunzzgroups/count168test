@@ -2312,10 +2312,10 @@ body.ec-auth-shell.process-page.process-page--bank .bank-process-toolbar-primary
     top: auto;
     transform: none;
     flex: 0 0 auto;
-    /* Fixed px (not vw-based) so the × ↔ ▾ gap stays identical at every screen size,
-       instead of quietly widening/narrowing with viewport width.
-       !important needed: the base .transaction-date-range-chevron rule above sets
-       margin:0 !important for its absolute-positioned default state. */
+    /* Fixed px (not vw-scaled) so the × ↔ chevron gap stays identical at every
+       screen size instead of narrowing/widening with viewport width.
+       !important needed: the base .transaction-date-range-chevron rule sets
+       margin: 0 !important, which otherwise wins regardless of specificity. */
     margin: 0 0 0 6px !important;
     pointer-events: none;
 }
