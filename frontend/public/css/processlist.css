@@ -1853,7 +1853,12 @@ body.ec-auth-shell .process-page #addBankModal .bank-actions .btn-cancel:hover {
     min-height: 0;
     overflow-y: auto;
     overflow-x: visible;
-    padding-bottom: 10px; /* breathing room above the pinned buttons */
+    /* Extra runway before the bottom edge — a fast flick on a short scroll
+       region hits the boundary almost immediately, which reads as a jarring
+       stop/stutter even though no frames were actually dropped. More distance
+       gives native momentum deceleration room to finish naturally instead of
+       being clamped abruptly. */
+    padding-bottom: 56px;
     /* Smooth momentum scroll on iOS (default is a choppy, non-inertial scroll
        inside nested overflow containers) and stop the scroll from bubbling
        into whatever sits behind the modal once it hits the top/bottom edge. */
