@@ -159,13 +159,36 @@ function isEnglishTotalBalanceLabel(value) {
   return /^TOTAL\b/.test(upper);
 }
 
+/** Most common first-amount column on non-total body rows (needs a leading label gap). */
+function bodyAmountColumnIndex(matrix) {
+  const counts = new Map();
+  (matrix || []).forEach((row) => {
+    if (!Array.isArray(row) || rowHasTotalLabel(row)) return;
+    const idx = rowFirstNumericIndex(row);
+    if (idx < 2) return;
+    counts.set(idx, (counts.get(idx) || 0) + 1);
+  });
+  let bestIdx = -1;
+  let bestCount = 0;
+  counts.forEach((count, idx) => {
+    if (count > bestCount || (count === bestCount && idx > bestIdx)) {
+      bestIdx = idx;
+      bestCount = count;
+    }
+  });
+  return bestCount >= 1 ? bestIdx : -1;
+}
+
 /**
- * Plain TSV often drops the empty code-column cell after TOTAL BALANCE while HTML
- * keeps it (colspan / blank TD). Re-insert the blank so totals line up under the
- * numeric columns (matches org 1.TEXT / PHP visible result).
+ * Plain TSV often drops empty cells after TOTAL (role / currency / code columns)
+ * while HTML keeps them via colspan. Re-insert blanks so the first amount lines
+ * up with body rows (Superbo WinLossSimple: TOTAL under KBK18 | SENIOR | MYR).
  */
 export function ensureTotalRowCodeColumnGap(matrix) {
-  if (!matrixHasCodeColumnPattern(matrix)) return matrix;
+  if (!Array.isArray(matrix) || matrix.length < 2) return matrix;
+
+  const amountCol = bodyAmountColumnIndex(matrix);
+  if (amountCol < 2) return matrix;
 
   let changed = false;
   const next = matrix.map((row) => {
@@ -174,19 +197,21 @@ export function ensureTotalRowCodeColumnGap(matrix) {
     if (labelIdx < 0) return row;
     if (!isEnglishTotalBalanceLabel(trimCellValue(row[labelIdx]))) return row;
 
-    const afterIdx = labelIdx + 1;
-    if (afterIdx >= row.length) return row;
-    if (isBlankCell(trimCellValue(row[afterIdx]))) return row;
-    if (!isNumericValue(trimCellValue(row[afterIdx]))) return row;
+    const numIdx = rowFirstNumericIndex(row);
+    if (numIdx < 0 || numIdx >= amountCol) return row;
 
+    const gap = amountCol - numIdx;
     const out = [...row];
-    out.splice(afterIdx, 0, makeBlankCellLike(row));
+    const insertAt = labelIdx + 1;
+    for (let i = 0; i < gap; i += 1) {
+      out.splice(insertAt, 0, makeBlankCellLike(row));
+    }
     changed = true;
     return out;
   });
 
   if (changed) {
-    console.log("Inserted blank after TOTAL label so totals align under code-column body rows.");
+    console.log("Inserted blanks after TOTAL label so amounts align under body numeric columns.");
   }
   return changed ? next : matrix;
 }
