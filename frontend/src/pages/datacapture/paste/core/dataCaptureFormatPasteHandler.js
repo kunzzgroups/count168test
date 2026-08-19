@@ -107,10 +107,23 @@ function plainMatrixLooksLikeAgentPeriodDump(matrix) {
   return dollarRows >= 1;
 }
 
+function countHtmlTableRows(html) {
+  if (!html) return 0;
+  return (String(html).match(/<tr[\s>]/gi) || []).length;
+}
+
+function tsvHasMoreRowsThanHtml(tsvRows, html) {
+  if (!tsvRows || tsvRows < 10) return false;
+  const htmlRows = countHtmlTableRows(html);
+  if (htmlRows < 1) return false;
+  return tsvRows > htmlRows + 1;
+}
+
 function shouldPreferFormatPlainDual(plainMulti, plainMatrix, normalizedHtml) {
   if (!plainMulti) return false;
   if (!normalizedHtml || !/<table\b/i.test(normalizedHtml)) return true;
   if (formatHtmlLooksLikeVerticalNx1(normalizedHtml)) return true;
+  if (tsvHasMoreRowsThanHtml(plainMatrix?.length, normalizedHtml)) return true;
   return plainMatrixLooksLikeAgentPeriodDump(plainMatrix);
 }
 
@@ -405,12 +418,22 @@ function tryProcessFormatClipboard(html, text, options = {}) {
   // 1.Text reuses this pipeline with formatShell:false — prefer HTML cell structure
   // (TOTAL BALANCE gap + per-cell colors) over plain-TSV grill → dual-source.
   const skipPlainGrill = options?.formatShell === false || options?.skipPlainGrill === true;
+  const tsvRowCount = matrixLooksMultiColumn(directMatrix) ? directMatrix.length : 0;
+  // Excel/WPS HTML clipboard is often truncated (GamingSoft invoice ~92 rows)
+  // while text/plain still has the rest of the sheet.
+  const preferCompleteTsv =
+    tsvRowCount >= 10 && tsvHasMoreRowsThanHtml(tsvRowCount, normalizedHtml || html);
   const htmlFillOpts = {
     ...options,
     plainMatrix: matrixLooksMultiColumn(directMatrix) ? directMatrix : null,
-    skipPlainGrill,
+    skipPlainGrill: skipPlainGrill && !preferCompleteTsv,
   };
-  const dualOpts = { ...options, plainMatrix, skipPlainGrill };
+  const dualOpts = { ...options, plainMatrix, skipPlainGrill: skipPlainGrill && !preferCompleteTsv };
+
+  if (preferCompleteTsv) {
+    if (processFormatTsv(text, options)) return true;
+    if (plainMulti && processFormatDualSource(html, plainText, dualOpts)) return true;
+  }
 
   // agent_period / N×1 dumps: plain reshape FIRST (avoids Fig1 col1 stack).
   // Wide statement HTML (OB / 16-col) stays on HTML path below.

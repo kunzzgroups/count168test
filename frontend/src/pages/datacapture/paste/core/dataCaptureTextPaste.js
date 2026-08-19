@@ -334,6 +334,17 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
   }
 
   if (htmlCandidate && (isFormatRichHtmlTable(htmlCandidate) || clipboardHtmlLooksLikeGrid(rawHtmlCandidate))) {
+    const plainMatrix = parsePlainTextMatrix(pastedData);
+    const htmlRowCount = countWideHtmlTableRows(htmlCandidate || rawHtmlCandidate);
+    if (
+      plainTextLooksLikeAlignedTsv(pastedData) &&
+      plainMatrix.length >= 10 &&
+      htmlRowCount > 0 &&
+      plainMatrix.length > htmlRowCount + 1
+    ) {
+      if (handleTextPlainPaste(e, pastedData, anchorCell)) return true;
+    }
+
     const formatHtml = resolveTextPasteHtml(htmlCandidate) || htmlCandidate;
     if (parseAndFillHtmlTableForTextWithFormat(formatHtml, anchorCell)) return true;
 
