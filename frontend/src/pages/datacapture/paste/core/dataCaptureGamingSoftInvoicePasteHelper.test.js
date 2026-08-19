@@ -57,3 +57,13 @@ test("C8 sparse-tab Win Loss is not claimed by the invoice helper", () => {
   assert.equal(looksLikeGamingSoftInvoicePlain(text), false);
   assert.equal(tryBuildGamingSoftInvoiceMatrix(text, ""), null);
 });
+
+test("generic Net Win report with (MYR) amounts is not claimed as invoice", () => {
+  const rows = ["Agent\tGame\tTurnover\tNet Win"];
+  for (let i = 1; i <= 12; i += 1) {
+    rows.push(`AG${i}\tSlot\t100.00\t(MYR) ${i}.00`);
+  }
+  const text = rows.join("\n");
+  assert.equal(looksLikeGamingSoftInvoicePlain(text), false);
+  assert.equal(tryBuildGamingSoftInvoiceMatrix(text, ""), null);
+});

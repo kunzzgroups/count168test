@@ -23,14 +23,15 @@ function normalizeClipboardText(text) {
 export function looksLikeGamingSoftInvoicePlain(pastedData) {
   const text = normalizeClipboardText(pastedData);
   if (text.length < 120) return false;
+  // Win/Loss portals (PS38 and similar) — never steal those pastes.
   if (/USERNAME/i.test(text) && /TURNOVER/i.test(text) && /GROSS COMM/i.test(text)) {
     return false;
   }
   const parenMoney = (text.match(/\([A-Za-z]{3}\)\s*-?\s*[\d,]/g) || []).length;
   if (parenMoney < 8) return false;
   const brandDash = (text.match(/\b[A-Za-z]{1,4}:[^\n\t]{0,48}\s-\s/g) || []).length;
-  const hasInvoiceHeader =
-    /PRODUCT BRAND/i.test(text) || /EXTRA FEE/i.test(text) || /NET WIN/i.test(text);
+  // NET WIN is a common report column — do not treat it as an invoice marker.
+  const hasInvoiceHeader = /PRODUCT BRAND/i.test(text) || /EXTRA FEE/i.test(text);
   return brandDash >= 8 || hasInvoiceHeader;
 }
 
