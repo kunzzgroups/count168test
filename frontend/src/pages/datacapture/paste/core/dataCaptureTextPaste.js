@@ -18,6 +18,7 @@ import {
 } from "./dataCaptureVerticalDumpDetect.js";
 import { tryReshapeC8WinLossPlainMatrix } from "./dataCaptureC8WinLossPasteHelper.js";
 import { tryReshapeAllGamesPlainMatrix } from "./dataCaptureAllGamesPasteHelper.js";
+import { tryReshapePs38WinLossPlainMatrix } from "./dataCapturePs38WinLossPasteHelper.js";
 import { tryReshapePdfTablePlainMatrix } from "./dataCapturePdfTablePasteHelper.js";
 import {
   plainTextLooksLikeAlignedTsv,
@@ -120,6 +121,9 @@ export function parsePlainTextMatrix(pastedData) {
 
   // Scoped C8 Win Loss Detail helper — vertical / sparse-tab only.
   // Null for all other report pastes (agent_period, OB, etc.).
+  const ps38WinLoss = tryReshapePs38WinLossPlainMatrix(normalized);
+  if (ps38WinLoss?.length) return finalizePlainMatrix(ps38WinLoss);
+
   const c8WinLoss = tryReshapeC8WinLossPlainMatrix(normalized);
   if (c8WinLoss?.length) return finalizePlainMatrix(c8WinLoss);
 

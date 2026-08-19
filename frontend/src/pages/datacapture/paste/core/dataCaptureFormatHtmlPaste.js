@@ -209,6 +209,18 @@ export function formatBodyMatrixLooksCollapsed(bodyMatrix, dataRows) {
   );
   if (hasStackedDumpCell && maxFilledCols <= 2) return true;
 
+  // PS38 / fixed-data-table: Format reports 2×19 while each cell still holds
+  // a vertical field dump (toast said 2 rows × 19 cols, grid shows stacked text).
+  const hasNewlineStackedCell = bodyMatrix.some((row) =>
+    (row || []).some((cell) => {
+      const text = String(cell?.value || "")
+        .replace(/\u00a0/g, " ")
+        .trim();
+      return text.split(/\r?\n/).filter((line) => line.trim()).length >= 4;
+    }),
+  );
+  if (hasNewlineStackedCell) return true;
+
   if (formatBodyMatrixLooksIdNumberSplit(bodyMatrix)) return true;
 
   return false;
