@@ -27,6 +27,7 @@ export function isKeptPasteSummaryLabel(text) {
     normalized === "ALL TOTAL" ||
     normalized === "ALLTOTAL" ||
     normalized === "SPORT TOTAL" ||
-    normalized === "SPORTTOTAL"
+    normalized === "SPORTTOTAL" ||
+    /^SUB\s*\([A-Z]{3}\)$/.test(normalized)
   );
 }
