@@ -420,7 +420,7 @@ body.dashboard-page {
 body.dashboard-page .dashboard-filter-panel.action-buttons-container {
     margin-top: var(--layout-page-first-block-mt);
     background: var(--color-surface, #ffffff);
-    border: 1px solid var(--color-border, #e5e7eb);
+    border: 0 solid var(--color-border, #e5e7eb);
     box-shadow: var(--shadow-card, 0 2px 8px rgba(0, 0, 0, 0.1));
     border-radius: 10px;
     backdrop-filter: none;
