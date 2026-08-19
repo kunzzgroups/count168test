@@ -3,6 +3,8 @@
  * Total-row empty cells between label and first number are preserved 1:1.
  */
 
+import { isKeptPasteSummaryLabel } from "./dataCapturePasteSummaryLabels.js";
+
 function cellValue(cell) {
   if (cell != null && typeof cell === "object" && "value" in cell) {
     return String(cell.value ?? "").trim();
@@ -76,24 +78,6 @@ export function trimTrailingEmptyColumns(matrix) {
   });
 }
 
-function isSummaryLabelToken(text) {
-  const normalized = String(text ?? "")
-    .trim()
-    .replace(/:$/, "")
-    .replace(/\s+/g, " ")
-    .toUpperCase();
-  // iview allGames footer uses Total(1) / Total(12) — keep as summary, not junk.
-  if (/^TOTAL\(\d+\)$/.test(normalized)) return true;
-  return (
-    normalized === "SUBTOTAL" ||
-    normalized === "SUB TOTAL" ||
-    normalized === "TOTAL AMOUNT" ||
-    normalized === "TOTAL" ||
-    normalized === "GRAND TOTAL" ||
-    normalized === "GRANDTOTAL"
-  );
-}
-
 /**
  * Real footer total rows often have fewer filled cells than body (no serial / code).
  * Win Loss Detail Subtotal footers are frequently much narrower than agent rows
@@ -102,7 +86,7 @@ function isSummaryLabelToken(text) {
 function rowLooksLikeKeptSummaryTotalRow(row, _bodyWidth) {
   if (!Array.isArray(row)) return false;
   const tokens = row.map((cell) => cellValue(cell)).filter(Boolean);
-  if (!tokens.length || !isSummaryLabelToken(tokens[0])) return false;
+  if (!tokens.length || !isKeptPasteSummaryLabel(tokens[0])) return false;
 
   // Label + at least one amount is enough. Do not require ~50% of body width —
   // that dropped legitimate Subtotal rows from C8 / Material win-loss copies.

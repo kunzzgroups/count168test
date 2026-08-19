@@ -1,5 +1,6 @@
 /** 2.Format HTML table → body matrix (PR6 batch 1). */
 
+import { isKeptPasteSummaryLabel } from "./dataCapturePasteSummaryLabels.js";
 import { sanitizeCopiedStyleString } from "./dataCaptureFormatStyleUtils.js";
 import { sanitizePastedCellHtml } from "./dataCaptureClipboard.js";
 import {
@@ -17,17 +18,7 @@ function cellTextIsMoneyOrNumberLike(text) {
 }
 
 function isSummaryLabelToken(text) {
-  const normalized = String(text ?? "")
-    .trim()
-    .replace(/:$/, "")
-    .toUpperCase();
-  return (
-    normalized === "SUBTOTAL" ||
-    normalized === "SUB TOTAL" ||
-    normalized === "TOTAL AMOUNT" ||
-    normalized === "TOTAL" ||
-    normalized === "GRAND TOTAL"
-  );
+  return isKeptPasteSummaryLabel(text);
 }
 
 /** Agent-period style: one label + many money fields in a single collapsed cell. */
