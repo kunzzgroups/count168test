@@ -33,6 +33,10 @@ import { tryHandleAwcWinLossReportPaste } from "../vendors/dataCaptureAwcPaste.j
 import { tryHandleGamingSoftInvoicePaste } from "./dataCaptureGamingSoftInvoicePasteHelper.js";
 import { tryHandleKing855WinLossPaste } from "./dataCaptureKing855WinLossPasteHelper.js";
 import { tryHandleWosWinLossDetailPaste } from "./dataCaptureWosWinLossDetailPasteHelper.js";
+import {
+  alignFooterOnlySubGrandMatrix,
+  tryHandleFooterOnlySubGrandPaste,
+} from "./dataCaptureWinLoseFooterOnlyPasteHelper.js";
 import { showFormatEditableGrid, syncFormatPreviewFromDom } from "../../format/dataCaptureFormat.js";
 import { resolvePasteCell } from "./dataCaptureClipboard.js";
 import {
@@ -301,6 +305,7 @@ export function processFormatDualSource(
     plainMatrixToFormatCellPatches(matrix, html || "") ||
     matrix.map((row) => (row || []).map((value) => ({ value: String(value ?? "") })));
   patches = splitStackedSubtotalGrandTotalRows(patches);
+  patches = alignFooterOnlySubGrandMatrix(patches);
   patches = sanitizePasteMatrix(expandLabelColonMoneyCells(patches));
   // Plain TSV may omit the blank under the code column on TOTAL BALANCE rows.
   patches = ensureTotalRowCodeColumnGap(patches);
@@ -417,6 +422,15 @@ function tryProcessFormatClipboard(html, text, options = {}) {
 
   if (
     tryHandleWosWinLossDetailPaste(html, text, {
+      anchorCell: options?.anchorCell,
+      startRowOverride: options?.startRow,
+    })
+  ) {
+    return afterFormatPasteFilled(true, options?.area, options);
+  }
+
+  if (
+    tryHandleFooterOnlySubGrandPaste(html, text, {
       anchorCell: options?.anchorCell,
       startRowOverride: options?.startRow,
     })

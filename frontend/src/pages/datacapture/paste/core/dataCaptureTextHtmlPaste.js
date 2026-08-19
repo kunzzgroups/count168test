@@ -7,6 +7,7 @@ import {
 } from "./dataCaptureClipboard.js";
 import { buildFormatDataCellStyle } from "./dataCaptureFormatHtmlMatrix.js";
 import { splitStackedSubtotalGrandTotalRows } from "./dataCaptureStackedTotalSplit.js";
+import { alignFooterOnlySubGrandMatrix } from "./dataCaptureWinLoseFooterOnlyPasteHelper.js";
 
 function emptyPatch() {
   return { value: "" };
@@ -133,8 +134,10 @@ export function parseAndFillHtmlTableForText(htmlString, anchorCell) {
     if (!measured) return false;
 
     const { allRows, maxCols } = measured;
-    const dataMatrix = splitStackedSubtotalGrandTotalRows(
-      allRows.map((sourceRow) => buildRowPatches(sourceRow, maxCols, null)),
+    const dataMatrix = alignFooterOnlySubGrandMatrix(
+      splitStackedSubtotalGrandTotalRows(
+        allRows.map((sourceRow) => buildRowPatches(sourceRow, maxCols, null)),
+      ),
     );
 
     const { successCount, maxRows, maxCols: cols } = applyDataMatrixToGrid(dataMatrix, anchorCell, {
@@ -190,8 +193,10 @@ export function parseAndFillHtmlTableForTextWithFormat(htmlString, anchorCell) {
     if (!measured) return false;
 
     const { allRows, maxCols } = measured;
-    const dataMatrix = splitStackedSubtotalGrandTotalRows(
-      buildRowPatchesWithSpanOccupancy(allRows, maxCols),
+    const dataMatrix = alignFooterOnlySubGrandMatrix(
+      splitStackedSubtotalGrandTotalRows(
+        buildRowPatchesWithSpanOccupancy(allRows, maxCols),
+      ),
     );
 
     // Same symptom as 2.FORMAT collapsed bodies: toast may say 3×9 while col1

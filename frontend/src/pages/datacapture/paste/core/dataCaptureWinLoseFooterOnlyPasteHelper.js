@@ -1,0 +1,292 @@
+/**
+ * Footer-only Sub Total + Grand Total clipboard helper — scoped only.
+ *
+ * Source: https://fruit16.com/dailyWinlose (Win Lose table).
+ *
+ * Copying just the two footer TRs (no agent rows) often:
+ * - drops colspan blanks on one row only → first amounts zipper
+ * - fails the aligned-TSV grill (width delta > 2) then vertical-dump
+ *   (needs a body row) → N×1 / unusable paste
+ *
+ * Other Data Capture pastes must not enter this path (agents, Superbo TOTAL, etc.).
+ */
+
+import { applyDataMatrixToGrid, notifyPasteSuccess } from "./dataCapturePasteApply.js";
+
+function normalizeClipboardText(text) {
+  return String(text ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\u00a0/g, " ");
+}
+
+function cellText(cell) {
+  if (cell != null && typeof cell === "object" && "value" in cell) {
+    return String(cell.value ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return String(cell ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isBlankCell(cell) {
+  return cellText(cell) === "";
+}
+
+function blankLike(row) {
+  const sample = (row || []).find((cell) => cell != null && typeof cell === "object" && "value" in cell);
+  return sample ? { value: "" } : "";
+}
+
+function isMoneyOrCount(text) {
+  const cleaned = cellText(text)
+    .replace(/,/g, "")
+    .replace(/^\((.*)\)$/, "-$1");
+  if (!cleaned) return false;
+  return /^-?\d+(?:\.\d+)?$/.test(cleaned);
+}
+
+function isSubTotalLabel(text) {
+  const upper = cellText(text)
+    .replace(/[:：=]+$/g, "")
+    .toUpperCase();
+  return upper === "SUB TOTAL" || upper === "SUBTOTAL";
+}
+
+function isGrandTotalLabel(text) {
+  const upper = cellText(text)
+    .replace(/[:：=]+$/g, "")
+    .toUpperCase();
+  return upper === "GRAND TOTAL" || upper === "GRANDTOTAL";
+}
+
+function isFooterPairLabel(text) {
+  return isSubTotalLabel(text) || isGrandTotalLabel(text);
+}
+
+function firstLabelIndex(row) {
+  if (!Array.isArray(row)) return -1;
+  return row.findIndex((cell) => cellText(cell) !== "");
+}
+
+function firstNonEmptyAfter(row, start) {
+  if (!Array.isArray(row)) return -1;
+  for (let i = start; i < row.length; i += 1) {
+    if (!isBlankCell(row[i])) return i;
+  }
+  return -1;
+}
+
+function contentRows(matrix) {
+  return (matrix || []).filter((row) => Array.isArray(row) && row.some((cell) => cellText(cell) !== ""));
+}
+
+function flattenNonEmptyTokens(text) {
+  const tokens = [];
+  normalizeClipboardText(text)
+    .split("\n")
+    .forEach((line) => {
+      if (line.includes("\t")) {
+        line.split("\t").forEach((part) => {
+          const token = cellText(part);
+          if (token) tokens.push(token);
+        });
+        return;
+      }
+      const token = cellText(line);
+      if (token) tokens.push(token);
+    });
+  return tokens;
+}
+
+function extraNonFooterLabels(tokens) {
+  return tokens.filter(
+    (token) => token && !isMoneyOrCount(token) && !isFooterPairLabel(token),
+  );
+}
+
+function replaceContentRows(matrix, nextRows) {
+  let index = 0;
+  return matrix.map((row) => {
+    if (!Array.isArray(row) || !row.some((cell) => cellText(cell) !== "")) return row;
+    const next = nextRows[index];
+    index += 1;
+    return next || row;
+  });
+}
+
+/**
+ * Clipboard is only Sub Total + Grand Total (and their amounts). No agent rows.
+ */
+export function looksLikeFooterOnlySubGrandPlain(pastedData) {
+  const text = normalizeClipboardText(pastedData);
+  if (!text.trim()) return false;
+  const tokens = flattenNonEmptyTokens(text);
+  const subCount = tokens.filter((token) => isSubTotalLabel(token)).length;
+  const grandCount = tokens.filter((token) => isGrandTotalLabel(token)).length;
+  if (subCount !== 1 || grandCount !== 1) return false;
+  if (extraNonFooterLabels(tokens).length) return false;
+  if (tokens.filter((token) => isMoneyOrCount(token)).length < 6) return false;
+  return true;
+}
+
+function padRowWidth(row, width) {
+  const next = Array.isArray(row) ? [...row] : [];
+  while (next.length < width) next.push(blankLike(next.length ? next : row));
+  return next;
+}
+
+/**
+ * Pad the narrower footer so both first amounts share a column.
+ * No-op when already aligned (avoids shifting correct dual-footer HTML).
+ */
+export function alignFooterOnlySubGrandMatrix(matrix) {
+  const rows = contentRows(matrix);
+  if (rows.length !== 2) return matrix;
+
+  const a = firstLabelIndex(rows[0]);
+  const b = firstLabelIndex(rows[1]);
+  if (a < 0 || b < 0) return matrix;
+  const labelA = rows[0][a];
+  const labelB = rows[1][b];
+  const pair =
+    (isSubTotalLabel(labelA) && isGrandTotalLabel(labelB)) ||
+    (isGrandTotalLabel(labelA) && isSubTotalLabel(labelB));
+  if (!pair) return matrix;
+
+  const firstA = firstNonEmptyAfter(rows[0], a + 1);
+  const firstB = firstNonEmptyAfter(rows[1], b + 1);
+  if (firstA < 0 || firstB < 0) return matrix;
+  const target = Math.max(firstA, firstB);
+  const aligned = rows.map((row) => {
+    const labelIdx = firstLabelIndex(row);
+    const first = firstNonEmptyAfter(row, labelIdx + 1);
+    const need = target - first;
+    if (need <= 0) return [...row];
+    const blanks = Array.from({ length: need }, () => blankLike(row));
+    return [...row.slice(0, labelIdx + 1), ...blanks, ...row.slice(labelIdx + 1)];
+  });
+  const width = Math.max(...aligned.map((row) => row.length));
+  const padded = aligned.map((row) => padRowWidth(row, width));
+  if (
+    firstA === firstB &&
+    rows[0].length === width &&
+    rows[1].length === width &&
+    padded.every((row, index) => row.length === rows[index].length)
+  ) {
+    return matrix;
+  }
+  return replaceContentRows(matrix, padded);
+}
+
+function parseTwoTabFooterRows(text) {
+  const lines = normalizeClipboardText(text)
+    .split("\n")
+    .filter((line) => String(line).trim() !== "");
+  if (lines.length !== 2) return null;
+  if (!lines[0].includes("\t") && !lines[1].includes("\t")) return null;
+  const rows = lines.map((line) => line.split("\t").map((cell) => cellText(cell)));
+  const a = rows[0].find((cell) => cellText(cell) !== "");
+  const b = rows[1].find((cell) => cellText(cell) !== "");
+  if (
+    !(isSubTotalLabel(a) && isGrandTotalLabel(b)) &&
+    !(isGrandTotalLabel(a) && isSubTotalLabel(b))
+  ) {
+    return null;
+  }
+  return rows;
+}
+
+function reshapeVerticalFooterTokens(text) {
+  const tokens = flattenNonEmptyTokens(text);
+  const subIdx = tokens.findIndex((token) => isSubTotalLabel(token));
+  const grandIdx = tokens.findIndex((token) => isGrandTotalLabel(token));
+  if (subIdx < 0 || grandIdx < 0 || subIdx === grandIdx) return null;
+  const first = Math.min(subIdx, grandIdx);
+  const second = Math.max(subIdx, grandIdx);
+  if (first !== 0) return null;
+  const row1 = tokens.slice(first, second);
+  const row2 = tokens.slice(second);
+  if (row1.length < 4 || row2.length < 4) return null;
+  const money1 = row1.filter(isMoneyOrCount).length;
+  const money2 = row2.filter(isMoneyOrCount).length;
+  if (money1 < 3 || money2 < 3) return null;
+  if (Math.abs(money1 - money2) > 2) return null;
+  return [row1, row2];
+}
+
+function parseHtmlFooterOnlyTable(html) {
+  if (!html || typeof document === "undefined") return null;
+  if (!/<table\b/i.test(html) && !/<tr\b/i.test(html)) return null;
+  try {
+    const root = document.createElement("div");
+    root.innerHTML = String(html);
+    const table = root.querySelector("table") || root;
+    const trs = Array.from(table.querySelectorAll("tr")).filter((tr) =>
+      cellText(tr.textContent),
+    );
+    if (trs.length !== 2) return null;
+    const rows = trs.map((tr) => {
+      const cells = [];
+      Array.from(tr.querySelectorAll("td, th")).forEach((td) => {
+        const span = Math.max(1, Number(td.getAttribute("colspan") || td.colSpan || 1));
+        cells.push(cellText(td.textContent));
+        for (let i = 1; i < span; i += 1) cells.push("");
+      });
+      return cells;
+    });
+    const a = rows[0].find((cell) => cellText(cell) !== "");
+    const b = rows[1].find((cell) => cellText(cell) !== "");
+    if (
+      !(isSubTotalLabel(a) && isGrandTotalLabel(b)) &&
+      !(isGrandTotalLabel(a) && isSubTotalLabel(b))
+    ) {
+      return null;
+    }
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @returns {string[][] | null}
+ */
+export function tryBuildFooterOnlySubGrandMatrix(pastedData, html) {
+  const fromHtml = parseHtmlFooterOnlyTable(html);
+  if (fromHtml?.length === 2) return alignFooterOnlySubGrandMatrix(fromHtml);
+
+  if (!looksLikeFooterOnlySubGrandPlain(pastedData)) return null;
+
+  const tabRows = parseTwoTabFooterRows(pastedData);
+  if (tabRows) return alignFooterOnlySubGrandMatrix(tabRows);
+
+  const vertical = reshapeVerticalFooterTokens(pastedData);
+  if (vertical) return alignFooterOnlySubGrandMatrix(vertical);
+
+  return null;
+}
+
+export function tryHandleFooterOnlySubGrandPaste(html, pastedData, applyOptions = {}) {
+  const matrix = tryBuildFooterOnlySubGrandMatrix(pastedData, html);
+  if (!matrix?.length) return false;
+
+  const { successCount, maxRows, maxCols } = applyDataMatrixToGrid(
+    matrix,
+    applyOptions.anchorCell || null,
+    {
+      alignTotalRows: false,
+      uppercaseValues: false,
+      trimValues: false,
+      startRowOverride: applyOptions.startRowOverride,
+      startColOverride: applyOptions.startColOverride,
+    },
+  );
+  if (successCount <= 0) return false;
+  notifyPasteSuccess(`成功粘贴 Win Lose Total ${maxRows} 行 x ${maxCols} 列`);
+  return true;
+}

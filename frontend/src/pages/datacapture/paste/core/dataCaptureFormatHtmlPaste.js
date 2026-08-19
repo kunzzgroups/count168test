@@ -19,6 +19,7 @@ import {
 import { ensureTotalRowCodeColumnGap } from "./dataCaptureTotalRowAlign.js";
 import { expandLabelColonMoneyCells } from "./dataCaptureTextPaste.js";
 import { tryCanonicalizePs38FormatBody } from "./dataCapturePs38WinLossPasteHelper.js";
+import { alignFooterOnlySubGrandMatrix } from "./dataCaptureWinLoseFooterOnlyPasteHelper.js";
 
 function flattenFormatBodyMatrixToPlain(bodyMatrix) {
   const lines = [];
@@ -303,6 +304,7 @@ export function parseAndFillHtmlTableForFormat(htmlString, options = {}) {
         `Format: Split stacked SUBTOTAL/GRANDTOTAL → ${beforeSplit} row(s) became ${bodyMatrix.length}`,
       );
     }
+    bodyMatrix = alignFooterOnlySubGrandMatrix(bodyMatrix);
     bodyMatrix = sanitizePasteMatrix(expandLabelColonMoneyCells(bodyMatrix));
     bodyMatrix = ensureTotalRowCodeColumnGap(bodyMatrix);
 
