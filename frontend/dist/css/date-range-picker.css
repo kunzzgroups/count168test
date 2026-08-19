@@ -19,7 +19,6 @@
     border-radius: clamp(4px, 0.42vw, 8px);
     padding: clamp(6px, 0.5vw, 8px) clamp(8px, 0.83vw, 16px);
     cursor: pointer;
-    transition: all 0.2s;
     position: relative;
     min-width: clamp(120px, 12vw, 240px);
     width: 100%;
