@@ -18,6 +18,7 @@ import {
 } from "./dataCapturePasteMatrixSanitize.js";
 import { ensureTotalRowCodeColumnGap } from "./dataCaptureTotalRowAlign.js";
 import { expandLabelColonMoneyCells } from "./dataCaptureTextPaste.js";
+import { tryCanonicalizePs38FormatBody } from "./dataCapturePs38WinLossPasteHelper.js";
 
 function flattenFormatBodyMatrixToPlain(bodyMatrix) {
   const lines = [];
@@ -278,6 +279,17 @@ export function parseAndFillHtmlTableForFormat(htmlString, options = {}) {
         );
         return false;
       }
+    }
+
+    const ps38Canonical = tryCanonicalizePs38FormatBody(bodyMatrix);
+    if (ps38Canonical) {
+      bodyMatrix = ps38Canonical;
+      ensureGridFits(
+        startRow,
+        startCol,
+        bodyMatrix.length,
+        Math.max(...bodyMatrix.map((row) => row.length), 0),
+      );
     }
 
     // Over-select: trim trailing empty cols / junk rows (same as 1.TEXT plain path).
