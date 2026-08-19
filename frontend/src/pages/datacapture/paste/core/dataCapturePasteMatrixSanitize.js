@@ -79,19 +79,33 @@ export function trimTrailingEmptyColumns(matrix) {
 }
 
 /**
- * Real footer total rows often have fewer filled cells than body (no serial / code).
- * Win Loss Detail Subtotal footers are frequently much narrower than agent rows
- * (colspan / sparse leading empties) — still keep them when labeled.
+ * Report money (decimals, thousands, signed, 5+ digit integers).
+ * Short unsigned integers are page sizes / years — not enough to keep a stub row.
  */
-function rowLooksLikeKeptSummaryTotalRow(row, _bodyWidth) {
+function tokenLooksLikeReportAmount(text) {
+  if (!isMoneyOrNumberLikeToken(text)) return false;
+  const raw = String(text ?? "").trim();
+  if (/[.,]/.test(raw) || /^-/.test(raw) || /^\(.*\)$/.test(raw)) return true;
+  const digits = raw.replace(/[^\d]/g, "");
+  return digits.length >= 5;
+}
+
+/**
+ * Trailing footer: text label + amount(s), even when colspan makes it narrower
+ * than agent rows. Do not require a label whitelist — Overall Total / EXTRA FEES
+ * / unknown vendor "Net" rows all match.
+ */
+function rowLooksLikeAmountFooter(row) {
   if (!Array.isArray(row)) return false;
   const tokens = row.map((cell) => cellValue(cell)).filter(Boolean);
-  if (!tokens.length || !isKeptPasteSummaryLabel(tokens[0])) return false;
+  if (!tokens.length) return false;
+  if (isMoneyOrNumberLikeToken(tokens[0])) return false;
 
-  // Label + at least one amount is enough. Do not require ~50% of body width —
-  // that dropped legitimate Subtotal rows from C8 / Material win-loss copies.
   const moneyCount = tokens.filter((token) => isMoneyOrNumberLikeToken(token)).length;
-  return moneyCount >= 1;
+  if (moneyCount < 1) return false;
+  if (isKeptPasteSummaryLabel(tokens[0])) return true;
+  if (moneyCount >= 2) return true;
+  return tokens.some((token) => tokenLooksLikeReportAmount(token));
 }
 
 /** Drop trailing empty / paginator / truncated stub rows (loop for multi-line chrome). */
@@ -116,8 +130,8 @@ export function dropTrailingJunkRows(matrix) {
       continue;
     }
 
-    // Keep SUBTOTAL / GRANDTOTAL footers even when narrower than body rows.
-    if (rowLooksLikeKeptSummaryTotalRow(last, bodyWidth)) {
+    // Keep labeled amount footers even when narrower than body rows.
+    if (rowLooksLikeAmountFooter(last)) {
       break;
     }
 

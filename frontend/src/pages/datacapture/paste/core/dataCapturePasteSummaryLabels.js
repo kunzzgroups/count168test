@@ -17,6 +17,8 @@ export function isKeptPasteSummaryLabel(text) {
   if (!normalized) return false;
   // iview allGames footer uses Total(1) / Total(12).
   if (/^TOTAL\(\d+\)$/.test(normalized)) return true;
+  // 4D/GLX workbook + GamingSoft invoice: last EXTRA FEE row is sparse vs agent rows.
+  if (/\bEXTRA\s*FEES?\b/.test(normalized)) return true;
   return (
     normalized === "SUBTOTAL" ||
     normalized === "SUB TOTAL" ||

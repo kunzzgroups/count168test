@@ -102,6 +102,33 @@ test("isVerticalDumpSummaryLabel recognizes SPORT TOTAL =", () => {
   assert.equal(isVerticalDumpSummaryLabel("Sport Total"), true);
 });
 
+test("sanitizePasteMatrix keeps trailing EXTRA FEES footer from 4D/GLX workbook", () => {
+  const agent = ["glx9507-YE", "141", "140", "140", "68", "-72", "0", "0", "0", "-0.0051"];
+  const extraFees = ["(E0) EXTRA FEES : GLX9507", "", "", "", "", "-300.18", "", "", "", ""];
+  const out = sanitizePasteMatrix([agent, extraFees]);
+  assert.equal(out.length, 2);
+  assert.match(String(out[1][0]), /EXTRA FEES/i);
+  assert.equal(String(out[1][5]).trim(), "-300.18");
+});
+
+test("sanitizePasteMatrix keeps unknown labeled amount footer without a whitelist entry", () => {
+  const agent = ["WIN95KZ", "KENZO", "VAAM3863", "60.00", "0.00", "60.00", "-176.00"];
+  const footer = ["Company Nett", "60.00", "0.00", "60.00", "-176.00"];
+  const out = sanitizePasteMatrix([agent, footer]);
+  assert.equal(out.length, 2);
+  assert.equal(String(out[1][0]).trim(), "Company Nett");
+});
+
+test("sanitizePasteMatrix still drops paginator and label-only over-select stubs", () => {
+  const agent = ["WIN95KZ", "KENZO", "VAAM3863", "60.00", "0.00", "60.00", "-176.00"];
+  const paginator = sanitizePasteMatrix([agent, ["Showing 1 to 10 of 50 entries"]]);
+  assert.equal(paginator.length, 1);
+  const pageNum = sanitizePasteMatrix([agent, ["Page", "2"]]);
+  assert.equal(pageNum.length, 1);
+  const labelOnly = sanitizePasteMatrix([agent, ["Username"]]);
+  assert.equal(labelOnly.length, 1);
+});
+
 test("GamingSoft invoice EXTRA FEE width jump is not treated as aligned TSV", () => {
   const rows = [];
   for (let i = 1; i <= 20; i += 1) {
