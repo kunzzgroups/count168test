@@ -185,10 +185,6 @@ export function plainTextLooksLikeAlignedTsv(text) {
   const maxCols = Math.max(...widths);
   const minCols = Math.min(...widths);
   if (maxCols < 2) return false;
-  // GamingSoft / Excel invoices add EXTRA FEE columns on some rows only —
-  // width can jump by 4–6. Still a real TSV when most lines are tabbed.
-  const tabHeavy = tabLines.length >= Math.ceil(lines.length * 0.6);
-  if (tabHeavy) return true;
   return maxCols - minCols <= 2;
 }
 

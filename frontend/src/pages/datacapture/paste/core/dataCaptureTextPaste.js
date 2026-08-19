@@ -21,6 +21,10 @@ import { tryReshapeAllGamesPlainMatrix } from "./dataCaptureAllGamesPasteHelper.
 import { tryReshapePs38WinLossPlainMatrix } from "./dataCapturePs38WinLossPasteHelper.js";
 import { tryReshapePdfTablePlainMatrix } from "./dataCapturePdfTablePasteHelper.js";
 import {
+  tryBuildGamingSoftInvoiceMatrix,
+  tryHandleGamingSoftInvoicePaste,
+} from "./dataCaptureGamingSoftInvoicePasteHelper.js";
+import {
   plainTextLooksLikeAlignedTsv,
   sanitizePasteMatrix,
 } from "./dataCapturePasteMatrixSanitize.js";
@@ -102,6 +106,9 @@ export function parsePlainTextMatrix(pastedData) {
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n");
   if (!normalized.trim()) return [];
+
+  const gamingSoftInvoice = tryBuildGamingSoftInvoiceMatrix(normalized, "");
+  if (gamingSoftInvoice?.length) return finalizePlainMatrix(gamingSoftInvoice);
 
   // Only real spreadsheet TSV uses the tab-row path (keeps empty cells 1:1).
   // Sparse tabs mixed into a one-field-per-line dump must fall through.
@@ -315,6 +322,7 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
   const htmlNx1 = htmlTableLooksLikeVerticalNx1(htmlCandidate || rawHtmlCandidate);
 
   if (tryHandleAwcWinLossReportPaste(html, pastedData, { anchorCell })) return true;
+  if (tryHandleGamingSoftInvoicePaste(html, pastedData, { anchorCell })) return true;
 
   // Match 2.FORMAT: prefer plain vertical-dump reshape whenever it yields a real
   // multi-col matrix. HTML-first only when it has a strictly fuller wide table
@@ -334,17 +342,6 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
   }
 
   if (htmlCandidate && (isFormatRichHtmlTable(htmlCandidate) || clipboardHtmlLooksLikeGrid(rawHtmlCandidate))) {
-    const plainMatrix = parsePlainTextMatrix(pastedData);
-    const htmlRowCount = countWideHtmlTableRows(htmlCandidate || rawHtmlCandidate);
-    if (
-      plainTextLooksLikeAlignedTsv(pastedData) &&
-      plainMatrix.length >= 10 &&
-      htmlRowCount > 0 &&
-      plainMatrix.length > htmlRowCount + 1
-    ) {
-      if (handleTextPlainPaste(e, pastedData, anchorCell)) return true;
-    }
-
     const formatHtml = resolveTextPasteHtml(htmlCandidate) || htmlCandidate;
     if (parseAndFillHtmlTableForTextWithFormat(formatHtml, anchorCell)) return true;
 

@@ -30,6 +30,7 @@ import { handle2SpecialPaste } from "../vendors/dataCapture2SpecialPaste.js";
 import { handle3ApiPaste } from "../vendors/dataCapture3ApiPaste.js";
 import { handleAwcPaste } from "../vendors/dataCaptureAwcHandlerPaste.js";
 import { tryHandleAwcWinLossReportPaste } from "../vendors/dataCaptureAwcPaste.js";
+import { tryHandleGamingSoftInvoicePaste } from "./dataCaptureGamingSoftInvoicePasteHelper.js";
 import { handlePegasusPaste } from "../vendors/dataCapturePegasusPaste.js";
 import { handleAlipayPaste } from "../vendors/dataCaptureAlipayPaste.js";
 import { handleC8PlayPaste } from "../vendors/dataCaptureC8PlayPaste.js";
@@ -179,6 +180,14 @@ export function handleCellPasteEvent(e) {
       if (citibetParsed && handleCitibetPaste(e, pastedData, cell, "CITIBET", citibetParsed)) {
         return;
       }
+    }
+    if (
+      tryHandleGamingSoftInvoicePaste(getClipboardHtml(e), pastedData, {
+        anchorCell: cell,
+        startRowOverride: resolveFormatPasteStartRow(cell),
+      })
+    ) {
+      return;
     }
     // Align structure + cell styles with 2.Format fill core; never touch Format shell.
     if (
