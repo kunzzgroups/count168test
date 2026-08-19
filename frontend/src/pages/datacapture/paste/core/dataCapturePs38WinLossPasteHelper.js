@@ -18,9 +18,8 @@ import {
   normalizeVerticalDumpToken,
 } from "./dataCaptureVerticalDumpDetect.js";
 
-const LEVEL_RE = /^(AGENT|MEMBER|MASTER|PLAYER)$/i;
+const LEVEL_RE = /^(AGENT|MEMBER|MASTER(?:\s*AGENT)?|PLAYER)$/i;
 const CURRENCY_RE = /^(MYR|USD|SGD|HKD|CNY|THB|IDR|VND|EUR|GBP|AUD|JPY|KHR|USDT)$/i;
-const USER_RE = /^[A-Z]{2,}\d+[A-Z]\d+$/i;
 const HEADER_LABEL_RE =
   /^(NO\.?|USERNAME|NICKNAME|NAME|LEVEL|CURRENCY|TOTAL WAGER|TURNOVER|VOLUME|GROSS COMM|MEMBER|AGENT|MASTER AGENT|COMPANY|WIN\/LOSS|WIN LOSS|COMM|TOTAL)$/i;
 
@@ -114,14 +113,15 @@ function rowLooksLikeHeader(texts) {
   if (texts.some((t) => t.toUpperCase() === "USERNAME" || t.toUpperCase() === "TURNOVER")) {
     return true;
   }
-  return labels.length >= 4 && !texts.some((t) => USER_RE.test(t));
+  return labels.length >= 4 && !texts.some((t) => isLevelToken(t) && isVerticalDumpMoneyToken(t));
 }
 
-function isUserToken(token) {
-  const t = normalizeVerticalDumpToken(token);
-  if (!t || LEVEL_RE.test(t) || CURRENCY_RE.test(t) || isVerticalDumpMoneyToken(t)) return false;
-  if (HEADER_LABEL_RE.test(t) && t.toUpperCase() !== "TOTAL") return false;
-  return USER_RE.test(t);
+function isLevelToken(token) {
+  return LEVEL_RE.test(normalizeVerticalDumpToken(token));
+}
+
+function isCurrencyToken(token) {
+  return CURRENCY_RE.test(normalizeVerticalDumpToken(token));
 }
 
 function isTotalLabel(token) {
@@ -132,28 +132,85 @@ function isRowSerialToken(token) {
   return /^\d{1,4}$/.test(normalizeVerticalDumpToken(token));
 }
 
-/**
- * Copies start at No. / Username / an empty frozen cell. Drop that prefix so
- * every body row is anchored on Username (or the Total label).
- */
-function trimLeadingRowNoise(row) {
-  const next = Array.isArray(row) ? [...row] : [];
-  while (next.length) {
-    const first = normalizeVerticalDumpToken(next[0]);
-    if (first === "") {
-      next.shift();
-      continue;
-    }
-    if (isRowSerialToken(first) && next.length > 1) {
-      const second = normalizeVerticalDumpToken(next[1]);
-      if (isUserToken(second) || isTotalLabel(second) || second === "") {
-        next.shift();
-        continue;
-      }
-    }
-    break;
-  }
+function stripLeadingEmpties(row) {
+  const next = Array.isArray(row) ? row.map((cell) => normalizeVerticalDumpToken(cell)) : [];
+  while (next.length && next[0] === "") next.shift();
   return next;
+}
+
+function findLevelCurrencyPairs(cells) {
+  const pairs = [];
+  for (let i = 0; i < cells.length - 1; i += 1) {
+    if (isLevelToken(cells[i]) && isCurrencyToken(cells[i + 1])) pairs.push(i);
+  }
+  return pairs;
+}
+
+function pairLooksLikeHeader(cells, levelIdx) {
+  const after = cells[levelIdx + 2];
+  if (after == null || after === "") return true;
+  if (HEADER_LABEL_RE.test(after)) return true;
+  return !isVerticalDumpMoneyToken(after);
+}
+
+function bodyLevelCurrencyPairs(cells) {
+  return findLevelCurrencyPairs(cells).filter((idx) => !pairLooksLikeHeader(cells, idx));
+}
+
+function collapseConsecutiveDupes(cells) {
+  const out = [];
+  cells.forEach((cell) => {
+    const t = normalizeVerticalDumpToken(cell);
+    if (out.length && normalizeVerticalDumpToken(out[out.length - 1]) === t && t !== "") return;
+    out.push(t);
+  });
+  return out;
+}
+
+function collapseRepeatedPrefix(cells) {
+  const t = collapseConsecutiveDupes(cells);
+  for (const period of [3, 2]) {
+    if (t.length < period * 2 || t.length % period !== 0) continue;
+    const chunk = t.slice(0, period);
+    if (t.every((v, i) => v === chunk[i % period])) return chunk;
+  }
+  return t;
+}
+
+function parseIdentityBeforeLevel(before) {
+  const t = collapseRepeatedPrefix(before);
+  while (t.length && t[0] === "") t.shift();
+  while (t.length && t[t.length - 1] === "") t.pop();
+  let serial = "";
+  let rest = t;
+  if (
+    rest.length >= 2 &&
+    isRowSerialToken(rest[0]) &&
+    !isLevelToken(rest[1]) &&
+    !isCurrencyToken(rest[1])
+  ) {
+    serial = rest[0];
+    rest = rest.slice(1);
+  }
+  return {
+    serial,
+    username: rest[0] || "",
+    name: rest.slice(1).join(" ").trim(),
+  };
+}
+
+function identityStart(tokens, levelIdx, minStart) {
+  let start = Math.max(minStart, levelIdx - 2);
+  if (start > minStart && isRowSerialToken(tokens[start - 1])) start -= 1;
+  return start;
+}
+
+function findFooterTotalIndex(tokens, afterIdx) {
+  for (let i = afterIdx; i < tokens.length; i += 1) {
+    if (!isTotalLabel(tokens[i])) continue;
+    if (collectMoneyTokens(tokens.slice(i + 1)).length >= 8) return i;
+  }
+  return -1;
 }
 
 function padRow(row, width) {
@@ -166,60 +223,58 @@ function collectMoneyTokens(cells) {
   return (cells || []).filter((cell) => isVerticalDumpMoneyToken(cell));
 }
 
-function nextRecordIndex(tokens, fromIdx) {
-  for (let j = fromIdx + 1; j < tokens.length; j += 1) {
-    if (isUserToken(tokens[j]) || isTotalLabel(tokens[j])) return j;
-  }
-  return tokens.length;
-}
-
 function tryCanonicalAgentRow(row) {
-  const trimmed = trimLeadingRowNoise(row);
-  const userIdx = trimmed.findIndex((cell) => isUserToken(cell));
-  const cells =
-    userIdx >= 0 ? trimmed.slice(userIdx, nextRecordIndex(trimmed, userIdx)) : trimmed;
-  let levelIdx = -1;
-  let currIdx = -1;
-
-  if (userIdx >= 0) {
-    levelIdx = cells.findIndex((cell) => LEVEL_RE.test(cell));
-    currIdx = cells.findIndex((cell) => CURRENCY_RE.test(cell));
-    if (levelIdx >= 0 && currIdx === levelIdx + 1 && levelIdx <= 3) {
-      const username = cells[0];
-      const name = cells.slice(1, levelIdx).join(" ").trim();
-      const money = collectMoneyTokens(cells.slice(currIdx + 1));
-      return [username, name, cells[levelIdx], cells[currIdx], ...money];
-    }
-  }
-
-  for (let i = 0; i < cells.length - 1; i += 1) {
-    if (!LEVEL_RE.test(cells[i]) || !CURRENCY_RE.test(cells[i + 1])) continue;
-    levelIdx = i;
-    currIdx = i + 1;
-    const before = cells.slice(0, levelIdx);
-    const username = before.find((cell) => isUserToken(cell)) || before[0] || "";
-    const name = before.filter((cell) => cell !== username).join(" ").trim();
-    const money = collectMoneyTokens(cells.slice(currIdx + 1));
-    if (money.length < 8) return null;
-    return [username, name, cells[levelIdx], cells[currIdx], ...money];
-  }
-  return null;
+  const cells = stripLeadingEmpties(row);
+  const pairs = bodyLevelCurrencyPairs(cells);
+  if (!pairs.length) return null;
+  let pairIdx = pairs[0];
+  pairs.forEach((idx) => {
+    if (collectMoneyTokens(cells.slice(idx + 2)).length >= 8) pairIdx = idx;
+  });
+  const identity = parseIdentityBeforeLevel(cells.slice(0, pairIdx));
+  if (!identity.username && !identity.name) return null;
+  const level = cells[pairIdx];
+  const currency = cells[pairIdx + 1];
+  const money = collectMoneyTokens(cells.slice(pairIdx + 2));
+  if (money.length < 8) return null;
+  const head = identity.serial
+    ? [identity.serial, identity.username, identity.name, level, currency]
+    : [identity.username, identity.name, level, currency];
+  return [...head, ...money];
 }
 
-function tryCanonicalTotalRow(row, width) {
-  const cells = trimLeadingRowNoise(row);
+function agentIdentityWidth(row) {
+  const currIdx = (row || []).findIndex((cell) => isCurrencyToken(cell));
+  return currIdx >= 0 ? currIdx + 1 : 4;
+}
+
+function alignAgentIdentity(agents) {
+  const idWidth = Math.max(...agents.map((row) => agentIdentityWidth(row)));
+  return agents.map((row) => {
+    const width = agentIdentityWidth(row);
+    if (width >= idWidth) return row;
+    return [...Array.from({ length: idWidth - width }, () => ""), ...row];
+  });
+}
+
+function tryCanonicalTotalRow(row, identityWidth, width) {
+  const cells = stripLeadingEmpties(row);
+  if (cells.length > 1 && isRowSerialToken(cells[0]) && isTotalLabel(cells[1])) {
+    cells.shift();
+  }
   const totalIdx = cells.findIndex((cell) => isTotalLabel(cell));
   if (totalIdx < 0) return null;
   const money = collectMoneyTokens(cells.slice(totalIdx + 1));
-  const identityWidth = 4;
+  const identity = Array.from({ length: identityWidth }, () => "");
+  identity[Math.max(0, identityWidth - 4)] = "Total";
   const moneyWidth = Math.max(0, width - identityWidth);
   const clipped = moneyWidth ? money.slice(0, moneyWidth) : money;
-  return padRow(["Total", "", "", "", ...clipped], width);
+  return padRow([...identity, ...clipped], width);
 }
 
 /**
- * Force agent + Total onto Username / Name / Level / Currency / amounts,
- * regardless of whether the copy included No. or dropped empty identity cells.
+ * Force agent + Total onto [No?] Username / Name / Level / Currency / amounts.
+ * Copy start may include or omit No.; empty Name/Level/Currency on Total are restored.
  */
 export function canonicalizePs38WinLossMatrix(rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
@@ -231,16 +286,18 @@ export function canonicalizePs38WinLossMatrix(rows) {
       agents.push(agent);
       return;
     }
-    if (trimLeadingRowNoise(row).some((cell) => isTotalLabel(cell))) {
+    if (stripLeadingEmpties(row).some((cell) => isTotalLabel(cell))) {
       totals.push(row);
     }
   });
   if (!agents.length) return null;
-  const width = Math.max(...agents.map((row) => row.length));
+  const aligned = alignAgentIdentity(agents);
+  const identityWidth = agentIdentityWidth(aligned[0]);
+  const width = Math.max(...aligned.map((row) => row.length));
   if (width < 8) return null;
-  const matrix = agents.map((row) => padRow(row, width));
+  const matrix = aligned.map((row) => padRow(row, width));
   totals.forEach((row) => {
-    matrix.push(tryCanonicalTotalRow(row, width) || padRow(["Total"], width));
+    matrix.push(tryCanonicalTotalRow(row, identityWidth, width) || padRow(["Total"], width));
   });
   return matrix;
 }
@@ -286,9 +343,7 @@ export function tryBuildPs38FixedDataTable(root) {
   });
 
   if (!dataRows.length) return null;
-  const hasUser = dataRows.some((row) => row.some((cell) => isUserToken(cell)));
-  const hasLevel = dataRows.some((row) => row.some((cell) => LEVEL_RE.test(cell)));
-  if (!hasUser && !hasLevel) return null;
+  if (!dataRows.some((row) => bodyLevelCurrencyPairs(row).length)) return null;
 
   const matrix = canonicalizePs38WinLossMatrix(dataRows);
   const width = matrix?.[0]?.length || 0;
@@ -322,22 +377,14 @@ export function expandPs38ClipboardTokens(pastedData) {
 export function looksLikePs38WinLossPlain(pastedData) {
   const tokens = expandPs38ClipboardTokens(pastedData);
   if (tokens.length < 16) return false;
-  if (!tokens.some((t) => LEVEL_RE.test(t))) return false;
-  if (!tokens.some((t) => CURRENCY_RE.test(t))) return false;
-  if (!tokens.some((t) => isUserToken(t))) return false;
+  if (!bodyLevelCurrencyPairs(tokens).length) return false;
   const moneyCount = tokens.filter((t) => isVerticalDumpMoneyToken(t)).length;
-  if (moneyCount < 8) return false;
-  return tokens.some((t) => isTotalLabel(t)) || tokens.filter((t) => isUserToken(t)).length >= 1;
+  return moneyCount >= 8;
 }
 
 function looksLikePs38WinLossRows(rows) {
-  if (!Array.isArray(rows) || rows.length < 1) return false;
-  const flat = rows.flat();
-  if (!flat.some((cell) => LEVEL_RE.test(cell))) return false;
-  if (!flat.some((cell) => CURRENCY_RE.test(cell))) return false;
-  if (!flat.some((cell) => isUserToken(cell))) return false;
-  if (flat.filter((cell) => isVerticalDumpMoneyToken(cell)).length < 8) return false;
-  return true;
+  if (!Array.isArray(rows) || !rows.length) return false;
+  return rows.some((row) => tryCanonicalAgentRow(row));
 }
 
 /**
@@ -365,26 +412,20 @@ export function tryReshapePs38WinLossPlainMatrix(pastedData) {
   if (!looksLikePs38WinLossPlain(pastedData)) return null;
 
   const tokens = expandPs38ClipboardTokens(pastedData);
+  const pairs = bodyLevelCurrencyPairs(tokens);
+  if (!pairs.length) return null;
   const rows = [];
-  let i = 0;
-  while (i < tokens.length) {
-    if (isRowSerialToken(tokens[i]) && isUserToken(tokens[i + 1] || "")) {
-      i += 1;
-      continue;
-    }
-    if (isUserToken(tokens[i])) {
-      const end = nextRecordIndex(tokens, i);
-      const parsed = tryCanonicalAgentRow(tokens.slice(i, end));
-      if (parsed) rows.push(parsed);
-      i = end;
-      continue;
-    }
-    if (isTotalLabel(tokens[i]) && rows.length) {
-      rows.push(tokens.slice(i));
-      break;
-    }
-    i += 1;
-  }
+  pairs.forEach((levelIdx, index) => {
+    const sliceStart = identityStart(tokens, levelIdx, 0);
+    const nextStart =
+      index + 1 < pairs.length
+        ? identityStart(tokens, pairs[index + 1], levelIdx + 2)
+        : findFooterTotalIndex(tokens, levelIdx + 2);
+    const end = nextStart >= 0 ? nextStart : tokens.length;
+    rows.push(tokens.slice(sliceStart, Math.max(end, sliceStart)));
+  });
+  const footerAt = findFooterTotalIndex(tokens, pairs[pairs.length - 1] + 2);
+  if (footerAt >= 0) rows.push(tokens.slice(footerAt));
 
   return canonicalizePs38WinLossMatrix(rows);
 }
