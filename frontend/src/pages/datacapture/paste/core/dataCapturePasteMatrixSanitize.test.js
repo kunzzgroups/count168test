@@ -63,6 +63,40 @@ test("sanitizePasteMatrix keeps OBET SPORT TOTAL = footer with empty name cell",
   assert.equal(String(out[1][0]).trim(), "SPORT TOTAL =");
 });
 
+test("sanitizePasteMatrix keeps 3win8 Page Total and Overall Total footers", () => {
+  const agent = [
+    "WIN95KZ",
+    "KENZO",
+    "VAAM3863",
+    "60.00",
+    "0.00",
+    "60.00",
+    "-176.00",
+    "114.27",
+    "-61.73",
+    "0.00",
+    "0.00",
+    "-61.73",
+  ];
+  const pageTotal = ["Page Total", "60.00", "0.00", "60.00", "-176.00", "114.27", "-61.73", "0.00", "0.00", "-61.73"];
+  const overallTotal = [
+    "Overall Total",
+    "60.00",
+    "0.00",
+    "60.00",
+    "-176.00",
+    "114.27",
+    "-61.73",
+    "0.00",
+    "0.00",
+    "-61.73",
+  ];
+  const out = sanitizePasteMatrix([agent, pageTotal, overallTotal]);
+  assert.equal(out.length, 3);
+  assert.equal(String(out[1][0]).trim(), "Page Total");
+  assert.equal(String(out[2][0]).trim(), "Overall Total");
+});
+
 test("isVerticalDumpSummaryLabel recognizes SPORT TOTAL =", () => {
   assert.equal(isVerticalDumpSummaryLabel("SPORT TOTAL ="), true);
   assert.equal(isVerticalDumpSummaryLabel("Sport Total"), true);
