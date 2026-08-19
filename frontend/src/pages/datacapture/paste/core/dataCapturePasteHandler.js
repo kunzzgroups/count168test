@@ -32,6 +32,7 @@ import { handleAwcPaste } from "../vendors/dataCaptureAwcHandlerPaste.js";
 import { tryHandleAwcWinLossReportPaste } from "../vendors/dataCaptureAwcPaste.js";
 import { tryHandleGamingSoftInvoicePaste } from "./dataCaptureGamingSoftInvoicePasteHelper.js";
 import { tryHandleKing855WinLossPaste } from "./dataCaptureKing855WinLossPasteHelper.js";
+import { tryHandleWosWinLossDetailPaste } from "./dataCaptureWosWinLossDetailPasteHelper.js";
 import { handlePegasusPaste } from "../vendors/dataCapturePegasusPaste.js";
 import { handleAlipayPaste } from "../vendors/dataCaptureAlipayPaste.js";
 import { handleC8PlayPaste } from "../vendors/dataCaptureC8PlayPaste.js";
@@ -192,6 +193,14 @@ export function handleCellPasteEvent(e) {
     }
     if (
       tryHandleKing855WinLossPaste(getClipboardHtml(e), pastedData, {
+        anchorCell: cell,
+        startRowOverride: resolveFormatPasteStartRow(cell),
+      })
+    ) {
+      return;
+    }
+    if (
+      tryHandleWosWinLossDetailPaste(getClipboardHtml(e), pastedData, {
         anchorCell: cell,
         startRowOverride: resolveFormatPasteStartRow(cell),
       })

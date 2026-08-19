@@ -29,6 +29,10 @@ import {
   tryHandleKing855WinLossPaste,
 } from "./dataCaptureKing855WinLossPasteHelper.js";
 import {
+  tryBuildWosWinLossDetailMatrix,
+  tryHandleWosWinLossDetailPaste,
+} from "./dataCaptureWosWinLossDetailPasteHelper.js";
+import {
   plainTextLooksLikeAlignedTsv,
   sanitizePasteMatrix,
 } from "./dataCapturePasteMatrixSanitize.js";
@@ -116,6 +120,9 @@ export function parsePlainTextMatrix(pastedData) {
 
   const king855WinLoss = tryBuildKing855WinLossMatrix(normalized, "");
   if (king855WinLoss?.length) return finalizePlainMatrix(king855WinLoss);
+
+  const wosWinLoss = tryBuildWosWinLossDetailMatrix(normalized, "");
+  if (wosWinLoss?.length) return finalizePlainMatrix(wosWinLoss);
 
   // Only real spreadsheet TSV uses the tab-row path (keeps empty cells 1:1).
   // Sparse tabs mixed into a one-field-per-line dump must fall through.
@@ -331,6 +338,7 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
   if (tryHandleAwcWinLossReportPaste(html, pastedData, { anchorCell })) return true;
   if (tryHandleGamingSoftInvoicePaste(html, pastedData, { anchorCell })) return true;
   if (tryHandleKing855WinLossPaste(html, pastedData, { anchorCell })) return true;
+  if (tryHandleWosWinLossDetailPaste(html, pastedData, { anchorCell })) return true;
 
   // Match 2.FORMAT: prefer plain vertical-dump reshape whenever it yields a real
   // multi-col matrix. HTML-first only when it has a strictly fuller wide table
