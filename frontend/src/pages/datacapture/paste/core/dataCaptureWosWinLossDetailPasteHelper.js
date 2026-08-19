@@ -50,16 +50,70 @@ function looksLikeForeignReport(text) {
   return false;
 }
 
+function normalizeUserId(text) {
+  return cellText(text)
+    .replace(/^\++\s*/, "")
+    .trim();
+}
+
+function canonicalUserId(text) {
+  const t = normalizeUserId(text);
+  if (USER_ID_RE.test(t) || /^[A-Za-z]\d{4,12}$/.test(t)) return t;
+  const fromQuery = t.match(/[?&#/](?:user(?:_?id)?|memberId|titleUserID)=(\d{4,12})\b/i);
+  if (fromQuery) return fromQuery[1];
+  const letterPrefixed = t.match(/\b([A-Za-z]\d{4,12})\b/);
+  if (letterPrefixed) return letterPrefixed[1];
+  return t;
+}
+
+function looksLikeUserIdToken(text) {
+  const t = canonicalUserId(text);
+  return USER_ID_RE.test(t) || /^[A-Za-z]\d{4,12}$/.test(t);
+}
+
+function looksLikeNameToken(text) {
+  const t = cellText(text);
+  if (!t || isMoney(t) || TOTAL_N_RE.test(t) || PLUS_RE.test(t)) return false;
+  return /[A-Za-z]/.test(t);
+}
+
+function looksLikeSplitIdThenNameMoney(text) {
+  const lines = normalizeClipboardText(text)
+    .split("\n")
+    .map((line) => line.split("\t").map(cellText))
+    .filter((row) => row.some(Boolean));
+  if (lines.length < 2) return false;
+  const hasTotal = lines.some((row) => row.some((cell) => TOTAL_N_RE.test(cell)));
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    const filled = lines[i].filter(Boolean);
+    const next = lines[i + 1];
+    const nextMoney = next.filter(isMoney).length;
+    if (
+      filled.length === 1 &&
+      looksLikeUserIdToken(filled[0]) &&
+      looksLikeNameToken(next[0]) &&
+      nextMoney >= 4
+    ) {
+      return hasTotal || nextMoney >= 8;
+    }
+  }
+  return false;
+}
+
 export function looksLikeWosWinLossDetailPlain(pastedData) {
   const text = normalizeClipboardText(pastedData);
-  if (text.length < 40) return false;
   if (looksLikeForeignReport(text)) return false;
+  // Split paste (id-only first line, then name+money) can be the only text/plain
+  // payload — check before the length gate so HTML-heavy copies still match.
+  if (looksLikeSplitIdThenNameMoney(text)) return true;
+  if (text.length < 40) return false;
 
   if (
     /titleUserID/i.test(text) ||
     /userTotalName/i.test(text) ||
     /winLossDetailSetting/i.test(text) ||
-    /data-type\s*=\s*["']member["']/i.test(text)
+    /data-type\s*=\s*["']member["']/i.test(text) ||
+    /setFlex-alignCenter/i.test(text)
   ) {
     return true;
   }
@@ -97,10 +151,10 @@ function tdPlain(td) {
     td.querySelector?.("#titleUserID") ||
     td.querySelector?.("a.textBtn") ||
     td.querySelector?.("a[id='titleUserID']");
-  if (userLink) return cellText(userLink.textContent);
+  if (userLink) return canonicalUserId(userLink.textContent);
   const raw = cellText(td.textContent);
   if (PLUS_RE.test(raw)) return "";
-  return raw.replace(/^\+\s+/, "").trim();
+  return canonicalUserId(raw.replace(/^\+\s+/, "").trim());
 }
 
 function htmlRowToCells(tr) {
@@ -110,22 +164,32 @@ function htmlRowToCells(tr) {
     .map((value) => cellText(value));
 }
 
-function parseHtmlMatrix(html) {
+function parseHtmlMatrix(html, { force = false } = {}) {
   if (!html || typeof document === "undefined") return null;
-  if (!/titleUserID|userTotalName|winLossDetailSetting|data-type\s*=\s*["']member["']/i.test(html)) {
+  if (
+    !force &&
+    !/titleUserID|userTotalName|winLossDetailSetting|data-type\s*=\s*["']member["']|setFlex-alignCenter|btnOpen/i.test(
+      html,
+    )
+  ) {
     return null;
   }
   try {
     const root = document.createElement("div");
     root.innerHTML = String(html);
-    const tables = Array.from(root.querySelectorAll("table")).filter(
-      (table) => !table.parentElement?.closest("table"),
-    );
+    const tables = Array.from(root.querySelectorAll("table"));
     let best = null;
+    let bestScore = -1;
     tables.forEach((table) => {
-      const rows = Array.from(table.querySelectorAll("tr")).map(htmlRowToCells);
+      const rows = Array.from(table.querySelectorAll(":scope > tbody > tr, :scope > tr")).map(htmlRowToCells);
       const data = rows.filter((row) => row.some((cell) => cellText(cell) !== ""));
-      if (!best || data.length > best.length) best = data;
+      if (!data.length) return;
+      const merged = mergePlusUserId(data);
+      const score = htmlTableScore(merged);
+      if (score > bestScore) {
+        best = data;
+        bestScore = score;
+      }
     });
     return best;
   } catch {
@@ -152,15 +216,31 @@ function mergePlusUserId(rows) {
     if (filled.length === 1 && PLUS_RE.test(filled[0])) {
       continue;
     }
-    if (PLUS_RE.test(row[0] || "") && USER_ID_RE.test(row[1] || "")) {
-      out.push([row[1], ...row.slice(2)]);
+    if (PLUS_RE.test(row[0] || "") && looksLikeUserIdToken(row[1] || "")) {
+      out.push([canonicalUserId(row[1]), ...row.slice(2)]);
       continue;
     }
-    if (PLUS_RE.test(row[0] || "") && row.length === 1 && USER_ID_RE.test(cellText(rows[i + 1]?.[0]))) {
+    if (PLUS_RE.test(row[0] || "") && row.length === 1 && looksLikeUserIdToken(cellText(rows[i + 1]?.[0]))) {
       const next = rows[i + 1].map(cellText);
+      next[0] = canonicalUserId(next[0]);
       out.push(next);
       i += 1;
       continue;
+    }
+    const next = rows[i + 1];
+    if (
+      filled.length === 1 &&
+      looksLikeUserIdToken(filled[0]) &&
+      Array.isArray(next) &&
+      looksLikeNameToken(next[0]) &&
+      next.filter(isMoney).length >= 4
+    ) {
+      out.push([canonicalUserId(filled[0]), ...next.map(cellText)]);
+      i += 1;
+      continue;
+    }
+    if (looksLikeUserIdToken(row[0] || "") && row.length === 1) {
+      row[0] = canonicalUserId(row[0]);
     }
     out.push(row);
   }
@@ -173,9 +253,9 @@ function reshapeVerticalDump(rows) {
   if (wide >= 1) return null;
   const tokens = rows.flatMap((row) => row.map(cellText).filter(Boolean)).filter((t) => !PLUS_RE.test(t));
   const totalIdx = tokens.findIndex((t) => TOTAL_N_RE.test(t));
-  if (totalIdx < 3 || !USER_ID_RE.test(tokens[0])) return null;
+  if (totalIdx < 3 || !looksLikeUserIdToken(tokens[0])) return null;
   if (isMoney(tokens[1])) return null;
-  const userId = tokens[0];
+  const userId = canonicalUserId(tokens[0]);
   const name = tokens[1];
   const agentMoney = tokens.slice(2, totalIdx).filter(isMoney);
   const totalLabel = tokens[totalIdx];
@@ -189,7 +269,9 @@ function reshapeVerticalDump(rows) {
 
 function alignTotalRows(rows) {
   const dataRows = rows.filter((row) => !rowLooksLikeHeader(row) && !rowLooksLikeChrome(row));
-  const agent = dataRows.find((row) => USER_ID_RE.test(cellText(row[0])) && !TOTAL_N_RE.test(cellText(row[0])));
+  const agent = dataRows.find(
+    (row) => looksLikeUserIdToken(cellText(row[0])) && !TOTAL_N_RE.test(cellText(row[0])),
+  );
   const width = Math.max(4, ...dataRows.map((row) => row.length), agent?.length || 0);
   const moneyStart = agent && cellText(agent[1]) && !isMoney(agent[1]) ? 2 : 1;
 
@@ -215,20 +297,32 @@ function alignTotalRows(rows) {
     .filter((row) => row.some((cell) => cellText(cell) !== ""));
 }
 
-function flattenMatrix(matrix) {
-  return (matrix || []).map((row) => row.join("\t")).join("\n");
+function htmlTableScore(matrix) {
+  const pair = candidateScore(matrix);
+  const maxCols = Math.max(0, ...(matrix || []).map((row) => row.filter(Boolean).length));
+  const money = (matrix || []).reduce((count, row) => count + row.filter(isMoney).length, 0);
+  return pair * 10 + maxCols * 100 + money;
+}
+
+function candidateScore(matrix) {
+  const agent = (matrix || []).find(
+    (row) => looksLikeUserIdToken(cellText(row[0])) && looksLikeNameToken(cellText(row[1])),
+  );
+  if (!agent) return 0;
+  return agent.filter(Boolean).length * 100 + matrix.length;
 }
 
 /**
  * @returns {string[][] | null}
  */
 export function tryBuildWosWinLossDetailMatrix(pastedData, html) {
-  const fromHtml = parseHtmlMatrix(html);
-  const htmlLooks = fromHtml && looksLikeWosWinLossDetailPlain(html || flattenMatrix(fromHtml));
-  const fromText = looksLikeWosWinLossDetailPlain(pastedData) ? parseTabOrLines(pastedData) : null;
+  const textLooks =
+    looksLikeWosWinLossDetailPlain(pastedData) || looksLikeSplitIdThenNameMoney(pastedData);
+  const fromHtml = parseHtmlMatrix(html, { force: textLooks });
+  const fromText = textLooks ? parseTabOrLines(pastedData) : null;
 
   const candidates = [];
-  if (htmlLooks) candidates.push(alignTotalRows(mergePlusUserId(fromHtml)));
+  if (fromHtml?.length) candidates.push(alignTotalRows(mergePlusUserId(fromHtml)));
   if (fromText?.length) {
     const merged = mergePlusUserId(fromText);
     const vertical = reshapeVerticalDump(merged);
@@ -236,13 +330,14 @@ export function tryBuildWosWinLossDetailMatrix(pastedData, html) {
   }
 
   const matrix = candidates
-    .filter((item) => item?.length)
-    .sort((a, b) => b.length - a.length || (b[0]?.length || 0) - (a[0]?.length || 0))[0];
+    .filter((item) => item?.length && candidateScore(item) > 0)
+    .sort((a, b) => candidateScore(b) - candidateScore(a))[0];
   if (!matrix?.length) return null;
 
-  const hasAgent = matrix.some((row) => USER_ID_RE.test(cellText(row[0])));
-  const hasName = matrix.some((row) => row.some((cell, idx) => idx >= 1 && /[A-Za-z]/.test(cellText(cell)) && !isMoney(cell)));
-  if (!hasAgent || !hasName) return null;
+  const agentRow = matrix.find(
+    (row) => looksLikeUserIdToken(cellText(row[0])) && looksLikeNameToken(cellText(row[1])),
+  );
+  if (!agentRow) return null;
   return matrix;
 }
 

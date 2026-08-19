@@ -9,7 +9,7 @@ import { parsePlainTextMatrix } from "./dataCaptureTextPaste.js";
 import { looksLikeKing855WinLossPlain } from "./dataCaptureKing855WinLossPasteHelper.js";
 
 const MONEY =
-  "4,544.80\t0.00\t3,000.00\t0.00\t0.00\t3,000.00\t-2,640.00\t0.00\t-15.00\t-345.00";
+  "4,544.80\t0.00\t3,000.00\t0.00\t0.00\t3,000.00\t-2,640.00\t0.00\t-2,640.00\t0.00\t0.00\t0.00\t-15.00\t0.00\t-15.00\t-345.00";
 
 test("WOS helper merges + expand control with user id onto one row", () => {
   const text = [
@@ -34,6 +34,19 @@ test("WOS helper reshapes plus/user/name stacked as separate lines", () => {
   assert.equal(matrix[0][0], "198823");
   assert.equal(matrix[0][1], "JB-KENZO");
   assert.equal(matrix[1][0], "Total (1)");
+  assert.equal(matrix[1][2], "4,544.80");
+});
+
+test("WOS helper merges split L98823 then name+money (Chrome text/plain)", () => {
+  const text = [`L98823`, `JB-KENZO\t${MONEY}`, `TOTAL (1)\t${MONEY}`].join("\n");
+  assert.equal(looksLikeWosWinLossDetailPlain(text), true);
+  const matrix = tryBuildWosWinLossDetailMatrix(text, "");
+  assert.equal(matrix.length, 2);
+  assert.equal(matrix[0][0], "L98823");
+  assert.equal(matrix[0][1], "JB-KENZO");
+  assert.equal(matrix[0][2], "4,544.80");
+  assert.equal(matrix[0][17], "-345.00");
+  assert.equal(matrix[1][0], "TOTAL (1)");
   assert.equal(matrix[1][2], "4,544.80");
 });
 
