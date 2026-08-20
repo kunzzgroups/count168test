@@ -34,6 +34,7 @@ import { tryHandleGamingSoftInvoicePaste } from "./dataCaptureGamingSoftInvoiceP
 import { tryHandleKing855WinLossPaste } from "./dataCaptureKing855WinLossPasteHelper.js";
 import { tryHandleWosWinLossDetailPaste } from "./dataCaptureWosWinLossDetailPasteHelper.js";
 import { tryHandleFooterOnlySubGrandPaste } from "./dataCaptureWinLoseFooterOnlyPasteHelper.js";
+import { tryHandleCitibetAgentPtReportPaste } from "./dataCaptureCitibetAgentPtReportPasteHelper.js";
 import { handlePegasusPaste } from "../vendors/dataCapturePegasusPaste.js";
 import { handleAlipayPaste } from "../vendors/dataCaptureAlipayPaste.js";
 import { handleC8PlayPaste } from "../vendors/dataCaptureC8PlayPaste.js";
@@ -202,6 +203,14 @@ export function handleCellPasteEvent(e) {
     }
     if (
       tryHandleWosWinLossDetailPaste(getClipboardHtml(e), pastedData, {
+        anchorCell: cell,
+        startRowOverride: resolveFormatPasteStartRow(cell),
+      })
+    ) {
+      return;
+    }
+    if (
+      tryHandleCitibetAgentPtReportPaste(getClipboardHtml(e), pastedData, {
         anchorCell: cell,
         startRowOverride: resolveFormatPasteStartRow(cell),
       })

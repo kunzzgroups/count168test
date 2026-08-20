@@ -33,6 +33,10 @@ import {
   tryHandleWosWinLossDetailPaste,
 } from "./dataCaptureWosWinLossDetailPasteHelper.js";
 import {
+  tryBuildCitibetAgentPtReportMatrix,
+  tryHandleCitibetAgentPtReportPaste,
+} from "./dataCaptureCitibetAgentPtReportPasteHelper.js";
+import {
   alignFooterOnlySubGrandMatrix,
   tryBuildFooterOnlySubGrandMatrix,
   tryHandleFooterOnlySubGrandPaste,
@@ -128,6 +132,9 @@ export function parsePlainTextMatrix(pastedData) {
 
   const wosWinLoss = tryBuildWosWinLossDetailMatrix(normalized, "");
   if (wosWinLoss?.length) return finalizePlainMatrix(wosWinLoss);
+
+  const citibetAgentPt = tryBuildCitibetAgentPtReportMatrix(normalized, "");
+  if (citibetAgentPt?.length) return finalizePlainMatrix(citibetAgentPt);
 
   const footerOnlySubGrand = tryBuildFooterOnlySubGrandMatrix(normalized, "");
   if (footerOnlySubGrand?.length) return finalizePlainMatrix(footerOnlySubGrand);
@@ -347,6 +354,7 @@ export function handleTextModePaste(e, pastedData, anchorCell) {
   if (tryHandleGamingSoftInvoicePaste(html, pastedData, { anchorCell })) return true;
   if (tryHandleKing855WinLossPaste(html, pastedData, { anchorCell })) return true;
   if (tryHandleWosWinLossDetailPaste(html, pastedData, { anchorCell })) return true;
+  if (tryHandleCitibetAgentPtReportPaste(html, pastedData, { anchorCell })) return true;
   if (tryHandleFooterOnlySubGrandPaste(html, pastedData, { anchorCell })) return true;
 
   // Match 2.FORMAT: prefer plain vertical-dump reshape whenever it yields a real

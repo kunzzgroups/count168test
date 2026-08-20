@@ -138,6 +138,30 @@ test("sanitizePasteMatrix keeps indented equals marker under a wider header row"
   assert.equal(String(out[2][1]).trim(), "=");
 });
 
+test("equals paste drops a middle column that is empty on every row", () => {
+  const out = sanitizePasteMatrix([
+    ["ab", "", "100"],
+    ["", "", "="],
+  ]);
+  assert.equal(out[0].length, 2);
+  assert.equal(String(out[0][0]).trim(), "ab");
+  assert.equal(String(out[0][1]).trim(), "100");
+  assert.equal(String(out[1][0]).trim(), "");
+  assert.equal(String(out[1][1]).trim(), "=");
+});
+
+test("equals paste keeps a middle empty when the header has a value there", () => {
+  const out = sanitizePasteMatrix([
+    ["Name", "Note", "Amount"],
+    ["ab", "", "100"],
+    ["", "", "="],
+  ]);
+  assert.equal(out[0].length, 3);
+  assert.equal(String(out[1][1]).trim(), "");
+  assert.equal(String(out[1][2]).trim(), "100");
+  assert.equal(String(out[2][2]).trim(), "=");
+});
+
 test("GamingSoft invoice EXTRA FEE width jump is not treated as aligned TSV", () => {
   const rows = [];
   for (let i = 1; i <= 20; i += 1) {

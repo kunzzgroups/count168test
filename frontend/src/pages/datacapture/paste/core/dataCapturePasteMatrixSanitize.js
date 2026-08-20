@@ -55,6 +55,39 @@ function countNonEmpty(row) {
   return row.filter((cell) => cellValue(cell) !== "").length;
 }
 
+function columnEmptyInEveryRow(matrix, colIndex) {
+  return matrix.every((row) => !Array.isArray(row) || cellValue(row[colIndex]) === "");
+}
+
+function matrixHasEqualsMarkerRow(matrix) {
+  return matrix.some((row) => rowLooksLikeEqualsMarker(row));
+}
+
+/**
+ * Phantom gap from space/TSV alignment (`ab \\t\\t 100` + indented `=`).
+ * Only when an `=` marker row exists: drop columns that are empty on every row.
+ * A filled header cell in that column is kept (follow the table header).
+ */
+export function dropUniversallyEmptyColumns(matrix) {
+  if (!Array.isArray(matrix) || matrix.length < 2) return matrix;
+  if (!matrixHasEqualsMarkerRow(matrix)) return matrix;
+
+  const width = Math.max(0, ...matrix.map((row) => (Array.isArray(row) ? row.length : 0)));
+  if (width < 3) return matrix;
+
+  const keep = [];
+  for (let col = 0; col < width; col += 1) {
+    if (!columnEmptyInEveryRow(matrix, col)) keep.push(col);
+  }
+  if (!keep.length || keep.length === width) return matrix;
+
+  return matrix.map((row) => {
+    if (!Array.isArray(row)) return row;
+    const next = keep.map((col) => (col < row.length ? row[col] : makeBlankCellLike(row)));
+    return next;
+  });
+}
+
 /** Drop trailing empty tab/HTML columns after drag-to-end over-select. */
 export function trimTrailingEmptyColumns(matrix) {
   if (!matrix?.length) return matrix;
@@ -169,6 +202,8 @@ export function sanitizePasteMatrix(matrix) {
   if (!Array.isArray(matrix) || !matrix.length) return matrix;
   let next = trimTrailingEmptyColumns(matrix);
   next = dropTrailingJunkRows(next);
+  next = trimTrailingEmptyColumns(next);
+  next = dropUniversallyEmptyColumns(next);
   next = trimTrailingEmptyColumns(next);
   return next;
 }

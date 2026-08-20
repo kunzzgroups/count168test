@@ -151,6 +151,15 @@ test("ordinary space-aligned report keeps equals under the amount column without
   assert.equal(String(matrix[1][0]).trim(), "");
 });
 
+test("ordinary report does not invent an empty column between ab and 100", () => {
+  const text = ["ab\t\t100", "\t\t="].join("\n");
+  const matrix = parsePlainTextMatrix(text);
+  assert.equal(matrix[0].length, 2);
+  assert.equal(matrix[0][0], "ab");
+  assert.equal(matrix[0][1], "100");
+  assert.equal(String(matrix[1][1]).trim(), "=");
+});
+
 test("Superbo TOTAL pad is unchanged for mixed agent + TOTAL sheets", () => {
   const matrix = [
     ["KBK18", "SENIOR", "MYR", "20,611.52"],

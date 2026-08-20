@@ -130,7 +130,8 @@ function extraNonFooterLabels(tokens) {
 function clipboardLooksLikeCitibet(text, html = "") {
   if (pastedPlainTextLooksCitibetReport(text)) return true;
   const blob = `${text || ""}\n${html || ""}`;
-  return /upline\s+payment|downline\s+payment|my\s+earnings/i.test(blob);
+  if (/upline\s+payment|downline\s+payment|my\s+earnings/i.test(blob)) return true;
+  return /ptreport_content|name\s*=\s*["']?total_trs|users_pt_report|agent\s+pt\s+report/i.test(blob);
 }
 
 function replaceContentRows(matrix, nextRows) {

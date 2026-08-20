@@ -33,6 +33,7 @@ import { tryHandleAwcWinLossReportPaste } from "../vendors/dataCaptureAwcPaste.j
 import { tryHandleGamingSoftInvoicePaste } from "./dataCaptureGamingSoftInvoicePasteHelper.js";
 import { tryHandleKing855WinLossPaste } from "./dataCaptureKing855WinLossPasteHelper.js";
 import { tryHandleWosWinLossDetailPaste } from "./dataCaptureWosWinLossDetailPasteHelper.js";
+import { tryHandleCitibetAgentPtReportPaste } from "./dataCaptureCitibetAgentPtReportPasteHelper.js";
 import {
   alignFooterOnlySubGrandMatrix,
   tryHandleFooterOnlySubGrandPaste,
@@ -422,6 +423,15 @@ function tryProcessFormatClipboard(html, text, options = {}) {
 
   if (
     tryHandleWosWinLossDetailPaste(html, text, {
+      anchorCell: options?.anchorCell,
+      startRowOverride: options?.startRow,
+    })
+  ) {
+    return afterFormatPasteFilled(true, options?.area, options);
+  }
+
+  if (
+    tryHandleCitibetAgentPtReportPaste(html, text, {
       anchorCell: options?.anchorCell,
       startRowOverride: options?.startRow,
     })
