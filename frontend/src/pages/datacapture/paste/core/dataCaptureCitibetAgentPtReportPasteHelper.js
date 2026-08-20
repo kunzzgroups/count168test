@@ -206,6 +206,26 @@ function padWidth(row, width) {
   return next;
 }
 
+/** `$141.38` → `141.38`, `($1,421.85)` → `(1,421.85)`; leaves labels untouched. */
+function stripCurrencySign(value) {
+  const text = cellText(value);
+  if (!text || !text.includes("$")) return text;
+  const stripped = text.replace(/\$/g, "");
+  return isMoneyOrCount(stripped) ? stripped : text;
+}
+
+/**
+ * A Total-only copy carries the two leading empty `<td>` of `total_trs`; with no
+ * body row to align under they only push amounts right, so collapse them.
+ */
+function dropLeadingEmptyColumns(rows) {
+  let lead = 0;
+  const width = Math.max(...rows.map((row) => row.length));
+  while (lead < width && rows.every((row) => cellText(row[lead]) === "")) lead += 1;
+  if (lead <= 0) return rows;
+  return rows.map((row) => row.slice(lead));
+}
+
 /** Recover total_trs: Total in col 3, My PT amounts in cols 7–9. */
 export function normalizeCitibetPtTotalRow(row) {
   if (!Array.isArray(row) || !row.length) return row;
@@ -262,8 +282,9 @@ export function tryBuildCitibetAgentPtReportMatrix(pastedData, html) {
   const merged = mergeBareTotalAndAmountRows(source).filter((row) => !rowIsAssociateJunk(row));
   if (!merged.length) return null;
 
-  const width = Math.max(PT_TOTAL_WIDTH, ...merged.map((row) => row.length));
-  return merged.map((row) => padWidth(row, width));
+  const collapsed = dropLeadingEmptyColumns(merged);
+  const width = Math.max(...collapsed.map((row) => row.length));
+  return collapsed.map((row) => padWidth(row, width).map(stripCurrencySign));
 }
 
 export function tryHandleCitibetAgentPtReportPaste(html, pastedData, applyOptions = {}) {

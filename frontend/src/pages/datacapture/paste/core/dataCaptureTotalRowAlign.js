@@ -38,11 +38,25 @@ function isNameLike(value) {
 
 const CJK_TOTAL_LABELS = new Set(["总数", "总计", "合计", "總數", "總計", "合計"]);
 
+function isPageOrOverallTotalLabel(value) {
+  const upper = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+  return (
+    upper === "PAGE TOTAL" ||
+    upper === "PAGETOTAL" ||
+    upper === "OVERALL TOTAL" ||
+    upper === "OVERALLTOTAL"
+  );
+}
+
 function isTotalLabel(value) {
   const raw = String(value || "").trim();
   if (!raw) return false;
-  const upper = raw.toUpperCase();
+  const upper = raw.toUpperCase().replace(/\s+/g, " ");
   if (upper === "TOTAL" || upper === "SUB TOTAL" || upper === "GRAND TOTAL") return true;
+  if (isPageOrOverallTotalLabel(raw)) return true;
   return CJK_TOTAL_LABELS.has(raw);
 }
 
@@ -195,7 +209,8 @@ export function ensureTotalRowCodeColumnGap(matrix) {
     if (!Array.isArray(row) || !row.length) return row;
     const labelIdx = rowFirstNonEmptyIndex(row);
     if (labelIdx < 0) return row;
-    if (!isEnglishTotalBalanceLabel(trimCellValue(row[labelIdx]))) return row;
+    const label = trimCellValue(row[labelIdx]);
+    if (!isEnglishTotalBalanceLabel(label) && !isPageOrOverallTotalLabel(label)) return row;
 
     const numIdx = rowFirstNumericIndex(row);
     if (numIdx < 0 || numIdx >= amountCol) return row;

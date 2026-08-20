@@ -8,6 +8,8 @@ import {
 import { buildFormatDataCellStyle } from "./dataCaptureFormatHtmlMatrix.js";
 import { splitStackedSubtotalGrandTotalRows } from "./dataCaptureStackedTotalSplit.js";
 import { alignFooterOnlySubGrandMatrix } from "./dataCaptureWinLoseFooterOnlyPasteHelper.js";
+import { sanitizePasteMatrix } from "./dataCapturePasteMatrixSanitize.js";
+import { ensureTotalRowCodeColumnGap } from "./dataCaptureTotalRowAlign.js";
 
 function emptyPatch() {
   return { value: "" };
@@ -134,9 +136,11 @@ export function parseAndFillHtmlTableForText(htmlString, anchorCell) {
     if (!measured) return false;
 
     const { allRows, maxCols } = measured;
-    const dataMatrix = alignFooterOnlySubGrandMatrix(
-      splitStackedSubtotalGrandTotalRows(
-        allRows.map((sourceRow) => buildRowPatches(sourceRow, maxCols, null)),
+    const dataMatrix = ensureTotalRowCodeColumnGap(
+      sanitizePasteMatrix(
+        alignFooterOnlySubGrandMatrix(
+          splitStackedSubtotalGrandTotalRows(buildRowPatchesWithSpanOccupancy(allRows, maxCols)),
+        ),
       ),
     );
 
@@ -193,9 +197,11 @@ export function parseAndFillHtmlTableForTextWithFormat(htmlString, anchorCell) {
     if (!measured) return false;
 
     const { allRows, maxCols } = measured;
-    const dataMatrix = alignFooterOnlySubGrandMatrix(
-      splitStackedSubtotalGrandTotalRows(
-        buildRowPatchesWithSpanOccupancy(allRows, maxCols),
+    const dataMatrix = ensureTotalRowCodeColumnGap(
+      sanitizePasteMatrix(
+        alignFooterOnlySubGrandMatrix(
+          splitStackedSubtotalGrandTotalRows(buildRowPatchesWithSpanOccupancy(allRows, maxCols)),
+        ),
       ),
     );
 

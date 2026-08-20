@@ -46,6 +46,7 @@ import {
   sanitizePasteMatrix,
 } from "./dataCapturePasteMatrixSanitize.js";
 import { splitStackedSubtotalGrandTotalRows } from "./dataCaptureStackedTotalSplit.js";
+import { ensureTotalRowCodeColumnGap } from "./dataCaptureTotalRowAlign.js";
 import { tryHandleAwcWinLossReportPaste } from "../vendors/dataCaptureAwcPaste.js";
 
 /**
@@ -110,7 +111,7 @@ export function expandLabelColonMoneyCells(matrix) {
 }
 
 function finalizePlainMatrix(matrix) {
-  return sanitizePasteMatrix(expandLabelColonMoneyCells(matrix));
+  return ensureTotalRowCodeColumnGap(sanitizePasteMatrix(expandLabelColonMoneyCells(matrix)));
 }
 
 /**

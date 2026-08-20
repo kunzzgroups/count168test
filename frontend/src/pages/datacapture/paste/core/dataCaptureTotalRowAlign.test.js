@@ -40,6 +40,21 @@ test("code-column TOTAL BALANCE still gets a single blank under the code", () =>
   assert.equal(out[2][2], "303.00");
 });
 
+test("3win8 Page Total and Overall Total pad two blanks for colspan=3", () => {
+  const agent = ["WIN95DK", "dk", "VAAM3863", "0.00", "0.00", "0.00", "12.50"];
+  const page = ["Page Total", "0.00", "0.00", "0.00", "12.50"];
+  const overall = ["Overall Total", "0.00", "0.00", "0.00", "12.50"];
+  const out = ensureTotalRowCodeColumnGap([agent, page, overall]);
+  assert.equal(out[1][0], "Page Total");
+  assert.equal(String(out[1][1]).trim(), "");
+  assert.equal(String(out[1][2]).trim(), "");
+  assert.equal(out[1][3], "0.00");
+  assert.equal(out[1][6], "12.50");
+  assert.equal(out[2][0], "Overall Total");
+  assert.equal(String(out[2][1]).trim(), "");
+  assert.equal(out[2][3], "0.00");
+});
+
 test("SUB TOTAL is not shifted", () => {
   const matrix = [
     ["KBK18", "SENIOR", "MYR", "20,611.52"],

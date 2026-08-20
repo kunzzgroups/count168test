@@ -160,6 +160,23 @@ test("ordinary report does not invent an empty column between ab and 100", () =>
   assert.equal(String(matrix[1][1]).trim(), "=");
 });
 
+test("3win8 Page Total TSV keeps amounts under the third identifier column", () => {
+  const text = [
+    "WIN95DK\tdk\tVAAM3863\t0.00\t0.00\t12.50",
+    "Page Total\t0.00\t0.00\t12.50",
+    "Overall Total\t0.00\t0.00\t12.50",
+  ].join("\n");
+  const matrix = parsePlainTextMatrix(text);
+  assert.equal(matrix[0][0], "WIN95DK");
+  assert.equal(matrix[1][0], "Page Total");
+  assert.equal(String(matrix[1][1]).trim(), "");
+  assert.equal(String(matrix[1][2]).trim(), "");
+  assert.equal(matrix[1][3], "0.00");
+  assert.equal(matrix[1][5], "12.50");
+  assert.equal(matrix[2][0], "Overall Total");
+  assert.equal(matrix[2][3], "0.00");
+});
+
 test("Superbo TOTAL pad is unchanged for mixed agent + TOTAL sheets", () => {
   const matrix = [
     ["KBK18", "SENIOR", "MYR", "20,611.52"],

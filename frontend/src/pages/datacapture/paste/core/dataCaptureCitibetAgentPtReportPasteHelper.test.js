@@ -25,33 +25,21 @@ const TOTAL_HTML = `
 </table>
 `;
 
-test("Agent PT total_trs HTML keeps empty cells and strips associate()", () => {
+test("Total-only copy matches 3.CITIBET: Total in col 1, amounts in 5-7, no $", () => {
   assert.equal(looksLikeCitibetAgentPtReport("", TOTAL_HTML), true);
   const matrix = tryBuildCitibetAgentPtReportMatrix("", TOTAL_HTML);
   assert.equal(matrix.length, 1);
-  assert.equal(matrix[0].length, 9);
-  assert.equal(matrix[0][0], "");
-  assert.equal(matrix[0][1], "");
-  assert.equal(matrix[0][2], "Total");
-  assert.equal(matrix[0][3], "");
-  assert.equal(matrix[0][4], "");
-  assert.equal(matrix[0][5], "");
-  assert.equal(matrix[0][6], "$141.38");
-  assert.equal(matrix[0][7], "$2.63");
-  assert.equal(matrix[0][8], "$138.75");
+  assert.deepEqual(matrix[0], ["Total", "", "", "", "141.38", "2.63", "138.75"]);
   assert.equal(matrix[0].join(" ").includes("associate"), false);
 });
 
-test("Chrome text/plain Total then tabbed amounts merges into the 9-col Total row", () => {
+test("Chrome text/plain Total then tabbed amounts merges into one Total row", () => {
   const text = ["Total", "\t\t\t$141.38\t$2.63\t$138.75"].join("\n");
   assert.equal(looksLikeCitibetAgentPtReport(text, ""), true);
   const matrix = tryBuildCitibetAgentPtReportMatrix(text, "");
-  assert.equal(matrix[0][2], "Total");
-  assert.equal(matrix[0][6], "$141.38");
-  assert.equal(matrix[0][7], "$2.63");
-  assert.equal(matrix[0][8], "$138.75");
-  assert.equal(parsePlainTextMatrix(text)[0][2], "Total");
-  assert.equal(parsePlainTextMatrix(text)[0][6], "$141.38");
+  assert.deepEqual(matrix[0], ["Total", "", "", "", "141.38", "2.63", "138.75"]);
+  assert.equal(parsePlainTextMatrix(text)[0][0], "Total");
+  assert.equal(parsePlainTextMatrix(text)[0][4], "141.38");
 });
 
 test("TSV Total row missing two leading empty cells is padded", () => {
@@ -62,7 +50,7 @@ test("TSV Total row missing two leading empty cells is padded", () => {
   assert.equal(out.length, 9);
 });
 
-test("Agent PT body + Total row keeps the username", () => {
+test("Agent PT body + Total row keeps the username and the Total stays aligned", () => {
   const html = `
     <table class="ptreport_content">
       <tr>
@@ -81,8 +69,9 @@ test("Agent PT body + Total row keeps the username", () => {
   const matrix = tryBuildCitibetAgentPtReportMatrix("", html);
   assert.equal(matrix.length, 2);
   assert.equal(matrix[0][0], "yy5278");
+  assert.equal(matrix[0][3], "(1,421.85)");
   assert.equal(matrix[1][2], "Total");
-  assert.equal(matrix[1][6], "$141.38");
+  assert.equal(matrix[1][6], "141.38");
 });
 
 test("Citibet Downline Payment is not claimed", () => {
