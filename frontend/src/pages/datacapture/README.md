@@ -4,6 +4,8 @@ Route: `/datacapture` (see `App.jsx`). Entry: `DataCapturePage.jsx`.
 
 Related: `/datacapturesummary` — `pages/datacapturesummary/` (see `datacapturesummary/README.md`).
 
+> **改粘贴之前先读 `paste/README.md`** — 修某一份报表只准新增 scoped helper，不准改公共解析代码。
+
 Pure React SPA — no runtime load of `js/datacapture.js` or other legacy scripts. Cross-module APIs use `lib/dataCaptureRuntime.js` (registered by hooks), not `window.__DC_*`.
 
 ## Where to change what
@@ -62,6 +64,8 @@ datacapture/
 ```
 
 **Add a new capture-type paste handler:** add `paste/vendors/dataCaptureXxxPaste.js`, then register in `paste/core/dataCapturePasteHandler.js` (`TYPED_CAPTURE_TYPES` + `handleTypedCapturePaste` switch).
+
+**Fix a per-report paste bug:** add a scoped helper — see `paste/README.md`. Do not edit the shared parsers listed there as 禁区.
 
 ## External imports
 
