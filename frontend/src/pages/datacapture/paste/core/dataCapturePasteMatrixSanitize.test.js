@@ -129,6 +129,15 @@ test("sanitizePasteMatrix still drops paginator and label-only over-select stubs
   assert.equal(labelOnly.length, 1);
 });
 
+test("sanitizePasteMatrix keeps indented equals marker under a wider header row", () => {
+  const header = ["Name", "Count", "Amount", "Rate"];
+  const row = ["ab", "100", "", ""];
+  const equals = ["", "=", "", ""];
+  const out = sanitizePasteMatrix([header, row, equals]);
+  assert.equal(out.length, 3);
+  assert.equal(String(out[2][1]).trim(), "=");
+});
+
 test("GamingSoft invoice EXTRA FEE width jump is not treated as aligned TSV", () => {
   const rows = [];
   for (let i = 1; i <= 20; i += 1) {

@@ -95,10 +95,18 @@ function tokenLooksLikeReportAmount(text) {
  * than agent rows. Do not require a label whitelist — Overall Total / EXTRA FEES
  * / unknown vendor "Net" rows all match.
  */
+function rowLooksLikeEqualsMarker(row) {
+  if (!Array.isArray(row)) return false;
+  const tokens = row.map((cell) => cellValue(cell)).filter(Boolean);
+  if (!tokens.length) return false;
+  return tokens.every((token) => /^=+$/.test(token));
+}
+
 function rowLooksLikeAmountFooter(row) {
   if (!Array.isArray(row)) return false;
   const tokens = row.map((cell) => cellValue(cell)).filter(Boolean);
   if (!tokens.length) return false;
+  if (rowLooksLikeEqualsMarker(row)) return true;
   if (isMoneyOrNumberLikeToken(tokens[0])) return false;
 
   const moneyCount = tokens.filter((token) => isMoneyOrNumberLikeToken(token)).length;
@@ -130,8 +138,8 @@ export function dropTrailingJunkRows(matrix) {
       continue;
     }
 
-    // Keep labeled amount footers even when narrower than body rows.
-    if (rowLooksLikeAmountFooter(last)) {
+    // Keep labeled amount footers / "=" marker rows even when narrower than body.
+    if (rowLooksLikeAmountFooter(last) || rowLooksLikeEqualsMarker(last)) {
       break;
     }
 

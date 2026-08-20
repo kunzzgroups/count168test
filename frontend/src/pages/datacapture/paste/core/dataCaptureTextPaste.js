@@ -200,12 +200,10 @@ export function parsePlainTextMatrix(pastedData) {
     }
   }
 
+  // Keep leading/empty fields (spaces under table headers, indented "=").
+  // Do not trim cells — 1.TEXT ordinary reports must keep original spaces.
   const spacingSplitRows = nonEmptyLines.map((line) =>
-    line
-      .trim()
-      .split(/\s{2,}/)
-      .map((cell) => cell.trim())
-      .filter((cell) => cell !== ""),
+    line.replace(/\u00a0/g, " ").split(/\s{2,}/),
   );
   if (spacingSplitRows.length >= 2) {
     const maxCols = Math.max(...spacingSplitRows.map((row) => row.length));

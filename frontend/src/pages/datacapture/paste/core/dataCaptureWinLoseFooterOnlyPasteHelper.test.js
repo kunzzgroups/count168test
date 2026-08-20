@@ -82,6 +82,75 @@ test("agent rows plus Sub/Grand Total are not claimed by the footer-only helper"
   assert.equal(matrix[2][0], "GRAND TOTAL");
 });
 
+test("column-major Sub/Grand labels then paired amounts become two aligned rows", () => {
+  const amounts = AMOUNTS.split("\t");
+  const interleaved = [];
+  amounts.forEach((amount) => {
+    interleaved.push(amount, amount);
+  });
+  const text = ["SUB TOTAL", "GRAND TOTAL", ...interleaved].join("\n");
+  const matrix = parsePlainTextMatrix(text);
+  assert.equal(matrix.length, 2);
+  assert.equal(matrix[0][0], "SUB TOTAL");
+  assert.equal(matrix[1][0], "GRAND TOTAL");
+  assert.equal(matrix[0][1], "9");
+  assert.equal(matrix[1][1], "9");
+  assert.equal(matrix[0][2], "571.00");
+  assert.equal(matrix[1][2], "571.00");
+  assert.equal(matrix[0].length, matrix[1].length);
+});
+
+test("transposed TSV with Sub/Grand on the first row becomes two data rows", () => {
+  const amounts = AMOUNTS.split("\t");
+  const lines = ["SUB TOTAL\tGRAND TOTAL", ...amounts.map((amount) => `${amount}\t${amount}`)];
+  const matrix = parsePlainTextMatrix(lines.join("\n"));
+  assert.equal(matrix.length, 2);
+  assert.equal(matrix[0][0], "SUB TOTAL");
+  assert.equal(matrix[1][0], "GRAND TOTAL");
+  assert.equal(matrix[0][1], "9");
+  assert.equal(matrix[1][1], "9");
+});
+
+test("split Sub / Total lines still reshape as footer-only", () => {
+  const amounts = AMOUNTS.split("\t");
+  const interleaved = [];
+  amounts.forEach((amount) => interleaved.push(amount, amount));
+  const text = ["Sub", "Total", "Grand", "Total", ...interleaved].join("\n");
+  const matrix = tryBuildFooterOnlySubGrandMatrix(text, "");
+  assert.equal(matrix[0][0], "SUB TOTAL");
+  assert.equal(matrix[1][0], "GRAND TOTAL");
+  assert.equal(matrix[0][1], "9");
+  assert.equal(matrix[1][1], "9");
+});
+
+test("Citibet Downline Payment sheets are not claimed by the fruit16 footer helper", () => {
+  const text = [
+    "Downline Payment\t",
+    "No.\tLvl\tUsername\tType\tTurnover\tWin",
+    "1\tMA\tagent1\tMajor\t100.00\t50.00",
+    "2\tAG\tagent2\tMajor\t200.00\t-10.00",
+    "SUB TOTAL\t\t\t\t300.00\t40.00",
+    "GRAND TOTAL\t\t\t\t300.00\t40.00",
+  ].join("\n");
+  assert.equal(looksLikeFooterOnlySubGrandPlain(text), false);
+  assert.equal(tryBuildFooterOnlySubGrandMatrix(text, ""), null);
+  const matrix = parsePlainTextMatrix(text);
+  assert.ok(matrix.length >= 4);
+  const joined = matrix.flat().join("\t");
+  assert.match(joined, /agent1/);
+  assert.match(joined, /agent2/);
+});
+
+test("ordinary space-aligned report keeps equals under the amount column without stripping spaces", () => {
+  const text = ["ab    100", "      ="].join("\n");
+  const matrix = parsePlainTextMatrix(text);
+  assert.equal(matrix.length, 2);
+  assert.equal(matrix[0][0], "ab");
+  assert.equal(matrix[0][1], "100");
+  assert.equal(String(matrix[1][1]).trim(), "=");
+  assert.equal(String(matrix[1][0]).trim(), "");
+});
+
 test("Superbo TOTAL pad is unchanged for mixed agent + TOTAL sheets", () => {
   const matrix = [
     ["KBK18", "SENIOR", "MYR", "20,611.52"],

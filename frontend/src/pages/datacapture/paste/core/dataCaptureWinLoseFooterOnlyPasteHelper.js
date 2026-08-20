@@ -5,6 +5,7 @@
  *
  * Copying just the two footer TRs (no agent rows) often:
  * - drops colspan blanks on one row only → first amounts zipper
+ * - copies column-major / transposed (`SUB TOTAL` then `GRAND TOTAL` then paired amounts)
  * - fails the aligned-TSV grill (width delta > 2) then vertical-dump
  *   (needs a body row) → N×1 / unusable paste
  *
@@ -12,6 +13,7 @@
  */
 
 import { applyDataMatrixToGrid, notifyPasteSuccess } from "./dataCapturePasteApply.js";
+import { pastedPlainTextLooksCitibetReport } from "./dataCapturePasteDetect.js";
 
 function normalizeClipboardText(text) {
   return String(text ?? "")
@@ -100,13 +102,35 @@ function flattenNonEmptyTokens(text) {
       const token = cellText(line);
       if (token) tokens.push(token);
     });
-  return tokens;
+  const coalesced = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const current = tokens[i].toUpperCase();
+    const next = String(tokens[i + 1] || "").toUpperCase();
+    if (current === "SUB" && next === "TOTAL") {
+      coalesced.push("SUB TOTAL");
+      i += 1;
+      continue;
+    }
+    if (current === "GRAND" && next === "TOTAL") {
+      coalesced.push("GRAND TOTAL");
+      i += 1;
+      continue;
+    }
+    coalesced.push(tokens[i]);
+  }
+  return coalesced;
 }
 
 function extraNonFooterLabels(tokens) {
   return tokens.filter(
     (token) => token && !isMoneyOrCount(token) && !isFooterPairLabel(token),
   );
+}
+
+function clipboardLooksLikeCitibet(text, html = "") {
+  if (pastedPlainTextLooksCitibetReport(text)) return true;
+  const blob = `${text || ""}\n${html || ""}`;
+  return /upline\s+payment|downline\s+payment|my\s+earnings/i.test(blob);
 }
 
 function replaceContentRows(matrix, nextRows) {
@@ -125,6 +149,7 @@ function replaceContentRows(matrix, nextRows) {
 export function looksLikeFooterOnlySubGrandPlain(pastedData) {
   const text = normalizeClipboardText(pastedData);
   if (!text.trim()) return false;
+  if (clipboardLooksLikeCitibet(text)) return false;
   const tokens = flattenNonEmptyTokens(text);
   const subCount = tokens.filter((token) => isSubTotalLabel(token)).length;
   const grandCount = tokens.filter((token) => isGrandTotalLabel(token)).length;
@@ -201,6 +226,36 @@ function parseTwoTabFooterRows(text) {
   return rows;
 }
 
+/**
+ * fruit16 footer-only copy is often column-major / transposed:
+ *   SUB TOTAL, GRAND TOTAL, amtSub, amtGrand, amtSub, amtGrand, …
+ * Selecting two TRs as text also zippers into overlapping 2-col TSV
+ * (`SUB TOTAL` then `GRAND TOTAL\\t1195` then `1195\\t158,293.52` …).
+ * Flatten + de-interleave recovers two aligned rows.
+ */
+function deinterleaveAdjacentFooterLabels(tokens) {
+  if (!Array.isArray(tokens) || tokens.length < 8) return null;
+  if (!isFooterPairLabel(tokens[0]) || !isFooterPairLabel(tokens[1])) return null;
+  if (isSubTotalLabel(tokens[0]) === isSubTotalLabel(tokens[1])) return null;
+  if (isGrandTotalLabel(tokens[0]) === isGrandTotalLabel(tokens[1])) return null;
+
+  const amounts = tokens.slice(2);
+  if (!amounts.length || amounts.length % 2 !== 0) return null;
+  if (!amounts.every((token) => isMoneyOrCount(token))) return null;
+  if (amounts.length < 6) return null;
+
+  const left = [];
+  const right = [];
+  for (let i = 0; i < amounts.length; i += 2) {
+    left.push(amounts[i]);
+    right.push(amounts[i + 1]);
+  }
+  return [
+    [tokens[0], ...left],
+    [tokens[1], ...right],
+  ];
+}
+
 function reshapeVerticalFooterTokens(text) {
   const tokens = flattenNonEmptyTokens(text);
   const subIdx = tokens.findIndex((token) => isSubTotalLabel(token));
@@ -209,6 +264,11 @@ function reshapeVerticalFooterTokens(text) {
   const first = Math.min(subIdx, grandIdx);
   const second = Math.max(subIdx, grandIdx);
   if (first !== 0) return null;
+
+  if (second === 1) {
+    return deinterleaveAdjacentFooterLabels(tokens);
+  }
+
   const row1 = tokens.slice(first, second);
   const row2 = tokens.slice(second);
   if (row1.length < 4 || row2.length < 4) return null;
@@ -229,43 +289,98 @@ function parseHtmlFooterOnlyTable(html) {
     const trs = Array.from(table.querySelectorAll("tr")).filter((tr) =>
       cellText(tr.textContent),
     );
-    if (trs.length !== 2) return null;
-    const rows = trs.map((tr) => {
-      const cells = [];
-      Array.from(tr.querySelectorAll("td, th")).forEach((td) => {
-        const span = Math.max(1, Number(td.getAttribute("colspan") || td.colSpan || 1));
-        cells.push(cellText(td.textContent));
-        for (let i = 1; i < span; i += 1) cells.push("");
-      });
-      return cells;
-    });
-    const a = rows[0].find((cell) => cellText(cell) !== "");
-    const b = rows[1].find((cell) => cellText(cell) !== "");
-    if (
-      !(isSubTotalLabel(a) && isGrandTotalLabel(b)) &&
-      !(isGrandTotalLabel(a) && isSubTotalLabel(b))
-    ) {
-      return null;
+    const rows = trs
+      .map((tr) => {
+        const cells = [];
+        Array.from(tr.querySelectorAll("td, th")).forEach((td) => {
+          const span = Math.max(1, Number(td.getAttribute("colspan") || td.colSpan || 1));
+          cells.push(cellText(td.textContent));
+          for (let i = 1; i < span; i += 1) cells.push("");
+        });
+        return cells;
+      })
+      .filter((row) => row.some((cell) => cellText(cell) !== ""));
+    if (!rows.length) return null;
+
+    if (rows.length === 2) {
+      const a = rows[0].find((cell) => cellText(cell) !== "");
+      const b = rows[1].find((cell) => cellText(cell) !== "");
+      if (
+        (isSubTotalLabel(a) && isGrandTotalLabel(b)) ||
+        (isGrandTotalLabel(a) && isSubTotalLabel(b))
+      ) {
+        return rows;
+      }
     }
-    return rows;
+
+    const filled = rows.map((row) => row.map(cellText).filter(Boolean));
+    if (filled.length >= 4 && filled[0].length === 2) {
+      const [leftLabel, rightLabel] = filled[0];
+      if (
+        isFooterPairLabel(leftLabel) &&
+        isFooterPairLabel(rightLabel) &&
+        isSubTotalLabel(leftLabel) !== isSubTotalLabel(rightLabel)
+      ) {
+        const left = [leftLabel];
+        const right = [rightLabel];
+        for (let i = 1; i < filled.length; i += 1) {
+          if (filled[i].length !== 2) return null;
+          if (!isMoneyOrCount(filled[i][0]) || !isMoneyOrCount(filled[i][1])) return null;
+          left.push(filled[i][0]);
+          right.push(filled[i][1]);
+        }
+        return [left, right];
+      }
+    }
+
+    const tokens = filled.flat();
+    return deinterleaveAdjacentFooterLabels(tokens) || reshapeVerticalFooterTokens(tokens.join("\n"));
   } catch {
     return null;
   }
+}
+
+function htmlToPlain(html) {
+  const raw = String(html ?? "");
+  if (!raw.trim()) return "";
+  if (typeof document !== "undefined") {
+    try {
+      const root = document.createElement("div");
+      root.innerHTML = raw;
+      return String(root.innerText || root.textContent || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n");
+    } catch {
+      /* fall through */
+    }
+  }
+  return raw
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:tr|p|div|li|h\d)>/gi, "\n")
+    .replace(/<[^>]+>/g, "\t")
+    .replace(/\t+/g, "\t");
 }
 
 /**
  * @returns {string[][] | null}
  */
 export function tryBuildFooterOnlySubGrandMatrix(pastedData, html) {
+  if (clipboardLooksLikeCitibet(pastedData, html)) return null;
+
   const fromHtml = parseHtmlFooterOnlyTable(html);
   if (fromHtml?.length === 2) return alignFooterOnlySubGrandMatrix(fromHtml);
 
-  if (!looksLikeFooterOnlySubGrandPlain(pastedData)) return null;
+  const text = String(pastedData ?? "").trim() ? pastedData : "";
+  if (!looksLikeFooterOnlySubGrandPlain(text) && !looksLikeFooterOnlySubGrandPlain(htmlToPlain(html))) {
+    return null;
+  }
 
-  const tabRows = parseTwoTabFooterRows(pastedData);
+  const source = looksLikeFooterOnlySubGrandPlain(text) ? text : htmlToPlain(html);
+
+  const tabRows = parseTwoTabFooterRows(source);
   if (tabRows) return alignFooterOnlySubGrandMatrix(tabRows);
 
-  const vertical = reshapeVerticalFooterTokens(pastedData);
+  const vertical = reshapeVerticalFooterTokens(source);
   if (vertical) return alignFooterOnlySubGrandMatrix(vertical);
 
   return null;

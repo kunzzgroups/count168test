@@ -153,9 +153,11 @@ function patchFromPlainReportToken(token, colIndex, rowTokens) {
 /** DataTables footers often use <th> for Total / Grand Total data rows. */
 function allThRowLooksLikeDataOrSummary(tr) {
   const cells = Array.from(tr.querySelectorAll("th,td"));
-  if (cells.length < 2) return false;
+  if (!cells.length) return false;
   const texts = cells.map((cell) => String(cell.textContent || "").replace(/\s+/g, " ").trim());
   const nonEmpty = texts.filter(Boolean);
+  if (nonEmpty.length === 1 && /^=+$/.test(nonEmpty[0])) return true;
+  if (cells.length < 2) return false;
   if (nonEmpty.length < 2) return false;
 
   const first = nonEmpty[0].replace(/:$/, "").toUpperCase();
