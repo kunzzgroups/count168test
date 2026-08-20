@@ -181,6 +181,32 @@ test("two agent rows plus Total keep every username and money column", () => {
   assert.equal(matrix[2][18], "55.22");
 });
 
+const SUPERBO_AMOUNTS = ["275.10", "0.00", "-83.68", "-83.68", "0.00", "0.00", "83.68", "83.68"];
+
+test("Superbo WinLossSimple has no Name column and must not be claimed", () => {
+  const tsv = [
+    ["JKR9520", "AGENT", "MYR", ...SUPERBO_AMOUNTS].join("\t"),
+    ["TOTAL", "", "", ...SUPERBO_AMOUNTS].join("\t"),
+  ].join("\n");
+  const vertical = ["JKR9520", "AGENT", "MYR", ...SUPERBO_AMOUNTS, "TOTAL", ...SUPERBO_AMOUNTS].join(
+    "\n",
+  );
+
+  assert.equal(tryReshapePs38WinLossPlainMatrix(tsv), null);
+  assert.equal(tryReshapePs38WinLossPlainMatrix(vertical), null);
+});
+
+test("Superbo WinLossSimple keeps agent columns 1-4 contiguous in 1.TEXT", () => {
+  const matrix = parsePlainTextMatrix(
+    [
+      ["JKR9520", "AGENT", "MYR", ...SUPERBO_AMOUNTS].join("\t"),
+      ["TOTAL", "", "", ...SUPERBO_AMOUNTS].join("\t"),
+    ].join("\n"),
+  );
+  assert.deepEqual(matrix[0], ["JKR9520", "AGENT", "MYR", ...SUPERBO_AMOUNTS]);
+  assert.deepEqual(matrix[1], ["TOTAL", "", "", ...SUPERBO_AMOUNTS]);
+});
+
 test("usernames that are not BCA10A1-shaped still parse via Level+Currency", () => {
   const agent = ["abc123", "my nick", "Agent", "MYR", ...MONEY_14];
   const matrix = tryReshapePs38WinLossPlainMatrix([...agent, ...TOTAL_FIELDS].join("\n"));

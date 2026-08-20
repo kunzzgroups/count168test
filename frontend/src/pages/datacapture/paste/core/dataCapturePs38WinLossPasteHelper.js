@@ -303,6 +303,24 @@ export function canonicalizePs38WinLossMatrix(rows) {
 }
 
 /**
+ * PS38's identity block is `No.? | Username | Name | Level | Currency`. Reports
+ * that go straight from username to level (Superbo WinLossSimple:
+ * `JKR9520 | AGENT | MYR | amounts`) would get a blank Name column invented for
+ * them, shifting every amount one column right. Require at least one real Name
+ * before claiming a clipboard that carries no PS38 markup.
+ */
+function matrixHasPs38NameColumn(matrix) {
+  const agentRows = (matrix || []).filter(
+    (row) => Array.isArray(row) && row.some((cell) => isCurrencyToken(cell)),
+  );
+  if (!agentRows.length) return false;
+  return agentRows.some((row) => {
+    const nameIdx = row.findIndex((cell) => isCurrencyToken(cell)) - 2;
+    return nameIdx >= 0 && normalizeVerticalDumpToken(row[nameIdx]) !== "";
+  });
+}
+
+/**
  * Build a real &lt;table&gt; from a PS38 fixed-data-table clipboard fragment.
  * @returns {HTMLTableElement | null}
  */
@@ -407,7 +425,8 @@ export function tryReshapePs38WinLossPlainMatrix(pastedData) {
       line.split("\t").map((part) => normalizeVerticalDumpToken(part)),
     );
     if (!looksLikePs38WinLossRows(rows)) return null;
-    return canonicalizePs38WinLossMatrix(rows);
+    const tabMatrix = canonicalizePs38WinLossMatrix(rows);
+    return matrixHasPs38NameColumn(tabMatrix) ? tabMatrix : null;
   }
   if (!looksLikePs38WinLossPlain(pastedData)) return null;
 
@@ -427,7 +446,8 @@ export function tryReshapePs38WinLossPlainMatrix(pastedData) {
   const footerAt = findFooterTotalIndex(tokens, pairs[pairs.length - 1] + 2);
   if (footerAt >= 0) rows.push(tokens.slice(footerAt));
 
-  return canonicalizePs38WinLossMatrix(rows);
+  const matrix = canonicalizePs38WinLossMatrix(rows);
+  return matrixHasPs38NameColumn(matrix) ? matrix : null;
 }
 
 /** Format body cells → canonical PS38 matrix, or null when not this report. */
@@ -438,6 +458,6 @@ export function tryCanonicalizePs38FormatBody(bodyMatrix) {
   );
   if (!looksLikePs38WinLossRows(rows)) return null;
   const next = canonicalizePs38WinLossMatrix(rows);
-  if (!next) return null;
+  if (!next || !matrixHasPs38NameColumn(next)) return null;
   return next.map((row) => row.map((value) => ({ value, html: "" })));
 }
