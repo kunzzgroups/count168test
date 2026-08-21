@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   alignFooterOnlySubGrandMatrix,
   looksLikeFooterOnlySubGrandPlain,
+  splitStackedFooterCells,
   tryBuildFooterOnlySubGrandMatrix,
 } from "./dataCaptureWinLoseFooterOnlyPasteHelper.js";
 import { parsePlainTextMatrix } from "./dataCaptureTextPaste.js";
@@ -65,6 +66,42 @@ test("already-aligned footer pair is left unchanged", () => {
   assert.equal(out[1][3], "9");
   assert.equal(String(out[0][1]).trim(), "");
   assert.equal(String(out[1][1]).trim(), "");
+});
+
+const stackedCell = (top, bottom, span = 1) => ({ lines: [top, bottom], span });
+
+test("one stacked footer row keeps the label colspan gap before the amounts", () => {
+  const rows = splitStackedFooterCells([
+    stackedCell("Sub Total", "Grand Total", 3),
+    stackedCell("1462", "1462"),
+    stackedCell("40,149.05", "40,149.05"),
+    stackedCell("5,149.05", "5,149.05"),
+    stackedCell("16.80", "16.80"),
+  ]);
+  assert.deepEqual(rows[0], ["Sub Total", "", "", "1462", "40,149.05", "5,149.05", "16.80"]);
+  assert.deepEqual(rows[1], ["Grand Total", "", "", "1462", "40,149.05", "5,149.05", "16.80"]);
+});
+
+test("stacked footer split is skipped when the labels are not the Sub/Grand pair", () => {
+  const rows = splitStackedFooterCells([
+    stackedCell("SB06SY", "SB07SY", 3),
+    stackedCell("1462", "1462"),
+    stackedCell("40,149.05", "40,149.05"),
+    stackedCell("5,149.05", "5,149.05"),
+    stackedCell("16.80", "16.80"),
+  ]);
+  assert.equal(rows, null);
+});
+
+test("stacked footer split is skipped when cells hold a single value", () => {
+  const rows = splitStackedFooterCells([
+    { lines: ["Sub Total"], span: 3 },
+    { lines: ["1462"], span: 1 },
+    { lines: ["40,149.05"], span: 1 },
+    { lines: ["5,149.05"], span: 1 },
+    { lines: ["16.80"], span: 1 },
+  ]);
+  assert.equal(rows, null);
 });
 
 test("agent rows plus Sub/Grand Total are not claimed by the footer-only helper", () => {

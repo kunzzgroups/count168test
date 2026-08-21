@@ -280,6 +280,67 @@ function reshapeVerticalFooterTokens(text) {
   return [row1, row2];
 }
 
+/**
+ * Both footers live in ONE &lt;tr&gt;: every cell stacks the Sub Total value over
+ * the Grand Total value, and the label cell spans the identity columns.
+ * @param {{lines: string[], span: number}[]} cells
+ * @returns {string[][] | null}
+ */
+export function splitStackedFooterCells(cells) {
+  if (!Array.isArray(cells) || cells.length < 4) return null;
+
+  const top = [];
+  const bottom = [];
+  let stackedCount = 0;
+  for (const cell of cells) {
+    const lines = (cell?.lines || []).map((line) => cellText(line)).filter((line) => line !== "");
+    if (lines.length === 2) {
+      stackedCount += 1;
+      top.push(lines[0]);
+      bottom.push(lines[1]);
+    } else if (lines.length === 0) {
+      top.push("");
+      bottom.push("");
+    } else {
+      return null;
+    }
+    // A colspan cell covers the identity columns the amounts must clear —
+    // keep those blanks so the paste lands where a full-table copy would.
+    const span = Math.max(1, Number(cell?.span) || 1);
+    for (let i = 1; i < span; i += 1) {
+      top.push("");
+      bottom.push("");
+    }
+  }
+  if (stackedCount < 4) return null;
+
+  const first = top.find((cell) => cellText(cell) !== "");
+  const second = bottom.find((cell) => cellText(cell) !== "");
+  const pair =
+    (isSubTotalLabel(first) && isGrandTotalLabel(second)) ||
+    (isGrandTotalLabel(first) && isSubTotalLabel(second));
+  if (!pair) return null;
+  return [top, bottom];
+}
+
+/** Text lines of a cell, treating &lt;br&gt; and block children as line breaks. */
+function stackedCellLines(td) {
+  const clone = td.cloneNode(true);
+  clone.querySelectorAll("br").forEach((br) => br.replaceWith(clone.ownerDocument.createTextNode("\n")));
+  clone.querySelectorAll("div, p, li, tr").forEach((block) => {
+    block.appendChild(clone.ownerDocument.createTextNode("\n"));
+  });
+  return String(clone.textContent || "").split("\n");
+}
+
+function splitStackedFooterRow(tr) {
+  const cells = Array.from(tr.querySelectorAll("td, th")).map((td) => ({
+    lines: stackedCellLines(td),
+    span: Math.max(1, Number(td.getAttribute("colspan") || td.colSpan || 1)),
+  }));
+  return splitStackedFooterCells(cells);
+}
+
 function parseHtmlFooterOnlyTable(html) {
   if (!html || typeof document === "undefined") return null;
   if (!/<table\b/i.test(html) && !/<tr\b/i.test(html)) return null;
@@ -302,6 +363,11 @@ function parseHtmlFooterOnlyTable(html) {
       })
       .filter((row) => row.some((cell) => cellText(cell) !== ""));
     if (!rows.length) return null;
+
+    if (trs.length === 1) {
+      const stacked = splitStackedFooterRow(trs[0]);
+      if (stacked) return stacked;
+    }
 
     if (rows.length === 2) {
       const a = rows[0].find((cell) => cellText(cell) !== "");
