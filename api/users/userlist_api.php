@@ -872,7 +872,21 @@ function userlist_login_id_exists_in_companies(PDO $pdo, string $loginId, array 
         $params[] = $excludeUserId;
     }
     $stmt->execute($params);
-    return (int) $stmt->fetchColumn() > 0;
+    if ((int) $stmt->fetchColumn() > 0) {
+        return true;
+    }
+
+    // A login_id must not collide with the owner_code of the owner who owns any of these companies —
+    // the login flow checks the `user` table before falling back to `owner`, so a shared value silently
+    // authenticates as the wrong role whenever their passwords happen to match.
+    $ownerStmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM company c
+        INNER JOIN owner o ON o.id = c.owner_id
+        WHERE c.id IN ($placeholders) AND UPPER(o.owner_code) = UPPER(?)
+    ");
+    $ownerStmt->execute(array_merge($companyIds, [$loginId]));
+    return (int) $ownerStmt->fetchColumn() > 0;
 }
 
 function userlist_email_exists_in_companies(PDO $pdo, string $email, array $companyIds, ?int $excludeUserId = null): bool
