@@ -214,7 +214,10 @@ try {
             $selectedDescriptions = json_decode($_POST['selected_descriptions'], true);
             if (is_array($selectedDescriptions) && !empty($selectedDescriptions)) {
                 $placeholders = str_repeat('?,', count($selectedDescriptions) - 1) . '?';
-                $stmt = $pdo->prepare("SELECT id FROM description WHERE name IN ($placeholders) AND company_id = ?");
+                // GROUP BY + MIN(id): if legacy duplicate-named description rows exist for
+                // this company, only the earliest one is used so one selected description
+                // never fans out into multiple process rows.
+                $stmt = $pdo->prepare("SELECT MIN(id) FROM description WHERE name IN ($placeholders) AND company_id = ? GROUP BY name");
                 $stmt->execute(array_merge($selectedDescriptions, [$companyId]));
                 $descriptionIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             }

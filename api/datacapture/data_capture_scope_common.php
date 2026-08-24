@@ -1151,10 +1151,26 @@ function dcEnsureDescriptionIdForCompany(PDO $pdo, int $companyId, string $name)
     if ($existing > 0) {
         return $existing;
     }
-    $ins = $pdo->prepare('INSERT INTO description (name, company_id) VALUES (?, ?)');
-    $ins->execute([$label, $companyId]);
-    $newId = (int) $pdo->lastInsertId();
-    return $newId > 0 ? $newId : null;
+    try {
+        $ins = $pdo->prepare('INSERT INTO description (name, company_id) VALUES (?, ?)');
+        $ins->execute([$label, $companyId]);
+        $newId = (int) $pdo->lastInsertId();
+        return $newId > 0 ? $newId : null;
+    } catch (PDOException $e) {
+        // Group payroll auto-create can run for several companies in the same group
+        // at nearly the same time; the SELECT above can miss a row another request
+        // is about to insert. uk_description_company_name turns that race into a
+        // duplicate-key error here instead of a duplicate description row — recover
+        // by returning the row the other request just created.
+        if ((int)$e->getCode() === 23000) {
+            $stmt->execute([$companyId, $label]);
+            $existing = (int) ($stmt->fetchColumn() ?: 0);
+            if ($existing > 0) {
+                return $existing;
+            }
+        }
+        throw $e;
+    }
 }
 
 /**

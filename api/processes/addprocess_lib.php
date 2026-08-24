@@ -148,9 +148,25 @@ function descriptionExistsForCompany(PDO $pdo, int $companyId, string $name): bo
 }
 
 function insertDescription(PDO $pdo, int $companyId, string $name): int {
-    $stmt = $pdo->prepare("INSERT INTO description (name, company_id) VALUES (?, ?)");
-    $stmt->execute([$name, $companyId]);
-    return (int)$pdo->lastInsertId();
+    try {
+        $stmt = $pdo->prepare("INSERT INTO description (name, company_id) VALUES (?, ?)");
+        $stmt->execute([$name, $companyId]);
+        return (int)$pdo->lastInsertId();
+    } catch (PDOException $e) {
+        // Two concurrent requests can both pass the descriptionExistsForCompany()
+        // pre-check before either INSERT commits. The uk_description_company_name
+        // unique key turns the loser into a duplicate-key error instead of a
+        // duplicate row; recover by returning the row the winner just created.
+        if ((int)$e->getCode() === 23000) {
+            $stmt = $pdo->prepare("SELECT id FROM description WHERE company_id = ? AND name = ? LIMIT 1");
+            $stmt->execute([$companyId, $name]);
+            $existingId = $stmt->fetchColumn();
+            if ($existingId) {
+                return (int)$existingId;
+            }
+        }
+        throw $e;
+    }
 }
 
 function getDescriptionById(PDO $pdo, int $descriptionId): ?array {
