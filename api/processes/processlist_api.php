@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/group_company_access.php';
 require_once __DIR__ . '/../../includes/permissions.php';
+require_once __DIR__ . '/../../includes/tenant_scope.php';
 require_once __DIR__ . '/../includes/partnership_audit_readonly.php';
 require_once __DIR__ . '/../includes/money_decimal.php';
 require_once __DIR__ . '/../includes/ensure_bank_process_day_end_monthly_cap_column.php';
@@ -1282,8 +1283,10 @@ function ensureCompanyCurrencyCodes(PDO $pdo, int $companyId, array $codes): voi
 }
 
 /**
- * Remove matching currency row when a bank-process country is deleted.
- * Skips delete when any account in the company still links to the currency.
+ * Delete the currency row matching a bank-process country code, mirroring Currency Setting's
+ * delete rules exactly (same tenant_collect_currency_usage() check used by delete_currency_api.php)
+ * so a country removed here and a currency removed on Currency Setting behave identically —
+ * blocked by the same usage, deleted together when nothing blocks it.
  *
  * @return array{deleted: bool, id: int|null, blocked: bool}
  */
@@ -1291,11 +1294,11 @@ function deleteCompanyCurrencyCode(PDO $pdo, int $companyId, string $code): arra
 {
     $code = strtoupper(trim($code));
     $result = ['deleted' => false, 'id' => null, 'blocked' => false];
-    if ($code === '') {
+    if ($code === '' || $companyId <= 0) {
         return $result;
     }
 
-    $stmt = $pdo->prepare("SELECT id FROM currency WHERE code = ? AND company_id = ?");
+    $stmt = $pdo->prepare('SELECT id FROM currency WHERE code = ? AND company_id = ?');
     $stmt->execute([$code, $companyId]);
     $id = $stmt->fetchColumn();
     if (!$id) {
@@ -1304,38 +1307,30 @@ function deleteCompanyCurrencyCode(PDO $pdo, int $companyId, string $code): arra
     $id = (int) $id;
     $result['id'] = $id;
 
+    $ctx = ['mode' => 'company', 'company_id' => $companyId];
     try {
-        $chk = $pdo->query("SHOW TABLES LIKE 'account_currency'");
-        if ($chk && $chk->rowCount() > 0) {
-            $chkAc = $pdo->query("SHOW TABLES LIKE 'account_company'");
-            if ($chkAc && $chkAc->rowCount() > 0) {
-                $stmt = $pdo->prepare("
-                    SELECT COUNT(DISTINCT ac.account_id)
-                    FROM account_currency ac
-                    INNER JOIN account_company acc ON ac.account_id = acc.account_id
-                    WHERE ac.currency_id = ? AND acc.company_id = ?
-                ");
-                $stmt->execute([$id, $companyId]);
-                if ((int) $stmt->fetchColumn() > 0) {
-                    $result['blocked'] = true;
-                    return $result;
-                }
-            } else {
-                $stmt = $pdo->prepare("SELECT COUNT(DISTINCT account_id) FROM account_currency WHERE currency_id = ?");
-                $stmt->execute([$id]);
-                if ((int) $stmt->fetchColumn() > 0) {
-                    $result['blocked'] = true;
-                    return $result;
-                }
-            }
-        }
+        [$usageMessages] = tenant_collect_currency_usage($pdo, $id, $ctx, $code);
     } catch (Throwable $e) {
         error_log('deleteCompanyCurrencyCode usage check: ' . $e->getMessage());
+        $result['blocked'] = true;
+        return $result;
     }
 
-    $stmt = $pdo->prepare("DELETE FROM currency WHERE id = ? AND company_id = ?");
-    $stmt->execute([$id, $companyId]);
-    $result['deleted'] = $stmt->rowCount() > 0;
+    if ($usageMessages !== []) {
+        $result['blocked'] = true;
+        return $result;
+    }
+
+    $deleted = tenant_delete_currency($pdo, $id, $ctx);
+    if ($deleted > 0) {
+        $result['deleted'] = true;
+        try {
+            tenant_reconcile_groups_after_company_currency_deleted($pdo, $companyId, $code);
+        } catch (Throwable $e) {
+            error_log('deleteCompanyCurrencyCode group reconcile: ' . $e->getMessage());
+        }
+    }
+
     return $result;
 }
 
@@ -1410,8 +1405,9 @@ function addCountry() {
 
 /**
  * Remove a user-added country row from company_countries (red X on Available list).
- * Countries that only appear from country_bank or account currencies are unchanged in DB here;
- * the client still drops them from the session list until the next full reload from those sources.
+ * Also deletes the matching currency row when nothing blocks it (same usage rules as
+ * Currency Setting's delete, via tenant_collect_currency_usage) — deleting a country here
+ * and deleting a currency in Currency Setting are meant to stay in sync both ways.
  */
 function removeCountry() {
     global $pdo;
@@ -1451,6 +1447,9 @@ function removeCountry() {
         $currencyResult = deleteCompanyCurrencyCode($pdo, $companyId, $country);
         require_once __DIR__ . '/../includes/realtime.php';
         realtime_publish_companies([$companyId], 'processes', 'remove_country');
+        if ($currencyResult['deleted']) {
+            realtime_publish_companies([$companyId], 'accounts', 'delete_currency');
+        }
         jsonResponse(true, 'Removed', [
             'deleted' => $companyCountriesDeleted,
             'currency_id' => $currencyResult['id'],

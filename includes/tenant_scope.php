@@ -771,6 +771,38 @@ function tenant_sync_currency_to_company_countries(PDO $pdo, int $companyId, str
 }
 
 /**
+ * Remove the company_countries row that mirrors a deleted company-scoped currency, so the
+ * Bank Process "Country (Currency)" dropdown does not keep offering a currency that no
+ * longer exists. Best-effort — must never fail currency deletion.
+ */
+function tenant_remove_currency_from_company_countries(PDO $pdo, int $companyId, string $code): void
+{
+    if ($companyId <= 0 || $code === '') {
+        return;
+    }
+    try {
+        $chk = $pdo->query("SHOW TABLES LIKE 'company_countries'");
+        if (!$chk || $chk->rowCount() === 0) {
+            return;
+        }
+        $stmt = $pdo->prepare('DELETE FROM company_countries WHERE company_id = ? AND country = ?');
+        $stmt->execute([$companyId, $code]);
+
+        try {
+            $chkSel = $pdo->query("SHOW TABLES LIKE 'company_selected_countries'");
+            if ($chkSel && $chkSel->rowCount() > 0) {
+                $delSel = $pdo->prepare('DELETE FROM company_selected_countries WHERE company_id = ? AND country = ?');
+                $delSel->execute([$companyId, $code]);
+            }
+        } catch (Throwable $e) {
+            error_log('tenant_remove_currency_from_company_countries selected countries: ' . $e->getMessage());
+        }
+    } catch (Throwable $e) {
+        error_log('tenant_remove_currency_from_company_countries: ' . $e->getMessage());
+    }
+}
+
+/**
  * @return array{code: string}|null
  */
 function tenant_get_currency_row(PDO $pdo, int $currencyId, array $ctx): ?array
@@ -872,6 +904,233 @@ function tenant_normalize_account_usage_rows(array $rows): array
     }
 
     return $normalized;
+}
+
+/** @internal */
+function tenant_column_exists(PDO $pdo, string $table, string $column): bool
+{
+    try {
+        $safeTable = str_replace(['`', ';', ' '], '', $table);
+        $stmt = $pdo->query('SHOW COLUMNS FROM `' . $safeTable . '` LIKE ' . $pdo->quote($column));
+
+        return $stmt !== false && $stmt->rowCount() > 0;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/**
+ * Shared currency-usage check used by both Currency Setting delete (delete_currency_api.php)
+ * and Bank Process "remove country" (processlist_api.php) so the two entry points block
+ * deletion under the exact same rules.
+ *
+ * @param array{mode?: string, group_pk?: int, company_id?: int} $ctx
+ * @return array{0: list<string>, 1: list<string>} [usageMessages, debugInfo]
+ */
+function tenant_collect_currency_usage(PDO $pdo, int $currencyId, array $ctx, string $currencyCode): array
+{
+    $usageMessages = [];
+    $debugInfo = [];
+    $companyId = (int) ($ctx['company_id'] ?? 0);
+
+    if (tableExistsForTenant($pdo, 'account_currency')) {
+        if (($ctx['mode'] ?? '') === 'group') {
+            $groupAccountIds = tenant_collect_group_account_ids($pdo, (int) ($ctx['group_pk'] ?? 0));
+            $n = 0;
+            if ($groupAccountIds !== []) {
+                $idPh = implode(',', array_fill(0, count($groupAccountIds), '?'));
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(DISTINCT ac.account_id)
+                    FROM account_currency ac
+                    WHERE ac.currency_id = ? AND ac.account_id IN ($idPh)
+                ");
+                $stmt->execute(array_merge([$currencyId], $groupAccountIds));
+                $n = (int) $stmt->fetchColumn();
+            }
+        } elseif (tableExistsForTenant($pdo, 'account_company')) {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(DISTINCT ac.account_id)
+                FROM account_currency ac
+                INNER JOIN account_company acc ON ac.account_id = acc.account_id
+                WHERE ac.currency_id = ? AND acc.company_id = ?"
+                . tenant_sql_account_company_subsidiary_only($pdo, 'acc')
+            );
+            $stmt->execute([$currencyId, $companyId]);
+            $n = (int) $stmt->fetchColumn();
+        } else {
+            $stmt = $pdo->prepare('SELECT COUNT(DISTINCT account_id) FROM account_currency WHERE currency_id = ?');
+            $stmt->execute([$currencyId]);
+            $n = (int) $stmt->fetchColumn();
+        }
+        $debugInfo[] = 'account_currency: ' . $n;
+        if ($n > 0) {
+            $usageMessages[] = $n . ' account(s)';
+        }
+    } else {
+        try {
+            $n = 0;
+            if (($ctx['mode'] ?? '') === 'group') {
+                $groupAccountIds = tenant_collect_group_account_ids($pdo, (int) ($ctx['group_pk'] ?? 0));
+                if ($groupAccountIds !== [] && tenant_column_exists($pdo, 'account', 'currency')) {
+                    $idPh = implode(',', array_fill(0, count($groupAccountIds), '?'));
+                    $stmt = $pdo->prepare("SELECT COUNT(*) FROM account WHERE currency = ? AND id IN ($idPh)");
+                    $stmt->execute(array_merge([$currencyCode], $groupAccountIds));
+                    $n = (int) $stmt->fetchColumn();
+                }
+            } elseif (tableExistsForTenant($pdo, 'account_company') && tenant_column_exists($pdo, 'account', 'currency')) {
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(DISTINCT a.id)
+                    FROM account a
+                    INNER JOIN account_company ac ON a.id = ac.account_id
+                    WHERE a.currency = ? AND ac.company_id = ?"
+                    . tenant_sql_account_company_subsidiary_only($pdo, 'ac')
+                );
+                $stmt->execute([$currencyCode, $companyId]);
+                $n = (int) $stmt->fetchColumn();
+            }
+            if ($n > 0) {
+                $usageMessages[] = $n . ' account(s)';
+            }
+        } catch (PDOException $e) {
+            // ignore
+        }
+    }
+
+    if ($companyId <= 0) {
+        return [$usageMessages, $debugInfo];
+    }
+
+    $checks = [
+        ['data_capture_details', 'SELECT COUNT(*) FROM data_capture_details WHERE currency_id = ? AND company_id = ?', 'data capture detail(s)'],
+        ['data_captures', 'SELECT COUNT(*) FROM data_captures WHERE currency_id = ? AND company_id = ?', 'data capture(s)'],
+    ];
+    foreach ($checks as [$table, $sql, $label]) {
+        try {
+            if (tableExistsForTenant($pdo, $table)) {
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$currencyId, $companyId]);
+                $n = (int) $stmt->fetchColumn();
+                if ($n > 0) {
+                    $usageMessages[] = $n . ' ' . $label;
+                }
+            }
+        } catch (PDOException $e) {
+            // ignore
+        }
+    }
+
+    try {
+        if (tenant_column_exists($pdo, 'transactions', 'currency_id')) {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM transactions WHERE currency_id = ? AND company_id = ?');
+            $stmt->execute([$currencyId, $companyId]);
+            $n = (int) $stmt->fetchColumn();
+            if ($n > 0) {
+                $usageMessages[] = $n . ' transaction(s)';
+            }
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    try {
+        if (tableExistsForTenant($pdo, 'transaction_entry') && tenant_column_exists($pdo, 'transaction_entry', 'currency_id')) {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM transaction_entry WHERE currency_id = ? AND company_id = ?');
+            $stmt->execute([$currencyId, $companyId]);
+            $n = (int) $stmt->fetchColumn();
+            if ($n > 0) {
+                $usageMessages[] = $n . ' transaction entr' . ($n === 1 ? 'y' : 'ies');
+            }
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    try {
+        if (tableExistsForTenant($pdo, 'transactions_rate')) {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*)
+                FROM transactions_rate tr
+                INNER JOIN transactions t ON tr.transaction_id = t.id
+                WHERE (tr.rate_from_currency_id = ? OR tr.rate_to_currency_id = ?) AND t.company_id = ?
+            ");
+            $stmt->execute([$currencyId, $currencyId, $companyId]);
+            $n = (int) $stmt->fetchColumn();
+            if ($n > 0) {
+                $usageMessages[] = $n . ' rate transaction(s)';
+            }
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    try {
+        if (tableExistsForTenant($pdo, 'transactions_rate_details') && tenant_column_exists($pdo, 'transactions_rate_details', 'currency_id')) {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*)
+                FROM transactions_rate_details trd
+                INNER JOIN transactions_rate tr ON trd.rate_group_id = tr.rate_group_id
+                INNER JOIN transactions t ON tr.transaction_id = t.id
+                WHERE trd.currency_id = ? AND t.company_id = ?
+            ");
+            $stmt->execute([$currencyId, $companyId]);
+            $n = (int) $stmt->fetchColumn();
+            if ($n > 0) {
+                $usageMessages[] = $n . ' rate transaction detail(s)';
+            }
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    try {
+        if (tableExistsForTenant($pdo, 'process') && tenant_column_exists($pdo, 'process', 'currency_id')) {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM process WHERE currency_id = ? AND company_id = ?');
+            $stmt->execute([$currencyId, $companyId]);
+            $n = (int) $stmt->fetchColumn();
+            if ($n > 0) {
+                $usageMessages[] = $n . ' process(es)';
+            }
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    try {
+        if (tableExistsForTenant($pdo, 'data_capture_templates') && tenant_column_exists($pdo, 'data_capture_templates', 'currency_id')) {
+            if (tenant_column_exists($pdo, 'data_capture_templates', 'company_id')) {
+                $stmt = $pdo->prepare('SELECT COUNT(*) FROM data_capture_templates WHERE currency_id = ? AND company_id = ?');
+                $stmt->execute([$currencyId, $companyId]);
+                $n = (int) $stmt->fetchColumn();
+            } else {
+                $col = $pdo->query("SHOW COLUMNS FROM data_capture_templates WHERE Field = 'process_id'")->fetch(PDO::FETCH_ASSOC);
+                $isInt = isset($col['Type']) && stripos((string) $col['Type'], 'int') !== false;
+                if ($isInt) {
+                    $stmt = $pdo->prepare("
+                        SELECT COUNT(*)
+                        FROM data_capture_templates dct
+                        INNER JOIN process p ON dct.process_id = p.id
+                        WHERE dct.currency_id = ? AND p.company_id = ?
+                    ");
+                } else {
+                    $stmt = $pdo->prepare("
+                        SELECT COUNT(*)
+                        FROM data_capture_templates dct
+                        INNER JOIN process p ON CAST(dct.process_id AS CHAR) = CAST(p.process_id AS CHAR)
+                        WHERE dct.currency_id = ? AND p.company_id = ?
+                    ");
+                }
+                $stmt->execute([$currencyId, $companyId]);
+                $n = (int) $stmt->fetchColumn();
+            }
+            if ($n > 0) {
+                $usageMessages[] = $n . ' data capture template(s)';
+            }
+        }
+    } catch (PDOException $e) {
+        // ignore
+    }
+
+    return [$usageMessages, $debugInfo];
 }
 
 /** @internal */
