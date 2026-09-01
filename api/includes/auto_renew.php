@@ -1583,11 +1583,20 @@ function auto_renew_fetch_company_approval_raw_rows(
             WHERE UPPER(TRIM(c.company_id)) <> 'C168'
               AND c.owner_id IS NOT NULL
               AND c.expiration_date IS NOT NULL
-              AND (
-                    (r.status = 'pending' AND DATEDIFF(c.expiration_date, CURDATE()) <= {$windowDays})
-                    OR (
-                        r.status IN ('approved','rejected')
-                        AND r.processed_at >= DATE_SUB(NOW(), INTERVAL {$historyDays} DAY)
+              AND r.status = 'pending'
+              AND DATEDIFF(c.expiration_date, CURDATE()) <= {$windowDays}
+
+            UNION ALL
+
+        " . $select . "
+            FROM company_auto_renew_request r
+            INNER JOIN company c ON c.id = r.company_id
+            LEFT JOIN owner o ON o.id = c.owner_id
+            WHERE r.entity_type = 'company'
+              AND UPPER(TRIM(c.company_id)) <> 'C168'
+              AND c.owner_id IS NOT NULL
+              AND r.status IN ('approved','rejected')
+              AND r.processed_at >= DATE_SUB(NOW(), INTERVAL {$historyDays} DAY)
         ";
         $params = [];
         if ($applyDateFilter) {
@@ -1595,10 +1604,6 @@ function auto_renew_fetch_company_approval_raw_rows(
             $params[] = $rangeFrom;
             $params[] = $rangeTo;
         }
-        $sql .= "
-                    )
-              )
-        ";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -1691,11 +1696,19 @@ function auto_renew_fetch_group_approval_raw_rows(
             LEFT JOIN owner o ON o.id = g.owner_id
             WHERE g.expiration_date IS NOT NULL
               AND g.owner_id IS NOT NULL
-              AND (
-                    (r.status = 'pending' AND DATEDIFF(g.expiration_date, CURDATE()) <= {$windowDays})
-                    OR (
-                        r.status IN ('approved','rejected')
-                        AND r.processed_at >= DATE_SUB(NOW(), INTERVAL {$historyDays} DAY)
+              AND r.status = 'pending'
+              AND DATEDIFF(g.expiration_date, CURDATE()) <= {$windowDays}
+
+            UNION ALL
+
+        " . $select . "
+            FROM company_auto_renew_request r
+            INNER JOIN `groups` g ON g.id = r.group_id
+            LEFT JOIN owner o ON o.id = g.owner_id
+            WHERE r.entity_type = 'group'
+              AND g.owner_id IS NOT NULL
+              AND r.status IN ('approved','rejected')
+              AND r.processed_at >= DATE_SUB(NOW(), INTERVAL {$historyDays} DAY)
         ";
         $params = [];
         if ($applyDateFilter) {
@@ -1703,10 +1716,6 @@ function auto_renew_fetch_group_approval_raw_rows(
             $params[] = $rangeFrom;
             $params[] = $rangeTo;
         }
-        $sql .= "
-                    )
-              )
-        ";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
