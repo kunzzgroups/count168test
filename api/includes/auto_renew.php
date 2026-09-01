@@ -1766,9 +1766,15 @@ function auto_renew_sort_merged_approval_raw_rows(array $rows, string $filter): 
     return $rows;
 }
 
-function auto_renew_count_window_requests(PDO $pdo, int $windowDays, ?string $entityType = null): array
-{
+function auto_renew_count_window_requests(
+    PDO $pdo,
+    int $windowDays,
+    ?string $entityType = null,
+    ?string $rangeFrom = null,
+    ?string $rangeTo = null
+): array {
     $entityFilter = $entityType !== null ? auto_renew_normalize_entity_type($entityType) : null;
+    $hasRange = $rangeFrom !== null && $rangeTo !== null;
     $counts = [
         'pending_cnt' => 0,
         'approved_cnt' => 0,
@@ -1779,12 +1785,8 @@ function auto_renew_count_window_requests(PDO $pdo, int $windowDays, ?string $en
     if ($entityFilter !== null && $entityFilter !== 'company') {
         // skip company counts
     } else {
-    $companyStmt = $pdo->query("
-        SELECT
-            SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-            SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_cnt,
-            SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_cnt,
-            COUNT(*) AS total_cnt
+    $companyPendingStmt = $pdo->query("
+        SELECT SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt
         FROM company c
         INNER JOIN company_auto_renew_request r
             ON r.company_id = c.id
@@ -1795,23 +1797,38 @@ function auto_renew_count_window_requests(PDO $pdo, int $windowDays, ?string $en
           AND c.expiration_date IS NOT NULL
           AND DATEDIFF(c.expiration_date, CURDATE()) <= {$windowDays}
     ");
-    $companyCounts = $companyStmt ? ($companyStmt->fetch(PDO::FETCH_ASSOC) ?: []) : [];
-    foreach (['pending_cnt', 'approved_cnt', 'rejected_cnt', 'total_cnt'] as $key) {
-        $counts[$key] = (int) ($companyCounts[$key] ?? 0);
+    $counts['pending_cnt'] = (int) ($companyPendingStmt ? ($companyPendingStmt->fetchColumn() ?: 0) : 0);
+
+    if ($hasRange) {
+        $companyProcessedStmt = $pdo->prepare("
+            SELECT
+                SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_cnt,
+                SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_cnt
+            FROM company c
+            INNER JOIN company_auto_renew_request r
+                ON r.company_id = c.id
+               AND r.entity_type = 'company'
+               AND DATE(r.expiration_snapshot) = DATE(c.expiration_date)
+            WHERE UPPER(TRIM(c.company_id)) <> 'C168'
+              AND c.owner_id IS NOT NULL
+              AND r.status IN ('approved', 'rejected')
+              AND DATE(r.processed_at) >= ? AND DATE(r.processed_at) <= ?
+        ");
+        $companyProcessedStmt->execute([$rangeFrom, $rangeTo]);
+        $companyProcessed = $companyProcessedStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $counts['approved_cnt'] = (int) ($companyProcessed['approved_cnt'] ?? 0);
+        $counts['rejected_cnt'] = (int) ($companyProcessed['rejected_cnt'] ?? 0);
     }
     }
 
     if ($entityFilter !== null && $entityFilter !== 'group') {
+        $counts['total_cnt'] = $counts['pending_cnt'] + $counts['approved_cnt'] + $counts['rejected_cnt'];
         return $counts;
     }
 
     if (auto_renew_has_groups_table($pdo)) {
-        $groupStmt = $pdo->query("
-            SELECT
-                SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-                SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_cnt,
-                SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_cnt,
-                COUNT(*) AS total_cnt
+        $groupPendingStmt = $pdo->query("
+            SELECT SUM(CASE WHEN r.status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt
             FROM `groups` g
             INNER JOIN company_auto_renew_request r
                 ON r.group_id = g.id
@@ -1821,11 +1838,30 @@ function auto_renew_count_window_requests(PDO $pdo, int $windowDays, ?string $en
               AND g.owner_id IS NOT NULL
               AND DATEDIFF(g.expiration_date, CURDATE()) <= {$windowDays}
         ");
-        $groupCounts = $groupStmt ? ($groupStmt->fetch(PDO::FETCH_ASSOC) ?: []) : [];
-        foreach (['pending_cnt', 'approved_cnt', 'rejected_cnt', 'total_cnt'] as $key) {
-            $counts[$key] = (int) ($counts[$key] ?? 0) + (int) ($groupCounts[$key] ?? 0);
+        $counts['pending_cnt'] += (int) ($groupPendingStmt ? ($groupPendingStmt->fetchColumn() ?: 0) : 0);
+
+        if ($hasRange) {
+            $groupProcessedStmt = $pdo->prepare("
+                SELECT
+                    SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_cnt,
+                    SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_cnt
+                FROM `groups` g
+                INNER JOIN company_auto_renew_request r
+                    ON r.group_id = g.id
+                   AND r.entity_type = 'group'
+                   AND DATE(r.expiration_snapshot) = DATE(g.expiration_date)
+                WHERE g.owner_id IS NOT NULL
+                  AND r.status IN ('approved', 'rejected')
+                  AND DATE(r.processed_at) >= ? AND DATE(r.processed_at) <= ?
+            ");
+            $groupProcessedStmt->execute([$rangeFrom, $rangeTo]);
+            $groupProcessed = $groupProcessedStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $counts['approved_cnt'] += (int) ($groupProcessed['approved_cnt'] ?? 0);
+            $counts['rejected_cnt'] += (int) ($groupProcessed['rejected_cnt'] ?? 0);
         }
     }
+
+    $counts['total_cnt'] = $counts['pending_cnt'] + $counts['approved_cnt'] + $counts['rejected_cnt'];
 
     return $counts;
 }
@@ -1979,24 +2015,6 @@ function auto_renew_list_deleted_payment_rows(
     return $out;
 }
 
-function auto_renew_history_status_count(PDO $pdo, string $status, int $historyDays, ?string $entityType = null): int
-{
-    $entityFilter = $entityType !== null ? auto_renew_normalize_entity_type($entityType) : null;
-    $sql = "
-        SELECT COUNT(*) FROM company_auto_renew_request
-        WHERE status = ?
-          AND processed_at >= DATE_SUB(NOW(), INTERVAL {$historyDays} DAY)
-    ";
-    $params = [$status];
-    if ($entityFilter !== null) {
-        $sql .= ' AND entity_type = ?';
-        $params[] = $entityFilter;
-    }
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    return (int) ($stmt->fetchColumn() ?: 0);
-}
-
 /**
  * @return array{rows: list<array>, counts: array{pending:int, approved:int, rejected:int, total:int}}
  */
@@ -2060,10 +2078,7 @@ function auto_renew_list_approvals(
         });
     }
 
-    $countsRow = auto_renew_count_window_requests($pdo, $windowDays, $entityFilter);
-
-    $approvedHist = auto_renew_history_status_count($pdo, 'approved', $historyDays, $entityFilter);
-    $rejectedHist = auto_renew_history_status_count($pdo, 'rejected', $historyDays, $entityFilter);
+    $countsRow = auto_renew_count_window_requests($pdo, $windowDays, $entityFilter, $rangeFrom, $rangeTo);
 
     $tabPendingCounts = auto_renew_count_pending_by_entity($pdo, false);
 
@@ -2072,8 +2087,8 @@ function auto_renew_list_approvals(
         'accounts' => $accounts,
         'counts' => [
             'pending' => (int) ($countsRow['pending_cnt'] ?? 0),
-            'approved' => max((int) ($countsRow['approved_cnt'] ?? 0), $approvedHist),
-            'rejected' => max((int) ($countsRow['rejected_cnt'] ?? 0), $rejectedHist),
+            'approved' => (int) ($countsRow['approved_cnt'] ?? 0),
+            'rejected' => (int) ($countsRow['rejected_cnt'] ?? 0),
             'total' => (int) ($countsRow['total_cnt'] ?? 0),
         ],
         'tab_pending_counts' => $tabPendingCounts,
