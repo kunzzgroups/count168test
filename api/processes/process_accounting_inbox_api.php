@@ -2108,6 +2108,11 @@ function inboxItemHiddenByAccountingDueDismiss(PDO $pdo, int $companyId, array $
 
         return $ds !== null && bmp_isAccountingDueSoftDismissed($pdo, $companyId, $processId, 'manual_inactive', $ds);
     }
+    if (!empty($item['is_resend_consolidated_range'])) {
+        $ds = inboxBankProcessDateFieldToYmd($item['day_start'] ?? null);
+
+        return $ds !== null && bmp_isAccountingDueSoftDismissed($pdo, $companyId, $processId, 'resend_consolidated_range', $ds);
+    }
     if (!empty($item['is_once_one_off'])) {
         $ds = inboxBankProcessDateFieldToYmd($item['day_start'] ?? null);
 
@@ -2627,22 +2632,8 @@ try {
                     'is_resend_consolidated_range' => true,
                 ];
             }
-            if (!empty($r['accounting_resend_single_period_from_schedule'])) {
-                $baseCost = money_normalize($r['cost'] ?? '0');
-                $basePrice = money_normalize($r['price'] ?? '0');
-                $baseProfit = money_normalize($r['profit'] ?? '0');
-                inboxAppendStoredNormalFlowIfNeeded(
-                    $needToday,
-                    $pdo,
-                    $company_id,
-                    $r,
-                    $today,
-                    $baseCost,
-                    $basePrice,
-                    $baseProfit,
-                    $hasDayEndMonthlyCapCol
-                );
-            }
+            // 该 process 已是 consolidated range 合并账单：不再额外排「库里原 day_start」的正常流程行，
+            // 否则会把 Resend 前的旧账期（如原 day_start=3/18）重新拉回 Accounting Due，与合并账单重复显示。
             continue;
         }
         // Resend 单期开账（弹窗同时填 day_start + day_end）：统一走 consolidated 一条，避免与 monthly/day_end_tail 重复入列。
