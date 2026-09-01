@@ -1438,8 +1438,7 @@ function removeCountry() {
         // (still surfaced via country_bank) while the underlying currency stays orphaned.
         $currencyResult = deleteCompanyCurrencyCode($pdo, $companyId, $country);
         if ($currencyResult['blocked']) {
-            $usageText = $currencyResult['usage'] !== [] ? implode(', ', $currencyResult['usage']) : 'existing records';
-            jsonResponse(false, 'Cannot remove country: currency ' . strtoupper($country) . ' is still used by ' . $usageText, [
+            jsonResponse(false, 'Currency ' . strtoupper($country) . ' is still in use and cannot be removed', [
                 'currency_id' => $currencyResult['id'],
                 'currency_blocked' => true,
             ]);
