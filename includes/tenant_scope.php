@@ -744,9 +744,12 @@ function tenant_create_currency(PDO $pdo, string $code, array $ctx): array
 }
 
 /**
- * Mirror a company-scoped currency into company_countries so it appears in the
- * Bank Process "Country (Currency)" dropdown (which reads country_bank + company_countries,
- * not the currency table). Best-effort — must never fail currency creation.
+ * Mirror a company-scoped currency into company_countries (Available list) and
+ * company_selected_countries (the list actually shown in the Bank Process "Country (Currency)"
+ * dropdown — see BankProcessListPage's countriesList={selectedCountryChips}), so a newly
+ * created currency is immediately selectable without a manual visit to "Select or Add Country".
+ * Appends by sort_order rather than replacing, so it never disturbs the company's existing
+ * manual selection/order. Best-effort — must never fail currency creation.
  */
 function tenant_sync_currency_to_company_countries(PDO $pdo, int $companyId, string $code): void
 {
@@ -755,11 +758,30 @@ function tenant_sync_currency_to_company_countries(PDO $pdo, int $companyId, str
     }
     try {
         $chk = $pdo->query("SHOW TABLES LIKE 'company_countries'");
-        if (!$chk || $chk->rowCount() === 0) {
-            return;
+        if ($chk && $chk->rowCount() > 0) {
+            $stmt = $pdo->prepare('INSERT IGNORE INTO company_countries (company_id, country) VALUES (?, ?)');
+            $stmt->execute([$companyId, $code]);
         }
-        $stmt = $pdo->prepare('INSERT IGNORE INTO company_countries (company_id, country) VALUES (?, ?)');
-        $stmt->execute([$companyId, $code]);
+
+        try {
+            $chkSel = $pdo->query("SHOW TABLES LIKE 'company_selected_countries'");
+            if (!$chkSel || $chkSel->rowCount() === 0) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS company_selected_countries (
+                    company_id INT UNSIGNED NOT NULL,
+                    country VARCHAR(100) NOT NULL,
+                    sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+                    PRIMARY KEY (company_id, country),
+                    INDEX idx_company_selected_countries_company (company_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+            $nextOrderStmt = $pdo->prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 FROM company_selected_countries WHERE company_id = ?');
+            $nextOrderStmt->execute([$companyId]);
+            $nextOrder = (int) $nextOrderStmt->fetchColumn();
+            $insSel = $pdo->prepare('INSERT IGNORE INTO company_selected_countries (company_id, country, sort_order) VALUES (?, ?, ?)');
+            $insSel->execute([$companyId, $code, $nextOrder]);
+        } catch (Throwable $e) {
+            error_log('tenant_sync_currency_to_company_countries selected countries: ' . $e->getMessage());
+        }
 
         if (is_file(__DIR__ . '/../api/includes/realtime.php')) {
             require_once __DIR__ . '/../api/includes/realtime.php';
