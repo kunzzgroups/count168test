@@ -1804,12 +1804,10 @@ function auto_renew_count_window_requests(
             SELECT
                 SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_cnt,
                 SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_cnt
-            FROM company c
-            INNER JOIN company_auto_renew_request r
-                ON r.company_id = c.id
-               AND r.entity_type = 'company'
-               AND DATE(r.expiration_snapshot) = DATE(c.expiration_date)
-            WHERE UPPER(TRIM(c.company_id)) <> 'C168'
+            FROM company_auto_renew_request r
+            INNER JOIN company c ON c.id = r.company_id
+            WHERE r.entity_type = 'company'
+              AND UPPER(TRIM(c.company_id)) <> 'C168'
               AND c.owner_id IS NOT NULL
               AND r.status IN ('approved', 'rejected')
               AND DATE(r.processed_at) >= ? AND DATE(r.processed_at) <= ?
@@ -1845,12 +1843,10 @@ function auto_renew_count_window_requests(
                 SELECT
                     SUM(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END) AS approved_cnt,
                     SUM(CASE WHEN r.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_cnt
-                FROM `groups` g
-                INNER JOIN company_auto_renew_request r
-                    ON r.group_id = g.id
-                   AND r.entity_type = 'group'
-                   AND DATE(r.expiration_snapshot) = DATE(g.expiration_date)
-                WHERE g.owner_id IS NOT NULL
+                FROM company_auto_renew_request r
+                INNER JOIN `groups` g ON g.id = r.group_id
+                WHERE r.entity_type = 'group'
+                  AND g.owner_id IS NOT NULL
                   AND r.status IN ('approved', 'rejected')
                   AND DATE(r.processed_at) >= ? AND DATE(r.processed_at) <= ?
             ");
