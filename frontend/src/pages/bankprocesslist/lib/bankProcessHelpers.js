@@ -226,7 +226,7 @@ export function matchesCurrentBankFilters(row, filters) {
 
 export function canShowBankResend(row) {
   const s = normalizeBankProcessStatus(row?.status);
-  return s === "active" && !isBankInactiveLike(row?.status, row?.issue_flag);
+  return s !== "inactive";
 }
 
 export function isoToDmy(iso) {
