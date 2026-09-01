@@ -31,7 +31,7 @@ function BankSortIcon({ column, sortColumn, sortDirection }) {
   );
 }
 
-function getContractStateClass(dayStart, dayEnd, hasTransactionOnOrAfterDue) {
+function getContractStateClass(dayStart, dayEnd) {
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const hasDayStart = dayStart != null && String(dayStart).trim() !== "";
@@ -40,18 +40,17 @@ function getContractStateClass(dayStart, dayEnd, hasTransactionOnOrAfterDue) {
   const end = dayEnd ? String(dayEnd).substring(0, 10) : null;
   if (todayStr < start) return "contract-pending";
   const isDue = end ? todayStr >= end : todayStr >= start;
-  if (isDue) return hasTransactionOnOrAfterDue ? "contract-expired" : "contract-active";
-  return "contract-active";
+  return isDue ? "contract-expired" : "contract-active";
 }
 
-function renderBankContract(value, dayStart, dayEnd, lang, hasTransactionOnOrAfterDue) {
+function renderBankContract(value, dayStart, dayEnd, lang) {
   const text = String(value || "").trim();
   if (!text) return "-";
 
   const contractBadgeKey = bankProcessContractBadgeKey(text);
   const displayLabel = formatBankProcessContractLabel(lang, text);
 
-  const baseContractClass = getContractStateClass(dayStart || null, dayEnd || null, hasTransactionOnOrAfterDue);
+  const baseContractClass = getContractStateClass(dayStart || null, dayEnd || null);
   const grayContracts = ["1 MONTH", "1+1 MONTH", "1+2 MONTHS", "1+3 MONTHS"];
   const contractClass =
     grayContracts.indexOf(contractBadgeKey) !== -1 && baseContractClass === "contract-active"
@@ -260,7 +259,7 @@ export default function BankProcessTable({
                     <MaintenanceEllipsisText value={r.supplier} className="bank-owner-text" />
                   </div>
                   <div className={cellClass("contract", "bank-contract-cell")}>
-                    {renderBankContract(r.contract, r.day_start || r.date, r.day_end, lang, r.has_transaction_on_or_after_due)}
+                    {renderBankContract(r.contract, r.day_start || r.date, r.day_end, lang)}
                   </div>
                   <div className={cellClass("insurance")}>{r.insurance || "-"}</div>
                   <div className={cellClass("customer")}>{r.customer || "-"}</div>
