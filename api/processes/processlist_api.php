@@ -1288,12 +1288,12 @@ function ensureCompanyCurrencyCodes(PDO $pdo, int $companyId, array $codes): voi
  * so a country removed here and a currency removed on Currency Setting behave identically —
  * blocked by the same usage, deleted together when nothing blocks it.
  *
- * @return array{deleted: bool, id: int|null, blocked: bool}
+ * @return array{deleted: bool, id: int|null, blocked: bool, usage: list<string>}
  */
 function deleteCompanyCurrencyCode(PDO $pdo, int $companyId, string $code): array
 {
     $code = strtoupper(trim($code));
-    $result = ['deleted' => false, 'id' => null, 'blocked' => false];
+    $result = ['deleted' => false, 'id' => null, 'blocked' => false, 'usage' => []];
     if ($code === '' || $companyId <= 0) {
         return $result;
     }
@@ -1318,6 +1318,7 @@ function deleteCompanyCurrencyCode(PDO $pdo, int $companyId, string $code): arra
 
     if ($usageMessages !== []) {
         $result['blocked'] = true;
+        $result['usage'] = $usageMessages;
         return $result;
     }
 
@@ -1430,6 +1431,21 @@ function removeCountry() {
             jsonResponse(false, 'Country is required', null);
             return;
         }
+
+        // Check-then-act: if the matching currency can't be deleted, refuse the whole
+        // removal atomically — never delete company_countries while leaving currency behind,
+        // otherwise the country would vanish from the list only to reappear on next reload
+        // (still surfaced via country_bank) while the underlying currency stays orphaned.
+        $currencyResult = deleteCompanyCurrencyCode($pdo, $companyId, $country);
+        if ($currencyResult['blocked']) {
+            $usageText = $currencyResult['usage'] !== [] ? implode(', ', $currencyResult['usage']) : 'existing records';
+            jsonResponse(false, 'Cannot remove country: currency ' . strtoupper($country) . ' is still used by ' . $usageText, [
+                'currency_id' => $currencyResult['id'],
+                'currency_blocked' => true,
+            ]);
+            return;
+        }
+
         $stmt = $pdo->prepare("DELETE FROM company_countries WHERE company_id = ? AND country = ?");
         $stmt->execute([$companyId, $country]);
         $companyCountriesDeleted = (int) $stmt->rowCount();
@@ -1444,7 +1460,6 @@ function removeCountry() {
             error_log('removeCountry selected countries: ' . $e->getMessage());
         }
 
-        $currencyResult = deleteCompanyCurrencyCode($pdo, $companyId, $country);
         require_once __DIR__ . '/../includes/realtime.php';
         realtime_publish_companies([$companyId], 'processes', 'remove_country');
         if ($currencyResult['deleted']) {
@@ -1454,7 +1469,7 @@ function removeCountry() {
             'deleted' => $companyCountriesDeleted,
             'currency_id' => $currencyResult['id'],
             'currency_deleted' => $currencyResult['deleted'],
-            'currency_blocked' => $currencyResult['blocked'],
+            'currency_blocked' => false,
         ]);
     } catch (Exception $e) {
         error_log("removeCountry: " . $e->getMessage());
