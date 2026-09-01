@@ -861,6 +861,9 @@ function getBankProcesses() {
         $hasTxnSubquery = $hasSourceBankProcessId
             ? "(SELECT COUNT(*) FROM transactions t WHERE t.source_bank_process_id = bp.id AND t.company_id = bp.company_id)"
             : "(SELECT COUNT(*) FROM process_accounting_posted pap WHERE pap.process_id = bp.id AND pap.company_id = bp.company_id)";
+        $hasTxnOnOrAfterDueSubquery = $hasSourceBankProcessId
+            ? "(EXISTS (SELECT 1 FROM transactions t WHERE t.source_bank_process_id = bp.id AND t.company_id = bp.company_id AND bp.day_end IS NOT NULL AND t.transaction_date >= bp.day_end))"
+            : "(EXISTS (SELECT 1 FROM process_accounting_posted pap WHERE pap.process_id = bp.id AND pap.company_id = bp.company_id AND bp.day_end IS NOT NULL AND pap.posted_date >= bp.day_end))";
         $resendPendingSelect = $hasResendPendingTable
             ? "(EXISTS (SELECT 1 FROM bank_process_maintenance_resend_pending rp WHERE rp.company_id = bp.company_id AND rp.bank_process_id = bp.id)) AS maintenance_resend_pending"
             : "0 AS maintenance_resend_pending";
@@ -934,6 +937,7 @@ function getBankProcesses() {
                     a_cm.account_id as card_merchant_account_id,
                     a_cust.account_id as customer_account,
                     $hasTxnSubquery AS has_transactions,
+                    $hasTxnOnOrAfterDueSubquery AS has_transaction_on_or_after_due,
                     $resendPendingSelect,
                     $resendTodayDayStartLockedSelect,
                     $resendGuardDayStartsTodaySelect
@@ -1022,6 +1026,7 @@ function getBankProcesses() {
                 'day_end' => $r['day_end'] ?? null,
                 'day_end_monthly_cap_enabled' => ((int)($r['day_end_monthly_cap_enabled'] ?? 0)) === 1 ? '1' : '0',
                 'has_transactions' => ((int)($r['has_transactions'] ?? 0)) > 0,
+                'has_transaction_on_or_after_due' => ((int)($r['has_transaction_on_or_after_due'] ?? 0)) === 1,
                 'maintenance_resend_pending' => ((int) ($r['maintenance_resend_pending'] ?? 0)) === 1,
                 'resend_today_day_start_locked' => ((int) ($r['resend_today_day_start_locked'] ?? 0)) === 1,
                 'resend_guard_day_starts_today' => isset($r['resend_guard_day_starts_today']) ? (string) $r['resend_guard_day_starts_today'] : '',
