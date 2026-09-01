@@ -738,8 +738,36 @@ function tenant_create_currency(PDO $pdo, string $code, array $ctx): array
     }
 
     tenant_sync_company_currency_to_parent_groups($pdo, $companyId, $code);
+    tenant_sync_currency_to_company_countries($pdo, $companyId, $code);
 
     return ['id' => $newId, 'code' => $code];
+}
+
+/**
+ * Mirror a company-scoped currency into company_countries so it appears in the
+ * Bank Process "Country (Currency)" dropdown (which reads country_bank + company_countries,
+ * not the currency table). Best-effort — must never fail currency creation.
+ */
+function tenant_sync_currency_to_company_countries(PDO $pdo, int $companyId, string $code): void
+{
+    if ($companyId <= 0 || $code === '') {
+        return;
+    }
+    try {
+        $chk = $pdo->query("SHOW TABLES LIKE 'company_countries'");
+        if (!$chk || $chk->rowCount() === 0) {
+            return;
+        }
+        $stmt = $pdo->prepare('INSERT IGNORE INTO company_countries (company_id, country) VALUES (?, ?)');
+        $stmt->execute([$companyId, $code]);
+
+        if (is_file(__DIR__ . '/../api/includes/realtime.php')) {
+            require_once __DIR__ . '/../api/includes/realtime.php';
+            realtime_publish_companies([$companyId], 'processes', 'add_country');
+        }
+    } catch (Throwable $e) {
+        error_log('tenant_sync_currency_to_company_countries: ' . $e->getMessage());
+    }
 }
 
 /**
