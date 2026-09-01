@@ -1003,8 +1003,12 @@ function inboxComputeBillingPeriodRangeForItem(array $item, array $process, bool
     }
 
     $dayStartYmd = inboxBankProcessDateFieldToYmd($item['day_start'] ?? $process['day_start'] ?? null);
-    $dayEndYmd = inboxBankProcessDateFieldToYmd($process['day_end'] ?? null);
-    if (!empty($process['accounting_resend_relax_created_floor']) && empty($item['is_resend_monthly_reopen'])) {
+    $dayEndYmd = !empty($item['is_resend_consolidated_range'])
+        ? inboxBankProcessDateFieldToYmd($item['day_end'] ?? $process['day_end'] ?? null)
+        : inboxBankProcessDateFieldToYmd($process['day_end'] ?? null);
+    if (!empty($process['accounting_resend_relax_created_floor'])
+        && empty($item['is_resend_monthly_reopen'])
+        && empty($item['is_resend_consolidated_range'])) {
         $storedStart = inboxBankProcessDateFieldToYmd($process['bank_process_stored_day_start'] ?? $item['bank_process_stored_day_start'] ?? null);
         if ($storedStart !== null) {
             $dayStartYmd = $storedStart;
@@ -1153,14 +1157,16 @@ function inboxEnrichNeedTodayBillingPeriods(array &$needToday, array $processByI
         $storedDayStart = $process['bank_process_stored_day_start'] ?? $row['bank_process_stored_day_start'] ?? null;
         $storedDayEnd = $process['bank_process_stored_day_end'] ?? $row['bank_process_stored_day_end'] ?? null;
         // Resend relax 期间：START DATE 始终显示库里真实 day_start，不因最新 Resend 日期而改变。
-        if (!empty($process['accounting_resend_relax_created_floor'])) {
+        // 但 consolidated range 本身就是「按 Resend 弹窗日期」出的合并账单，它的 day_start/day_end
+        // 早已在生成阶段被换成弹窗日期，这里不能再换回库里原 day_start，否则显示会跑回 Resend 前的旧日期。
+        if (!empty($process['accounting_resend_relax_created_floor']) && empty($row['is_resend_consolidated_range'])) {
             if ($storedDayStart !== null && trim((string) $storedDayStart) !== '') {
                 $row['day_start'] = $storedDayStart;
             }
             if ($storedDayEnd !== null && trim((string) $storedDayEnd) !== '') {
                 $row['day_end'] = $storedDayEnd;
             }
-        } elseif ($processDayStart !== null && trim((string) $processDayStart) !== '') {
+        } elseif (empty($row['is_resend_consolidated_range']) && $processDayStart !== null && trim((string) $processDayStart) !== '') {
             $row['day_start'] = $processDayStart;
         }
         [$start, $end] = inboxComputeBillingPeriodRangeForItem($row, $process, $hasDayEndMonthlyCapCol, $hasFrequency);
