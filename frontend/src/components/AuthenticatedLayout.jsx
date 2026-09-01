@@ -1235,6 +1235,7 @@ export default function AuthenticatedLayout() {
   const showFullMaintenanceMenu = canAccessFullMaintenance(me);
   const showLimitedMaintenanceMenu = canAccessLimitedMaintenance(me);
   const showMaintenanceMenu = showMaintenanceInSidebar(me);
+  const isBankOnlyCategory = Boolean(me?.company_has_bank) && !me?.company_has_gambling;
   const showCaptureMaintenance = useMemo(() => {
     void sidebarGcTick;
     return canAccessCaptureMaintenance(me);
@@ -1657,7 +1658,8 @@ export default function AuthenticatedLayout() {
                       </a>
                     )}
                     {(me?.company_has_gambling || me?.company_has_bank) &&
-                      (showFullMaintenanceMenu || showLimitedMaintenanceMenu) && (
+                      (showFullMaintenanceMenu || showLimitedMaintenanceMenu) &&
+                      !isBankOnlyCategory && (
                       <a
                         {...sidebarSubmenuLinkProps("/transaction-maintenance", goTo)}
                         className={`submenu-item ${pageKey === "transaction-maintenance" ? "current-page" : ""}`}
@@ -1675,7 +1677,9 @@ export default function AuthenticatedLayout() {
                         <span>{i18n.sidebarPayment}</span>
                       </a>
                     )}
-                    {(me?.company_has_gambling || me?.company_has_bank) && (showFullMaintenanceMenu || showLimitedMaintenanceMenu) && (
+                    {(me?.company_has_gambling || me?.company_has_bank) &&
+                      (showFullMaintenanceMenu || showLimitedMaintenanceMenu) &&
+                      !isBankOnlyCategory && (
                       <a
                         {...sidebarSubmenuLinkProps("/formula-maintenance", goTo)}
                         className={`submenu-item ${pageKey === "formula-maintenance" ? "current-page" : ""}`}
