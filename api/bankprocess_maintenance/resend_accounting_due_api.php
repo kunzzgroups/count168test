@@ -11,7 +11,6 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/maintenance_accounting_resend_lib.php';
 
-/** 与 processlist / 前端 isBankInactiveLike：Official、E-INVOICE、Block 不可 Resend（这些在 DB 里常为 status=active） */
 
 /** @return string|null Y-m-d */
 function bank_resend_anchor_ymd_from_raw(?string $raw): ?string
@@ -50,21 +49,6 @@ function bank_resend_parse_ymd_from_any_raw(?string $raw): ?string
         if (checkdate($mo, $d, $y)) {
             return sprintf('%04d-%02d-%02d', $y, $mo, $d);
         }
-    }
-    return null;
-}
-
-function bank_resend_blocking_issue_flag_from_row(array $bpRow): ?string
-{
-    $combined = '';
-    if (isset($bpRow['flag']) && trim((string) $bpRow['flag']) !== '') {
-        $combined = trim((string) $bpRow['flag']);
-    } elseif (isset($bpRow['issue_flag']) && trim((string) $bpRow['issue_flag']) !== '') {
-        $combined = trim((string) $bpRow['issue_flag']);
-    }
-    $normalized = strtolower(str_replace([' ', '-'], '_', $combined));
-    if (in_array($normalized, ['official', 'e_invoice', 'block'], true)) {
-        return $normalized;
     }
     return null;
 }
@@ -243,12 +227,6 @@ try {
     if (bmp_resend_tableHasColumn($pdo, 'bank_process', 'day_start')) {
         $selectCols[] = 'day_start';
     }
-    if (bmp_resend_tableHasColumn($pdo, 'bank_process', 'issue_flag')) {
-        $selectCols[] = 'issue_flag';
-    }
-    if (bmp_resend_tableHasColumn($pdo, 'bank_process', 'flag')) {
-        $selectCols[] = 'flag';
-    }
     $stmt = $pdo->prepare('SELECT ' . implode(', ', $selectCols) . ' FROM bank_process WHERE id = ? AND company_id = ? LIMIT 1');
     $stmt->execute([$bankProcessId, $company_id]);
     $bpRow = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -257,9 +235,6 @@ try {
     }
     if (strtolower(trim((string) ($bpRow['status'] ?? ''))) !== 'active') {
         throw new Exception('仅状态为 Active 的 Process 可使用 Resend');
-    }
-    if (bank_resend_blocking_issue_flag_from_row($bpRow) !== null) {
-        throw new Exception('Official、E-INVOICE、Block 状态的 Process 不可使用 Resend');
     }
 
     bmp_ensureMaintenanceResendPendingTable($pdo);
