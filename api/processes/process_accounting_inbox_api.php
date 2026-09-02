@@ -480,40 +480,19 @@ function bmpIssueFlagIsLocking(?string $normalizedFlag): bool
 }
 
 /**
- * Feature 2：纯 Active（无 issue_flag）且 day_end 旁开关 OFF 时，合同/day_end 到期后不再停止出账。
- * 该开关仅对 1st_of_every_month 可编辑，其余 frequency 恒为 OFF（前端表单已保证），因此本判断天然对所有 frequency 生效。
- * 建档时合同已过期（旧记录事后补录，纯记录用途）：不适用本 Feature，维持「到期即停」旧行为，
- * 避免把只作记录、从未打算出账的旧合同也拉进持续出账。
- * 此处必须用未被 Resend 放宽过的真实建立日（createdYmdOrFallbackToday，不含 accounting_resend_relax_created_floor
- * 的 min(created, day_start) 调整），否则 Resend 会把「有效建立日」拉回 day_start，
- * 反而让本该被挡住的记录用途合同重新获得 unlimitedWindow，导致 Resend 补的单期和持续出的正常流程账单同时出现。
- * 同理，day_start/day_end 也必须用合同真正的原始值：fetchActiveBankProcessesForInbox() 在本函数之前，
- * 已经用 bmp_mergeResendScheduleIntoBankProcessRowForAccounting() 把 relax=1 的行的 day_start/day_end
- * 临时覆盖成 Resend 弹窗填的锚点（供其他计算用），此处若照读会拿 Resend 填的日期去算合同到期日——
- * 一旦 Resend 填的锚点落在未来，到期日会被算成未来，导致「建立时已过期」这个判断失效，
- * 记录用合同又重新获得 unlimitedWindow。relax=1 时改用 merge 函数存下的原始值
- * bank_process_stored_day_start/day_end/day_start_frequency。
+ * Feature 2：纯 Active（无 issue_flag）且 day_end 旁开关 OFF 时，合同/day_end 到期后不再停止出账，
+ * 直到用户手动 inactive 为止。该开关仅对 1st_of_every_month 可编辑，其余 frequency 恒为 OFF
+ * （前端表单已保证），因此本判断天然对所有 frequency 生效。
+ * 不再区分「建档时合同是否已过期」——旧版曾对事后补录的记录用途合同维持「到期即停」，
+ * 现按需求统一取消该限制：只要是纯 Active 合同，到期后一律持续出账。
  */
-function bmpRowUnlimitedWindow(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row, string $today): bool
+function bmpRowUnlimitedWindow(?string $normalizedFlag, bool $hasDayEndMonthlyCapCol, array $row): bool
 {
     if (bmpIssueFlagIsLocking($normalizedFlag)) {
         return false;
     }
     if (inboxDayEndTailSwitchOn($hasDayEndMonthlyCapCol, $row)) {
         return false;
-    }
-    $hadResendMerge = !empty($row['accounting_resend_relax_created_floor']);
-    $dayStart = $hadResendMerge ? ($row['bank_process_stored_day_start'] ?? null) : ($row['day_start'] ?? null);
-    $dayEnd = $hadResendMerge ? ($row['bank_process_stored_day_end'] ?? null) : ($row['day_end'] ?? null);
-    $frequency = $hadResendMerge
-        ? ($row['bank_process_stored_day_start_frequency'] ?? '1st_of_every_month')
-        : ($row['day_start_frequency'] ?? '1st_of_every_month');
-    $contractEndYmd = bmpRecurringBillingWindowEndYmd($dayStart, $row['contract'] ?? null, $dayEnd, $frequency);
-    if ($contractEndYmd !== null) {
-        $createdYmd = createdYmdOrFallbackToday($row, $today);
-        if ($createdYmd > $contractEndYmd) {
-            return false;
-        }
     }
     return true;
 }
@@ -2507,7 +2486,7 @@ try {
     foreach ($rows as $i => $row) {
         $normalizedFlag = normalizeBankIssueFlagValueForInbox($row['issue_flag'] ?? null);
         bmpApplyIssueFlagBillingLock($pdo, $row, $company_id, $today, $hasIssueFlagLockCol);
-        $row['__unlimited_window'] = bmpRowUnlimitedWindow($normalizedFlag, $hasDayEndMonthlyCapCol, $row, $today);
+        $row['__unlimited_window'] = bmpRowUnlimitedWindow($normalizedFlag, $hasDayEndMonthlyCapCol, $row);
         $rows[$i] = $row;
     }
     $needToday = [];
