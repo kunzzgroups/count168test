@@ -1021,7 +1021,7 @@ export async function downloadMemberReportPdf({
         cellPadding: { top: 0.8, right: 1.2, bottom: 0.8, left: 1.2 },
         lineColor: [232, 237, 243],
         lineWidth: 0.2,
-        textColor: [15, 23, 42],
+        textColor: [0, 0, 0],
         overflow: "hidden",
         valign: "middle",
         fillColor: [249, 251, 255],
@@ -1036,7 +1036,7 @@ export async function downloadMemberReportPdf({
       },
       footStyles: {
         fillColor: [238, 244, 255],
-        textColor: [15, 23, 42],
+        textColor: [0, 0, 0],
         fontStyle: "bold",
         fontSize: 9,
       },
@@ -1046,17 +1046,20 @@ export async function downloadMemberReportPdf({
         const colIdx = hookData.column.index;
         const cellText = Array.isArray(hookData.cell?.text) ? hookData.cell.text.join(" ") : String(hookData.cell?.raw || "");
         const isDescOrRemarkBody = hookData.section === "body" && (colIdx === 6 || colIdx === 7);
+        const isCjkCell = !!(cjkFontFamily && hasCjkText(cellText));
         if (isDescOrRemarkBody) {
           // Enforce unified typography for Description + Remark columns.
+          // The embedded CJK font has no real bold weight (same file used for
+          // both styles), so forcing "bold" on CJK text just renders the thin
+          // regular glyphs, which reads as gray next to bold Latin text.
           hookData.cell.styles.font = resolvePdfFontFamilyForText(cellText, cjkFontFamily);
-          hookData.cell.styles.fontStyle = "bold";
+          hookData.cell.styles.fontStyle = isCjkCell ? "normal" : "bold";
           hookData.cell.styles.fontSize = 9;
           hookData.cell.styles.lineHeight = 1.0;
           hookData.cell.styles.halign = "left";
           hookData.cell.styles.overflow = "linebreak";
-          hookData.cell.styles.textColor = [15, 23, 42];
+          hookData.cell.styles.textColor = [0, 0, 0];
         }
-        const isCjkCell = !!(cjkFontFamily && hasCjkText(cellText));
         if (isCjkCell && !isDescOrRemarkBody) {
           hookData.cell.styles.font = cjkFontFamily;
           applyPdfCjkCellStyle(hookData.cell, {
@@ -1081,22 +1084,24 @@ export async function downloadMemberReportPdf({
           if (colIdx === 4) applyPdfMoneyStyle(hookData.cell, row?.cr_dr);
           if (colIdx === 5) applyPdfMoneyStyle(hookData.cell, row?.balance);
           if (colIdx === 6 && !isDescOrRemarkBody) {
-            if (!isCjkCell) hookData.cell.styles.fontStyle = "bold";
+            hookData.cell.styles.fontStyle = isCjkCell ? "normal" : "bold";
             hookData.cell.styles.overflow = "linebreak";
+            hookData.cell.styles.textColor = [0, 0, 0];
           }
           if (colIdx === 7 && !isDescOrRemarkBody) {
-            if (!isCjkCell) hookData.cell.styles.fontStyle = "bold";
+            hookData.cell.styles.fontStyle = isCjkCell ? "normal" : "bold";
             hookData.cell.styles.overflow = "linebreak";
             hookData.cell.styles.halign = "left";
+            hookData.cell.styles.textColor = [0, 0, 0];
           }
           if (colIdx === 1) {
             hookData.cell.styles.overflow = "linebreak";
-            hookData.cell.styles.fontStyle = "bold";
-            hookData.cell.styles.textColor = [15, 23, 42];
+            hookData.cell.styles.fontStyle = isCjkCell ? "normal" : "bold";
+            hookData.cell.styles.textColor = [0, 0, 0];
           }
           if (colIdx === 2) {
-            hookData.cell.styles.textColor = [15, 23, 42];
-            hookData.cell.styles.fontStyle = "bold";
+            hookData.cell.styles.textColor = [0, 0, 0];
+            hookData.cell.styles.fontStyle = isCjkCell ? "normal" : "bold";
           }
         }
         if (hookData.section === "foot") {
