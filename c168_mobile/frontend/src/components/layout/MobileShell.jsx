@@ -47,6 +47,7 @@ export default function MobileShell({
   const [topChromeH, setTopChromeH] = useState(118);
   /** Back-to-top appears above the FAB once the page is scrolled well past the top. */
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [stickyScrolled, setStickyScrolled] = useState(false);
   /** Floating Back pill for hub-child pages — thumbs live near the bottom, not the top-left. */
   const [showBackFab, setShowBackFab] = useState(false);
 
@@ -69,6 +70,7 @@ export default function MobileShell({
       const far = el.scrollTop > 240;
       if (floatingAction) setShowScrollTop(far);
       setShowBackFab(isSubpage && far);
+      setStickyScrolled(el.scrollTop > 8);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
@@ -182,7 +184,10 @@ export default function MobileShell({
 
   return (
     <div className={`m-shell${navVisible ? "" : " m-shell--no-nav"}`}>
-      <div ref={topChromeRef} className="m-shell-chrome">
+      <div
+        ref={topChromeRef}
+        className={`m-shell-chrome${stickyScrolled ? " m-shell-chrome--scrolled" : ""}`}
+      >
         <MobileAppBar
           i18n={labels}
           notificationCount={announcements.length}

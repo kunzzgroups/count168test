@@ -525,7 +525,12 @@ export default function BankProcessListPage() {
             onBusy={setBusy}
             row={actionRow}
             onApplyStatus={handleApplyStatus}
-            onOpenResend={() => setResendOpen(true)}
+            onOpenResend={() => {
+              // Close the edit sheet first — both overlays share z-index 60 and
+              // the resend sheet sits earlier in the DOM, so it would stay hidden
+              setFormOpen(false);
+              setResendOpen(true);
+            }}
             onDelete={(row) => void handleDeleteProcess(row)}
             onSaved={() => {
               notify(i18n.bankSaveOk);
@@ -585,28 +590,39 @@ export default function BankProcessListPage() {
 function BankProcessCard({ row, i18n, onOpen }) {
   const status = bankProcessDisplayStatus(row);
   const owner = String(row.supplier || row.card_owner || "").trim() || "—";
-  const supplier = String(row.card_lower || row.supplier || "").trim() || "—";
-  const meta = [
-    supplier,
-    bankTypeLabel(row),
-    String(row.country || "").trim().toUpperCase(),
-    String(row.contract || "").trim(),
-    String(row.date || row.day_start || "").slice(0, 10),
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const code = String(row.card_lower || "").trim();
+  const bankName = bankTypeLabel(row);
+  const currency = String(row.country || "").trim().toUpperCase();
+  const contract = String(row.contract || "").trim();
+  const date = String(row.date || row.day_start || "").slice(0, 10);
+  const costNum = Number(row.cost ?? row.buy_price ?? 0);
+  const profitNum = Number(row.profit ?? 0);
 
   return (
     <button type="button" className="m-mt-card m-bp-card m-bp-card-btn tap-scale" onClick={onOpen}>
       <div className="m-bp-card-top">
         <strong className="m-bp-card-title">{owner}</strong>
-        <span className={`m-bp-status ${statusToneClass(status)}`}>{statusLabel(status, i18n)}</span>
+        <span className={`m-bp-status ${statusToneClass(status)}`}>
+          <span className="m-bp-status-dot" aria-hidden="true" />
+          {statusLabel(status, i18n)}
+        </span>
       </div>
-      <div className="m-bp-card-meta">{meta}</div>
+      <div className="m-bp-card-meta">
+        {code ? <span className="m-bp-code">{code}</span> : null}
+        {bankName && bankName !== "—" ? <span className="m-bp-bank">{bankName}</span> : null}
+        {currency ? <span className="m-bp-currency">{currency}</span> : null}
+      </div>
+      <div className="m-bp-card-schedule">
+        <span className="m-bp-schedule-term">
+          <i className="far fa-clock" aria-hidden="true" />
+          {contract || "—"}
+        </span>
+        {date ? <span className="m-bp-schedule-date">{date}</span> : null}
+      </div>
       <div className="m-bp-amounts">
         <div className="m-bp-amt">
           <span>{i18n.bankCost}</span>
-          <strong>{formatBankMoney(row.cost ?? row.buy_price)}</strong>
+          <strong>{formatBankMoney(costNum)}</strong>
         </div>
         <div className="m-bp-amt">
           <span>{i18n.bankPrice}</span>
@@ -614,7 +630,7 @@ function BankProcessCard({ row, i18n, onOpen }) {
         </div>
         <div className="m-bp-amt">
           <span>{i18n.bankProfit}</span>
-          <strong className="is-profit">{formatBankMoney(row.profit)}</strong>
+          <strong className="is-profit">{formatBankMoney(profitNum)}</strong>
         </div>
       </div>
     </button>

@@ -12,7 +12,8 @@
   flex: 1;
   flex-direction: column;
   overflow: hidden;
-  background: var(--m-shell-bg);
+  /* Transparent — body::before paints the shared glow background */
+  background: transparent;
 }
 
 .m-shell-chrome {
@@ -25,9 +26,17 @@
 }
 
 .m-shell-sticky-wrap {
-  border-bottom: 1px solid var(--m-sticky-border);
-  background: var(--m-shell-bg);
+  /* Transparent at rest — body::before paints the shared glow background.
+     Once content scrolls underneath, the strip turns solid (see --scrolled). */
+  border-bottom: 0;
+  background: transparent;
   padding: 0.5rem var(--m-page-gutter);
+  transition: background-color 0.2s ease;
+}
+
+.m-shell-chrome--scrolled .m-shell-sticky-wrap {
+  background: var(--m-shell-bg);
+  border-bottom: 1px solid var(--m-sticky-border);
 }
 
 .m-shell-sticky-inner {

@@ -387,18 +387,19 @@ export function BankProcessFormSheet({
                   </select>
                 )}
               </Field>
-              <p className="m-bp-section-label">{i18n.bankType}</p>
-              {editMode ? (
-                <input type="text" readOnly value={form.type || ""} />
-              ) : (
-                <div className="m-filter-pill-wrap">
-                  {BANK_PROCESS_TYPES.map((t) => (
-                    <Pill key={t} active={form.type === t} onClick={() => patch({ type: t })}>
-                      {i18n[`bankType_${t}`] || t}
-                    </Pill>
-                  ))}
-                </div>
-              )}
+              <Field label={i18n.bankType}>
+                {editMode ? (
+                  <input type="text" readOnly value={form.type || ""} />
+                ) : (
+                  <div className="m-filter-pill-wrap">
+                    {BANK_PROCESS_TYPES.map((t) => (
+                      <Pill key={t} active={form.type === t} onClick={() => patch({ type: t })}>
+                        {i18n[`bankType_${t}`] || t}
+                      </Pill>
+                    ))}
+                  </div>
+                )}
+              </Field>
               <Field label={i18n.bankCardOwner}>
                 <input
                   type="text"

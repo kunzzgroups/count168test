@@ -295,10 +295,25 @@ export default function MaintenancePaymentPage() {
 
       {selectedCount > 0 ? (
         <div className="m-mt-actionbar">
-          <span>{getMaintenanceText(lang, "selectedCount", { n: selectedCount })}</span>
-          <button type="button" className="m-mt-delete-btn tap-scale" onClick={() => setConfirmOpen(true)}>
-            <i className="fas fa-trash" aria-hidden="true" /> {i18n.delete}
-          </button>
+          <span className="m-mt-actionbar-count">
+            <span className="m-mt-actionbar-check" aria-hidden="true">
+              <i className="fas fa-check" />
+            </span>
+            {getMaintenanceText(lang, "selectedCount", { n: selectedCount })}
+          </span>
+          <div className="m-mt-actionbar-actions">
+            <button
+              type="button"
+              className="m-mt-clear-btn tap-scale"
+              onClick={() => setSelectedIds(new Set())}
+              aria-label={i18n.cancel}
+            >
+              <i className="fas fa-xmark" aria-hidden="true" />
+            </button>
+            <button type="button" className="m-mt-delete-btn tap-scale" onClick={() => setConfirmOpen(true)}>
+              <i className="fas fa-trash" aria-hidden="true" /> {i18n.delete}
+            </button>
+          </div>
         </div>
       ) : null}
     </MobileShell>
