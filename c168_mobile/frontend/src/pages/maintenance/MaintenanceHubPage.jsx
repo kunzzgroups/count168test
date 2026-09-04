@@ -7,7 +7,6 @@ import { readLoginLang, writeLoginLang } from "../../lib/loginLang.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
 import { buildApiUrl } from "../../utils/apiUrl.js";
 import {
-  canAccessBankProcess,
   canAccessBankprocessMaintenance,
   canAccessMaintenance,
   canAccessPaymentMaintenance,
@@ -94,17 +93,6 @@ export default function MaintenanceHubPage() {
     });
   }
 
-  const setup = [];
-  if (canAccessBankProcess(me)) {
-    setup.push({
-      to: "/maintenance/bank-process",
-      icon: "fa-building-columns",
-      label: i18n.setupBank,
-      desc: i18n.setupBankDesc,
-      features: i18n.setupBankFeatures,
-    });
-  }
-
   const stickyBar = (
     <MobileSubpageHeader
       backTo="/more"
@@ -147,27 +135,6 @@ export default function MaintenanceHubPage() {
                 </Link>
               ))}
             </div>
-
-            {setup.length > 0 ? (
-              <>
-                <p className="m-mt-section-label">{i18n.sectionSetup}</p>
-                <div className="m-mt-setup-list">
-                  {setup.map((item) => (
-                    <Link key={item.label} to={item.to} className="m-mt-record-card tap-scale">
-                      <span className="m-mt-record-icon is-violet">
-                        <i className={`fas ${item.icon}`} aria-hidden="true" />
-                      </span>
-                      <span className="m-mt-record-copy">
-                        <strong>{item.label}</strong>
-                        {item.desc ? <small>{item.desc}</small> : null}
-                        {item.features ? <em className="m-mt-record-features">{item.features}</em> : null}
-                      </span>
-                      <i className="fas fa-chevron-right m-mt-record-chevron" aria-hidden="true" />
-                    </Link>
-                  ))}
-                </div>
-              </>
-            ) : null}
           </>
         )}
       </main>

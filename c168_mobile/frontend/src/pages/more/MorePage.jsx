@@ -15,9 +15,8 @@ import {
 import { fetchAutoRenewPendingCount } from "../../lib/autoRenewApi.js";
 import {
   canAccessAdmin,
+  canAccessBankProcess,
   canAccessMaintenance,
-  canAccessOwnership,
-  canShowReportEntry,
   resolveMobileMoreBackPath,
 } from "../../utils/mobilePermissions.js";
 import { maintenanceText } from "../../translateFile/maintenanceTranslate.js";
@@ -89,12 +88,12 @@ export default function MorePage() {
       description: i18n.userManagementDescription,
     });
   }
-  if (canAccessOwnership(me)) {
+  if (canAccessBankProcess(me)) {
     tools.push({
-      to: "/more/ownership",
-      icon: "fa-sitemap",
-      title: i18n.ownership,
-      description: i18n.ownershipDescription,
+      to: "/maintenance/bank-process",
+      icon: "fa-building-columns",
+      title: mt.setupBank,
+      description: mt.setupBankDesc,
     });
   }
   if (canAccessMaintenance(me)) {
@@ -103,14 +102,6 @@ export default function MorePage() {
       icon: "fa-screwdriver-wrench",
       title: mt.maintenance,
       description: mt.maintenanceDescription,
-    });
-  }
-  if (canShowReportEntry(me)) {
-    tools.push({
-      to: "/report",
-      icon: "fa-chart-column",
-      title: i18n.report,
-      description: i18n.reportDescription,
     });
   }
   if (canAccessC168DomainPages(me)) {
