@@ -93,16 +93,9 @@
   align-content: start;
 }
 
-/* Currency pills: single horizontal scroll row to save vertical space */
+/* Currency pills: wrap freely — every code stays visible, no clipping */
 .m-fchip-panel .m-filter-pill-scroll {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 0.15rem;
-}
-
-.m-fchip-panel .m-filter-pill-scroll::-webkit-scrollbar {
-  display: none;
+  flex-wrap: wrap;
 }
 
 
@@ -412,7 +405,7 @@
 }
 
 /* RIGHT — calendar gets the remaining width and internal breathing room */
-.m-fchip-panel .m-sheet-body {
+.m-fchip-panel--flush .m-sheet-body {
   padding: 0;
 }
 

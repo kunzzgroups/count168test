@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Reorder, useDragControls } from "framer-motion";
 import { useOverlayLock } from "../../hooks/useOverlayLock.js";
 import {
   PERIOD_PRESET_KEYS,
@@ -63,7 +62,7 @@ function monthTitle(year, month, lang) {
   return new Date(year, month, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
 }
 
-function MiniSheet({ open, onClose, title, children, footer }) {
+function MiniSheet({ open, onClose, title, children, footer, flush = false }) {
   useOverlayLock(open, onClose);
   // Portal to <body>: the chips live inside the sticky bar, whose overflow and
   // pull-refresh transform would otherwise hijack the fixed overlay's position
@@ -81,7 +80,7 @@ function MiniSheet({ open, onClose, title, children, footer }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`m-sheet-panel m-fchip-panel${
+        className={`m-sheet-panel m-fchip-panel${flush ? " m-fchip-panel--flush" : ""}${
           open ? " m-sheet-panel--open" : " m-sheet-panel--closed"
         }`}
       >
@@ -259,62 +258,6 @@ export function DateFilterChip({ dash, i18n, lang }) {
   );
 }
 
-/** Long-press (260ms) to lift a currency pill, then drag to reorder.
-    A quick tap still selects; the row still scrolls from the gaps. */
-function DraggableCurrencyPill({ code, active, disabled, onSelect, onDragEndPersist }) {
-  const controls = useDragControls();
-  const holdTimer = useRef(null);
-  const draggedRef = useRef(false);
-
-  const startHold = (e) => {
-    if (disabled) return;
-    draggedRef.current = false;
-    holdTimer.current = setTimeout(() => {
-      draggedRef.current = true;
-      controls.start(e);
-    }, 260);
-  };
-  const cancelHold = () => {
-    if (holdTimer.current) {
-      clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-  };
-
-  return (
-    <Reorder.Item
-      value={code}
-      dragListener={false}
-      dragControls={controls}
-      className="m-fchip-reorder-item"
-      whileDrag={{ scale: 1.08 }}
-      onDragStart={() => {
-        draggedRef.current = true;
-      }}
-      onDragEnd={() => {
-        cancelHold();
-        onDragEndPersist?.();
-      }}
-      onPointerDown={startHold}
-      onPointerUp={cancelHold}
-      onPointerLeave={cancelHold}
-      onPointerCancel={cancelHold}
-    >
-      <button
-        type="button"
-        disabled={disabled}
-        aria-pressed={active}
-        className={`m-filter-pill${active ? " m-filter-pill--active" : ""} m-fchip-currency-pill tap-scale`}
-        onClick={() => {
-          if (!draggedRef.current) onSelect();
-        }}
-      >
-        {code}
-      </button>
-    </Reorder.Item>
-  );
-}
-
 /* ── Scope chip: Group/Company two-pane org picker ─────────────────────────── */
 
 function scopeShortLabel(dash, draft) {
@@ -439,35 +382,8 @@ export function ScopeFilterChip({ dash, i18n, groupId, companyCode, groupOnlyMod
     preferredCompanyId: draft.companyId,
   });
   const companyList = companiesForPicker;
-  const companiesInGroup = (gid) =>
-    (dash.companies || []).filter((c) => String(c.group_id || "").trim().toUpperCase() === gid)
-      .length;
-
   const activeLabel = scopeShortLabel(dash, draft);
   const confirmLabel = activeLabel;
-
-  const draftCurrenciesRef = useRef(draftCurrencies);
-  draftCurrenciesRef.current = draftCurrencies;
-  const persistCurrencyOrder = useCallback(() => {
-    const order = draftCurrenciesRef.current;
-    if (!Array.isArray(order) || !order.length) return;
-    persistUserCurrencyDisplayOrder(order);
-    const cid = Number(draft.companyId) > 0 ? Number(draft.companyId) : null;
-    if (cid != null) persistCurrencyDisplayOrder(cid, order);
-    saveUserCurrencyOrder(order, {
-      companyId: cid != null ? cid : undefined,
-      groupId: cid == null ? String(draft.selectedGroup || "").toUpperCase() : undefined,
-    }).catch(() => {
-      /* localStorage mirrors already updated */
-    });
-  }, [draft.companyId, draft.selectedGroup]);
-
-  const handleCurrencyReorder = useCallback(
-    (nextOrder) => {
-      if (Array.isArray(nextOrder) && nextOrder.length) setDraftCurrencies(nextOrder);
-    },
-    [],
-  );
 
   return (
     <>
@@ -515,15 +431,13 @@ export function ScopeFilterChip({ dash, i18n, groupId, companyCode, groupOnlyMod
           </>
         }
       >
-        <div className="m-fchip-org">
-          <section className="m-fchip-pane">
-            <h4 className="m-fchip-pane-title">
-              <i className="fas fa-layer-group" aria-hidden="true" /> {i18n.groupId}
-            </h4>
-            <div className="m-fchip-pane-list">
-              <button
-                type="button"
-                className={`m-fchip-org-row${draft.groupsAllMode ? " is-selected" : ""}`}
+        {dash.groupIds?.length > 0 && (
+          <section className="m-fchip-block">
+            <h4 className="m-fchip-block-title">{i18n.groupId}</h4>
+            <div className="m-filter-pill-wrap">
+              <Pill
+                tone="violet"
+                active={draft.groupsAllMode}
                 onClick={() =>
                   setDraft((prev) => ({
                     ...prev,
@@ -531,152 +445,104 @@ export function ScopeFilterChip({ dash, i18n, groupId, companyCode, groupOnlyMod
                   }))
                 }
               >
-                <span className="m-fchip-org-avatar" aria-hidden="true">
-                  <i className="fas fa-globe" />
-                </span>
-                <span className="m-fchip-org-main">
-                  <strong>{i18n.all}</strong>
-                </span>
-                {draft.groupsAllMode ? (
-                  <i className="fas fa-check m-fchip-org-check" aria-hidden="true" />
-                ) : null}
-              </button>
-
+                {i18n.all}
+              </Pill>
               {groupList.map((gid) => (
-                <button
+                <Pill
                   key={gid}
-                  type="button"
-                  className={`m-fchip-org-row${
-                    draft.selectedGroup === gid && !draft.groupsAllMode ? " is-selected" : ""
-                  }`}
+                  tone="violet"
+                  active={draft.selectedGroup === gid && !draft.groupsAllMode}
                   onClick={() => {
                     const patch = pickGroupPatch(dash, draft, gid);
                     if (patch) setDraft(patch);
                   }}
                 >
-                  <span className="m-fchip-org-avatar" aria-hidden="true">
-                    {gid.slice(0, 2)}
-                  </span>
-                  <span className="m-fchip-org-main">
-                    <strong>{gid}</strong>
-                  </span>
-                  <span className="m-fchip-org-count">{companiesInGroup(gid)}</span>
-                </button>
+                  {gid}
+                </Pill>
               ))}
-
-              {groupList.length === 0 ? <p className="m-fchip-hint">—</p> : null}
             </div>
+            <p className="m-fchip-hint">
+              {showGroupOnlyHint
+                ? i18n.groupHint || "Tap a group for group-only · Company All aggregates companies"
+                : i18n.groupCompanyHint || "Pick a group, then choose a company"}
+            </p>
           </section>
+        )}
 
-          <section className="m-fchip-pane">
-            <h4 className="m-fchip-pane-title">
-              <i className="fas fa-building" aria-hidden="true" /> {i18n.company}
-            </h4>
-            <div className="m-fchip-pane-list">
-              {companiesForPicker.length > 1 || draft.selectedGroup || draft.groupsAllMode ? (
-                <button
-                  type="button"
-                  className={`m-fchip-org-row${draft.groupAllMode ? " is-selected" : ""}`}
-                  disabled={!draft.selectedGroup && !draft.groupsAllMode}
+        <section className="m-fchip-block">
+          <h4 className="m-fchip-block-title">{i18n.company}</h4>
+          <div className="m-filter-pill-wrap">
+            {(companiesForPicker.length > 1 || draft.selectedGroup || draft.groupsAllMode) && (
+              <Pill
+                active={draft.groupAllMode}
+                disabled={!draft.selectedGroup && !draft.groupsAllMode}
+                onClick={() =>
+                  setDraft((prev) => {
+                    if (prev.groupsAllMode) {
+                      return { ...prev, groupAllMode: true, selectedGroup: null, companyId: null };
+                    }
+                    return {
+                      ...prev,
+                      groupAllMode: true,
+                      groupsAllMode: false,
+                      companyId:
+                        Number.isFinite(Number(prev.companyId)) && Number(prev.companyId) > 0
+                          ? prev.companyId
+                          : (resolveCompanyPickForGroup(
+                              dash.companies,
+                              prev.selectedGroup,
+                              prev.companyId,
+                            )?.id ?? null),
+                    };
+                  })
+                }
+              >
+                {i18n.all}
+              </Pill>
+            )}
+            {companyList.map((c) => {
+              const label = String(c.company_id || c.name || c.id).toUpperCase();
+              const draftRow = dash.companies.find((row) => Number(row.id) === Number(draft.companyId));
+              const draftCode = String(draftRow?.company_id || "").trim().toUpperCase();
+              const active =
+                !draft.groupAllMode &&
+                !groupOnlyDraft &&
+                (Number(draft.companyId) === Number(c.id) || (draftCode && draftCode === label));
+              return (
+                <Pill
+                  key={label}
+                  active={active}
                   onClick={() =>
-                    setDraft((prev) => {
-                      if (prev.groupsAllMode) {
-                        return { ...prev, groupAllMode: true, selectedGroup: null, companyId: null };
-                      }
-                      return {
-                        ...prev,
-                        groupAllMode: true,
-                        groupsAllMode: false,
-                        companyId:
-                          Number.isFinite(Number(prev.companyId)) && Number(prev.companyId) > 0
-                            ? prev.companyId
-                            : (resolveCompanyPickForGroup(
-                                dash.companies,
-                                prev.selectedGroup,
-                                prev.companyId,
-                              )?.id ?? null),
-                      };
-                    })
+                    setDraft((prev) => ({
+                      ...prev,
+                      groupAllMode: false,
+                      groupsAllMode: false,
+                      companyId: c.id,
+                      selectedGroup:
+                        prev.selectedGroup ||
+                        (c.group_id ? String(c.group_id).trim().toUpperCase() : null),
+                    }))
                   }
                 >
-                  <span className="m-fchip-org-avatar" aria-hidden="true">
-                    <i className="fas fa-border-all" />
-                  </span>
-                  <span className="m-fchip-org-main">
-                    <strong>{i18n.all}</strong>
-                  </span>
-                  {draft.groupAllMode ? (
-                    <i className="fas fa-check m-fchip-org-check" aria-hidden="true" />
-                  ) : null}
-                </button>
-              ) : null}
-
-              {companyList.map((c) => {
-                const label = String(c.company_id || c.name || c.id).toUpperCase();
-                const active =
-                  !draft.groupAllMode &&
-                  !groupOnlyDraft &&
-                  Number(draft.companyId) === Number(c.id);
-                const name = String(c.name || "").trim();
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    className={`m-fchip-org-row${active ? " is-selected" : ""}`}
-                    onClick={() =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        groupAllMode: false,
-                        groupsAllMode: false,
-                        companyId: c.id,
-                        selectedGroup:
-                          prev.selectedGroup ||
-                          (c.group_id ? String(c.group_id).trim().toUpperCase() : null),
-                      }))
-                    }
-                  >
-                    <span className="m-fchip-org-avatar" aria-hidden="true">
-                      {label.slice(0, 2)}
-                    </span>
-                    <span className="m-fchip-org-main">
-                      <strong>{label}</strong>
-                      {name && name.toUpperCase() !== label ? <small>{name}</small> : null}
-                    </span>
-                    {active ? (
-                      <i className="fas fa-check m-fchip-org-check" aria-hidden="true" />
-                    ) : null}
-                  </button>
-                );
-              })}
-
-              {companyList.length === 0 ? (
-                <p className="m-fchip-hint">
-                  {i18n.groupCompanyHint || "Pick a group first"}
-                </p>
-              ) : null}
-            </div>
-          </section>
-        </div>
-
+                  {label}
+                </Pill>
+              );
+            })}
+            {companyList.length === 0 ? (
+              <p className="m-fchip-hint">{i18n.groupCompanyHint || "Pick a group first"}</p>
+            ) : null}
+          </div>
+        </section>
         {draftCurrencies.length > 0 && (
           <section className="m-fchip-block">
-            <h4 className="m-fchip-block-title">
-              <i className="fas fa-coins" aria-hidden="true" /> {i18n.currency}
-            </h4>
-            <Reorder.Group
-              axis="x"
-              as="div"
-              values={draftCurrencies}
-              onReorder={handleCurrencyReorder}
-              className="m-filter-pill-scroll m-fchip-currency-row"
-            >
+            <h4 className="m-fchip-block-title">{i18n.currency}</h4>
+            <div className="m-filter-pill-scroll">
               {txMode
                 ? draftCurrencies.map((code) => (
-                    <DraggableCurrencyPill
+                    <Pill
                       key={code}
-                      code={code}
                       active={draft.selectedCurrencies.includes(code)}
-                      onSelect={() =>
+                      onClick={() =>
                         setDraft((prev) => {
                           const set = new Set(prev.selectedCurrencies);
                           if (set.has(code)) {
@@ -689,22 +555,20 @@ export function ScopeFilterChip({ dash, i18n, groupId, companyCode, groupOnlyMod
                           return { ...prev, selectedCurrencies: next, currency: next[0] || code };
                         })
                       }
-                      onDragEndPersist={persistCurrencyOrder}
-                    />
+                    >
+                      {code}
+                    </Pill>
                   ))
                 : draftCurrencies.map((code) => (
-                    <DraggableCurrencyPill
+                    <Pill
                       key={code}
-                      code={code}
                       active={draft.currency === code}
-                      onSelect={() => setDraft((prev) => ({ ...prev, currency: code }))}
-                      onDragEndPersist={persistCurrencyOrder}
-                    />
+                      onClick={() => setDraft((prev) => ({ ...prev, currency: code }))}
+                    >
+                      {code}
+                    </Pill>
                   ))}
-            </Reorder.Group>
-            <p className="m-fchip-hint">
-              {i18n.currencyReorderHint || "Long-press a currency to reorder"}
-            </p>
+            </div>
           </section>
         )}
       </MiniSheet>
