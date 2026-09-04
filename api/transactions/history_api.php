@@ -2641,7 +2641,6 @@ try {
                     tr.rate_transfer_from_account_id,
                     tr.rate_transfer_to_account_id,
                     transfer_from_acc.account_id AS rate_transfer_from_account_code,
-                    transfer_to_acc.account_id AS rate_transfer_to_account_code,
                     cf.code AS from_currency_code,
                     ct.code AS to_currency_code,
                     h.id AS header_id,
@@ -2658,7 +2657,6 @@ try {
                 LEFT JOIN currency c ON e.currency_id = c.id
                 LEFT JOIN transactions_rate tr ON h.id = tr.transaction_id
                 LEFT JOIN account transfer_from_acc ON tr.rate_transfer_from_account_id = transfer_from_acc.id
-                LEFT JOIN account transfer_to_acc ON tr.rate_transfer_to_account_id = transfer_to_acc.id
                 LEFT JOIN currency cf ON tr.rate_from_currency_id = cf.id
                 LEFT JOIN currency ct ON tr.rate_to_currency_id = ct.id
                 LEFT JOIN user u ON h.created_by = u.id
@@ -2758,10 +2756,7 @@ try {
                 $row['to_currency_code'] ?? null,
                 $markupRate,
                 $row['rate_from_amount'] ?? null,
-                // 中间人的抽成实际是从 transfer 的 From 侧（rate_transfer_to_account_id，
-                // 因 payload 命名与 UI 交叉，此字段存的正是 UI"From Account"）扣的，
-                // 不是 rate_transfer_from_account_id（UI"To Account"）。
-                $row['rate_transfer_to_account_code'] ?? null
+                $row['rate_transfer_from_account_code'] ?? null
             );
         } elseif (in_array($entryType, ['RATE_FEE', 'RATE_PLATFORM_FEE'], true)) {
             // Keep Fee / Platform Fee descriptions as stored (Charge … Service Fees / PlatForm Fee).
