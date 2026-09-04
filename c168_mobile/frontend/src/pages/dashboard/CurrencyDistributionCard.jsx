@@ -130,7 +130,8 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
             {i18n.noData}
           </p>
         ) : (
-          <div className="m-dash-pie-wrap">
+          <>
+            <div className="m-dash-pie-wrap">
             <div
               ref={pieHostRef}
               className="m-dash-pie-chart"
@@ -224,46 +225,47 @@ const CurrencyDistributionCard = memo(function CurrencyDistributionCard({
                 <li className="m-dash-pie-legend-empty">{i18n.noData}</li>
               )}
             </ul>
+          </div>
 
-            {activeRow && !loading ? (
-              <div className="m-dash-pie-detail">
-                <p className="m-dash-pie-detail-head">
-                  <span className="m-dash-pie-detail-dot" style={{ backgroundColor: activeColor }} aria-hidden="true" />
-                  <b>{String(activeCode).toUpperCase()}</b>
-                  {activeShare != null ? (
-                    <span className="m-dash-pie-detail-share">{Number(activeShare).toFixed(1)}%</span>
-                  ) : null}
-                </p>
+          {activeRow && !loading ? (
+            <div className="m-dash-pie-detail">
+              <p className="m-dash-pie-detail-head">
+                <span className="m-dash-pie-detail-dot" style={{ backgroundColor: activeColor }} aria-hidden="true" />
+                <b>{String(activeCode).toUpperCase()}</b>
+                {activeShare != null ? (
+                  <span className="m-dash-pie-detail-share">{Number(activeShare).toFixed(1)}%</span>
+                ) : null}
+              </p>
+              <p className="m-dash-pie-detail-line">
+                {i18n.native || "Native"}: {formatCurrency(activeRow.earnings)}{" "}
+                {String(activeCode).toUpperCase()}
+              </p>
+              {pieUseConverted && String(activeCode).toUpperCase() !== String(pieBaseCode).toUpperCase() ? (
                 <p className="m-dash-pie-detail-line">
-                  {i18n.native || "Native"}: {formatCurrency(activeRow.earnings)}{" "}
-                  {String(activeCode).toUpperCase()}
-                </p>
-                {pieUseConverted && String(activeCode).toUpperCase() !== String(pieBaseCode).toUpperCase() ? (
-                  <p className="m-dash-pie-detail-line">
-                    ≈{" "}
-                    {formatCurrency(
-                      activeRow.earningsConverted != null
-                        ? activeRow.earningsConverted
-                        : computeDisplayConvertedAmount(
-                            activeRow.earnings,
-                            String(activeCode).toUpperCase(),
-                            pieBaseCode,
-                            exchangeRates.rates,
-                          ),
-                    )}{" "}
-                    {pieBaseCode}
-                    {exchangeRatesLoading
-                      ? ""
-                      : ` · ${i18n.rate} ${formatFrankfurterUnitRate(
+                  ≈{" "}
+                  {formatCurrency(
+                    activeRow.earningsConverted != null
+                      ? activeRow.earningsConverted
+                      : computeDisplayConvertedAmount(
+                          activeRow.earnings,
                           String(activeCode).toUpperCase(),
                           pieBaseCode,
                           exchangeRates.rates,
-                        )}`}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
+                        ),
+                  )}{" "}
+                  {pieBaseCode}
+                  {exchangeRatesLoading
+                    ? ""
+                    : ` · ${i18n.rate} ${formatFrankfurterUnitRate(
+                        String(activeCode).toUpperCase(),
+                        pieBaseCode,
+                        exchangeRates.rates,
+                      )}`}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          </>
         )}
       </div>
 

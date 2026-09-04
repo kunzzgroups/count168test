@@ -38,8 +38,9 @@
 
   /* Single viewport-fixed background layer — the app shell (app bar, sticky
      filter bar, content) stays transparent above it, so no scroll container
-     or fixed strip can ever show a seam against the page background. */
-  body::before {
+     or fixed strip can ever show a seam against the page background.
+     Excluded on the login page (body.bg paints its own branded background). */
+  body:not(.bg)::before {
     content: "";
     position: fixed;
     inset: 0;
