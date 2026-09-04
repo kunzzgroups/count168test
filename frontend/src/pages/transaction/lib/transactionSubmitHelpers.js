@@ -83,9 +83,10 @@ export function parseMiddlemanRateInput(raw) {
 /**
  * Rate-Mul commission in second-currency units (full precision; caller stores at 6dp).
  * 顾客金额固定按 FX Rate（base）计算，不再受 Rate-Mul 影响；
- * commission = 用 Rate-Mul 重新算出来的值 − 顾客固定金额（顺序固定，不能反过来）。
  * - "divide" mode（Rate-Mul 输入 `/newDivisor`，只在 FX Rate 本身也是 `/divisor` 时生效）：
- *   rateMulCommission = from/newDivisor − from/divisor（newDivisor 直接取自输入，不再相加）
+ *   rateMulCommission = from/divisor − from/newDivisor（顾客固定金额 − 用 Rate-Mul 重新算出来的值）。
+ *   除数越大，客人拿到的越少，Middle-Man 抽得越多，所以要 newDivisor > divisor 才是抽成（正数）——
+ *   跟 multiply 模式方向相反：multiply 是「新汇率越小抽得越多」，divide 是「新除数越大抽得越多」。
  * - "multiply" mode（Rate-Mul 输入纯正数）：
  *   - FX Rate 本身也是 `/divisor`：点数直接用，rateMulCommission = mul × 1000（独立玩法，不套用上面公式）
  *   - FX Rate 本身是乘法写法：Rate-Mul 当作「新汇率」，
@@ -105,7 +106,7 @@ export function computeRateMulCommission({ fromAmount, middlemanRate, exchangeRa
     if (!baseDivisor) return MoneyDecimal.toDecimal("0", 0);
     const base = fromDec.div(baseDivisor);
     const adjusted = fromDec.div(parsed.divisor);
-    return adjusted.minus(base);
+    return base.minus(adjusted);
   }
 
   // parsed.mode === "multiply"
