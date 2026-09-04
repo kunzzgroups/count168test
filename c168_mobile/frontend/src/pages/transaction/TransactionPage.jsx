@@ -17,9 +17,13 @@ function ToggleChip({ active, onClick, children }) {
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`m-tx-chip tap-scale${active ? " m-tx-chip--active" : ""}`}
     >
-      {children}
+      <span className="m-tx-chip-dot" aria-hidden="true">
+        <i className="fas fa-check" />
+      </span>
+      <span className="m-tx-chip-label">{children}</span>
     </button>
   );
 }
@@ -132,39 +136,23 @@ export default function TransactionPage() {
 
   const stickyBar = (
     <div className="m-tx-sticky">
-      <div className="m-tx-sticky-row">
-        <button type="button" onClick={() => setFilterOpen(true)} className="m-filter-bar tap-scale">
-          <div className="m-filter-bar-row">
-            <i className="far fa-calendar m-filter-bar-icon" aria-hidden="true" />
-            <span className="m-filter-bar-dates">{tx.dateRangeText}</span>
-            <span className="m-filter-bar-currency">{tx.currency}</span>
-            <span className="m-filter-bar-action">
-              <i className="fas fa-filter" aria-hidden="true" />
-            </span>
-          </div>
-          <div className="m-filter-bar-scope">
-            <ScopeBreadcrumb
-              i18n={tx.i18n}
-              groupId={groupId}
-              companyCode={companyCode}
-              groupsAllMode={tx.groupsAllMode}
-              groupAllMode={tx.groupAllMode}
-              groupOnlyMode={tx.groupOnlyMode}
-            />
-          </div>
-        </button>
-        {tx.canUseContraInbox ? (
-          <button
-            type="button"
-            onClick={() => tx.setContraInbox((s) => ({ ...s, open: true }))}
-            className="m-tx-inbox-btn tap-scale"
-            aria-label={tx.m.contraInbox}
-          >
-            <i className="fas fa-inbox" aria-hidden="true" />
-            {inboxCount > 0 ? <span className="m-tx-inbox-badge">{inboxCount}</span> : null}
-          </button>
-        ) : null}
-      </div>
+      <button type="button" onClick={() => setFilterOpen(true)} className="m-filter-bar tap-scale">
+        <div className="m-filter-bar-row">
+          <i className="far fa-calendar m-filter-bar-icon" aria-hidden="true" />
+          <span className="m-filter-bar-dates">{tx.dateRangeText}</span>
+          <span className="m-filter-bar-currency">{tx.currency}</span>
+        </div>
+        <div className="m-filter-bar-scope">
+          <ScopeBreadcrumb
+            i18n={tx.i18n}
+            groupId={groupId}
+            companyCode={companyCode}
+            groupsAllMode={tx.groupsAllMode}
+            groupAllMode={tx.groupAllMode}
+            groupOnlyMode={tx.groupOnlyMode}
+          />
+        </div>
+      </button>
 
       <div className="m-tx-chips">
         <ToggleChip active={tx.showName} onClick={() => tx.setShowName(!tx.showName)}>
@@ -203,6 +191,21 @@ export default function TransactionPage() {
       onRefresh={onPullRefresh}
       refreshing={pullRefreshActive && tx.searchLoading}
       stickyBar={stickyBar}
+      appBarLeftAction={
+        tx.canUseContraInbox ? (
+          <button
+            type="button"
+            onClick={() => tx.setContraInbox((s) => ({ ...s, open: true }))}
+            className="m-appbar-btn m-appbar-btn--inbox tap-scale"
+            aria-label={tx.m.contraInbox}
+          >
+            <i className="fas fa-inbox" aria-hidden="true" />
+            {inboxCount > 0 ? (
+              <span className="m-appbar-badge">{inboxCount > 9 ? "9+" : inboxCount}</span>
+            ) : null}
+          </button>
+        ) : null
+      }
       lang={tx.lang}
       onLangChange={tx.setLang}
       overlayOpen={overlayOpen}
@@ -290,7 +293,6 @@ export default function TransactionPage() {
               rows={tx.displayRows}
               showName={tx.showName}
               m={tx.m}
-              currency={tx.currency}
               onOpenHistory={openHistory}
               onPickBalance={pickBalanceForForm}
             />

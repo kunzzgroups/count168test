@@ -168,7 +168,6 @@
 
 /* Narrow phones / fold cover */
 @media (max-width: 340px) {
-  .dev-phone-screen,
   #root {
     font-size: 15px;
   }

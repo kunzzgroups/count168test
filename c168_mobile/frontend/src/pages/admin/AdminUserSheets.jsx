@@ -414,6 +414,8 @@ export function UserFormSheet({ open, onClose, admin }) {
   const [tenantPickerOpen, setTenantPickerOpen] = useState(false);
   const ownerShadow = !!admin.editingRow?.is_owner_shadow;
   const selfToggle = !!admin.selfToggle;
+  const caps = admin.editingRow ? admin.rowCaps(admin.editingRow) : null;
+  const rowInactive = normRole(admin.editingRow?.status) === "inactive";
   const accessLocked = ownerShadow || (!!fieldLocks.accountProcess && !selfToggle);
   const groupLabel = String(
     admin.selectedGroup || admin.selectedCompany?.group_id || "",
@@ -471,16 +473,34 @@ export function UserFormSheet({ open, onClose, admin }) {
         onClose={requestClose}
         tall
         footer={
-          <button
-            type="button"
-            className="m-account-primary-btn tap-scale"
-            disabled={admin.saving}
-            onClick={async () => {
-              if (await admin.saveUser()) onClose();
-            }}
-          >
-            {admin.saving ? i18n.saving : i18n.save}
-          </button>
+          <>
+            <div className="m-account-footer-actions">
+              <button
+                type="button"
+                className="m-account-primary-btn tap-scale"
+                disabled={admin.saving}
+                onClick={async () => {
+                  if (await admin.saveUser()) onClose();
+                }}
+              >
+                {admin.saving ? i18n.saving : i18n.save}
+              </button>
+            </div>
+            {isEditMode && caps?.canDelete ? (
+              <button
+                type="button"
+                className="m-account-danger-btn tap-scale"
+                disabled={!rowInactive || !admin.canMutate || admin.saving}
+                title={rowInactive ? "" : i18n.deleteInactiveOnly}
+                onClick={async () => {
+                  if (!window.confirm(i18n.deleteConfirm)) return;
+                  if (await admin.deleteUser()) onClose();
+                }}
+              >
+                <i className="fas fa-trash" aria-hidden="true" /> {i18n.delete}
+              </button>
+            ) : null}
+          </>
         }
       >
         {ownerShadow ? <p className="m-admin-shadow-hint">{i18n.ownerShadowHint}</p> : null}
@@ -538,6 +558,19 @@ export function UserFormSheet({ open, onClose, admin }) {
                   {form.role && !admin.roleOptions.some((opt) => opt.value === form.role) ? (
                     <option value={form.role}>{String(form.role).toUpperCase()}</option>
                   ) : null}
+                </select>
+              </label>
+            ) : null}
+            {isEditMode && !ownerShadow ? (
+              <label className="m-account-form-field">
+                <span>{i18n.status}</span>
+                <select
+                  value={form.status}
+                  disabled={!admin.canMutate || (caps ? !caps.canToggleStatus : false)}
+                  onChange={set("status")}
+                >
+                  <option value="active">{i18n.active}</option>
+                  <option value="inactive">{i18n.inactive}</option>
                 </select>
               </label>
             ) : null}

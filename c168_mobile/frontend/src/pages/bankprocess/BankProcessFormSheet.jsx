@@ -3,7 +3,10 @@ import { useOverlayLock } from "../../hooks/useOverlayLock.js";
 import {
   BANK_PROCESS_CONTRACT_OPTIONS,
   BANK_PROCESS_TYPES,
+  bankProcessUiStatusKey,
   calcBankNetProfitDisplay,
+  canDeleteBankProcess,
+  canShowBankResend,
   contractBillingEndYmdForBankForm,
   EMPTY_BANK_FORM,
   fetchBankCountries,
@@ -30,6 +33,18 @@ const FREQ_OPTIONS = [
   { value: "day", labelKey: "bankFreqDay" },
   { value: "once", labelKey: "bankFreqOnce" },
 ];
+
+const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "OFFICIAL", "E_INVOICE", "BLOCK"];
+
+function bankStatusLabel(key, i18n) {
+  const k = String(key || "").toUpperCase().replace(/-/g, "_");
+  if (k === "ACTIVE") return i18n.bankStatusActive;
+  if (k === "INACTIVE") return i18n.bankStatusInactive;
+  if (k === "OFFICIAL") return i18n.bankStatusOfficial;
+  if (k === "E_INVOICE") return i18n.bankStatusEInvoice;
+  if (k === "BLOCK") return i18n.bankStatusBlock;
+  return k;
+}
 
 function Field({ label, children }) {
   return (
@@ -111,6 +126,10 @@ export function BankProcessFormSheet({
   onBusy,
   onSaved,
   onError,
+  row = null,
+  onApplyStatus,
+  onOpenResend,
+  onDelete,
 }) {
   const [form, setForm] = useState({ ...EMPTY_BANK_FORM });
   const [countries, setCountries] = useState([]);
@@ -612,6 +631,22 @@ export function BankProcessFormSheet({
               </div>
             </section>
 
+            {editMode && row && onApplyStatus ? (
+              <Section title={i18n.bankStatus}>
+                <div className="m-filter-pill-wrap">
+                  {STATUS_OPTIONS.map((opt) => (
+                    <Pill
+                      key={opt}
+                      active={bankProcessUiStatusKey(row) === opt}
+                      onClick={() => onApplyStatus(opt)}
+                    >
+                      {bankStatusLabel(opt, i18n)}
+                    </Pill>
+                  ))}
+                </div>
+              </Section>
+            ) : null}
+
             <Section title={i18n.bankSectionNotes}>
               <Field label={i18n.bankSop}>
                 <textarea
@@ -640,6 +675,16 @@ export function BankProcessFormSheet({
             >
               {i18n.cancel}
             </button>
+            {editMode && row && canShowBankResend(row) && onOpenResend ? (
+              <button
+                type="button"
+                className="m-sheet-footer-btn m-sheet-footer-btn--muted tap-scale"
+                disabled={busy}
+                onClick={onOpenResend}
+              >
+                <i className="fas fa-rotate-right" aria-hidden="true" /> {i18n.bankResend}
+              </button>
+            ) : null}
             <button
               type="button"
               className="m-sheet-footer-btn m-sheet-footer-btn--primary tap-scale"
@@ -649,6 +694,19 @@ export function BankProcessFormSheet({
               {i18n.save}
             </button>
           </div>
+          {editMode && row && canDeleteBankProcess(row) && onDelete ? (
+            <button
+              type="button"
+              className="m-bp-form-danger tap-scale"
+              disabled={busy}
+              onClick={() => {
+                if (!window.confirm(i18n.bankDeleteConfirm)) return;
+                onDelete?.(row);
+              }}
+            >
+              <i className="fas fa-trash" aria-hidden="true" /> {i18n.delete}
+            </button>
+          ) : null}
         </section>
       </div>
 

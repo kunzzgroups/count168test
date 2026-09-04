@@ -1,10 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import ScopeBreadcrumb from "../dashboard/ScopeBreadcrumb.jsx";
-import { getRoleClass } from "../../lib/transactionPaymentLogic.js";
 import { useMobileAccount } from "../../hooks/useMobileAccount.js";
 import {
-  AccountDetailSheet,
   AccountFormSheet,
   AccountScopeSheet,
   CurrencySettingSheet,
@@ -26,53 +24,42 @@ function Chip({ active, onClick, children }) {
 
 function AccountCard({ row, account, onOpen }) {
   const { i18n } = account;
-  const roleClass = getRoleClass(row.role);
-  const active = String(row.status || "").toLowerCase() === "active";
+  const code = String(row.account_id || "").toUpperCase();
+  const name = String(row.name || "").trim();
+  const lastLoginText = row.last_login
+    ? `${i18n.lastLogin} ${String(row.last_login).slice(0, 10)}`
+    : "";
   return (
-    <article className={`m-account-card m-account-role${roleClass ? ` ${roleClass}` : ""}`}>
-      <button
-        type="button"
-        className="m-account-card-main tap-scale"
-        onClick={() => onOpen(row)}
-        aria-label={`${i18n.tapForDetail}: ${row.account_id}`}
-      >
-        <span className="m-account-avatar">{String(row.account_id || "A").slice(0, 2)}</span>
-        <span className="m-account-card-copy">
-          <strong>{String(row.account_id || "").toUpperCase()}</strong>
-          <span>{String(row.name || row.role || "").toUpperCase()}</span>
-          <small>
-            {[row.role, row.last_login ? `${i18n.lastLogin} ${String(row.last_login).slice(0, 10)}` : ""]
-              .filter(Boolean)
-              .join(" · ")}
-          </small>
-        </span>
-        <i className="fas fa-chevron-right" aria-hidden="true" />
-      </button>
-      <div className="m-account-card-actions">
-        <button
-          type="button"
-          disabled={!account.canMutate}
-          onClick={async () => {
-            const result = await account.toggleAlert(row);
-            if (result === "needsEdit") onOpen(row);
-          }}
-          className="m-account-card-alert tap-scale"
-        >
-          {i18n.paymentAlert}
-          <span className={`m-account-switch ${Number(row.payment_alert) ? "is-on" : ""}`}>
-            <span />
-          </span>
-        </button>
-        <button
-          type="button"
-          disabled={!account.canMutate}
-          onClick={() => account.toggleStatus(row)}
-          className={`m-account-status tap-scale ${active ? "active" : "inactive"}`}
-        >
-          {active ? i18n.active : i18n.inactive}
-        </button>
-      </div>
-    </article>
+    <button
+      type="button"
+      onClick={() => onOpen(row)}
+      className="m-user-card tap-scale"
+      aria-label={`${i18n.tapForDetail}: ${code}`}
+    >
+      <span className="m-user-card-avatar" aria-hidden="true">
+        {code.slice(0, 2)}
+      </span>
+      <span className="m-user-card-copy">
+        <strong title={name || undefined}>
+          {code}
+          {name && name.toUpperCase() !== code ? <span>{name}</span> : null}
+        </strong>
+        <small>
+          {row.role ? <b>{String(row.role)}</b> : null}
+          {lastLoginText ? (
+            <>
+              {row.role ? (
+                <span className="m-user-card-sep" aria-hidden="true">
+                  ·
+                </span>
+              ) : null}
+              <span>{lastLoginText}</span>
+            </>
+          ) : null}
+        </small>
+      </span>
+      <i className="fas fa-chevron-right" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -80,7 +67,6 @@ export default function AccountPage() {
   const account = useMobileAccount();
   const { i18n } = account;
   const [scopeOpen, setScopeOpen] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
@@ -102,12 +88,11 @@ export default function AccountPage() {
       ? companyCode
       : groupId;
   const sidebarGroup = account.companyId ? groupId : "";
-  const overlayOpen = scopeOpen || detailOpen || formOpen || linkOpen || currencyOpen || sortOpen;
+  const overlayOpen = scopeOpen || formOpen || linkOpen || currencyOpen || sortOpen;
 
-  const openDetail = useCallback(
+  const openCardEdit = useCallback(
     async (row) => {
-      const detail = await account.loadDetail(row);
-      if (detail) setDetailOpen(true);
+      if (await account.openEdit(row)) setFormOpen(true);
     },
     [account],
   );
@@ -203,24 +188,17 @@ export default function AccountPage() {
       overlay={
         <>
           <AccountScopeSheet open={scopeOpen} onClose={() => setScopeOpen(false)} account={account} />
-          <AccountDetailSheet
-            open={detailOpen}
-            onClose={() => setDetailOpen(false)}
+          <AccountFormSheet
+            open={formOpen}
+            onClose={() => setFormOpen(false)}
             account={account}
-            onEdit={async () => {
-              if (await account.openEdit()) {
-                setDetailOpen(false);
-                setFormOpen(true);
-              }
-            }}
-            onLink={async () => {
+            onLinkAccount={async () => {
               if (await account.loadLinks()) {
-                setDetailOpen(false);
+                setFormOpen(false);
                 setLinkOpen(true);
               }
             }}
           />
-          <AccountFormSheet open={formOpen} onClose={() => setFormOpen(false)} account={account} />
           <LinkAccountSheet open={linkOpen} onClose={() => setLinkOpen(false)} account={account} />
           <CurrencySettingSheet
             open={currencyOpen}
@@ -244,7 +222,7 @@ export default function AccountPage() {
         ) : account.accounts.length ? (
           <div className="m-account-list">
             {account.accounts.map((row) => (
-              <AccountCard key={row.id} row={row} account={account} onOpen={openDetail} />
+              <AccountCard key={row.id} row={row} account={account} onOpen={openCardEdit} />
             ))}
           </div>
         ) : (

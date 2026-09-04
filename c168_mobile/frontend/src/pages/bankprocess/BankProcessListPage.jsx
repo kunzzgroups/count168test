@@ -20,7 +20,6 @@ import {
   postAccountingDueRows,
   resendAccountingDue,
   deleteBankProcesses,
-  updateBankRemark,
 } from "../../lib/bankProcessApi.js";
 import { periodPresetRange } from "../../lib/dashboardDateUtils.js";
 import {
@@ -33,9 +32,7 @@ import "../maintenance/maintenance.css";
 import "../transaction/add-transaction-sheet.css";
 import { BankProcessFormSheet } from "./BankProcessFormSheet.jsx";
 import {
-  BankProcessActionsSheet,
   BankProcessDueSheet,
-  BankProcessRemarkSheet,
   BankProcessResendSheet,
 } from "./BankProcessSheets.jsx";
 import "./bankprocess.css";
@@ -91,7 +88,6 @@ export default function BankProcessListPage() {
   const [bankReady, setBankReady] = useState(false);
 
   const [actionRow, setActionRow] = useState(null);
-  const [remarkOpen, setRemarkOpen] = useState(false);
   const [resendOpen, setResendOpen] = useState(false);
   const [dueOpen, setDueOpen] = useState(false);
   const [dueRows, setDueRows] = useState([]);
@@ -234,7 +230,6 @@ export default function BankProcessListPage() {
   const closeAllSheets = () => {
     setFilterOpen(false);
     setActionRow(null);
-    setRemarkOpen(false);
     setResendOpen(false);
     setDueOpen(false);
     setFormOpen(false);
@@ -251,16 +246,16 @@ export default function BankProcessListPage() {
     setFormOpen(true);
   };
 
-  const openEditForm = async () => {
-    if (!actionRow?.id || busy) return;
+  /** Card tap → straight into the edit form (no intermediate actions sheet). */
+  const openCardEdit = async (row) => {
+    if (busy || !row?.id) return;
     setBusy(true);
     try {
-      const detail = await fetchBankProcessDetail(actionRow.id);
+      const detail = await fetchBankProcessDetail(row.id);
+      closeAllSheets();
+      setActionRow(row);
       setFormEditMode(true);
       setFormInitial(detail);
-      setActionRow(null);
-      setRemarkOpen(false);
-      setResendOpen(false);
       setFormOpen(true);
     } catch (e) {
       notify(e?.message || i18n.bankLoadFormFailed, "error");
@@ -284,24 +279,6 @@ export default function BankProcessListPage() {
     } catch (e) {
       setRows((list) => list.map((r) => (Number(r.id) === Number(prev.id) ? { ...r, ...patch } : r)));
       notify(e?.message || i18n.bankStatusFailed, "error");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleSaveRemark = async (draft) => {
-    if (!actionRow || busy) return;
-    setBusy(true);
-    try {
-      await updateBankRemark(actionRow.id, draft);
-      setRows((list) =>
-        list.map((r) => (Number(r.id) === Number(actionRow.id) ? { ...r, remark: draft } : r)),
-      );
-      setActionRow((r) => (r ? { ...r, remark: draft } : r));
-      notify(i18n.bankRemarkUpdated);
-      setRemarkOpen(false);
-    } catch (e) {
-      notify(e?.message || i18n.bankRemarkFailed, "error");
     } finally {
       setBusy(false);
     }
@@ -365,6 +342,7 @@ export default function BankProcessListPage() {
       await deleteBankProcesses([row.id]);
       notify(i18n.bankDeleteOk);
       setActionRow(null);
+      setFormOpen(false);
       void loadList();
       void loadDue({ silent: true });
     } catch (e) {
@@ -393,21 +371,6 @@ export default function BankProcessListPage() {
           setFilterOpen(true);
         }}
       />
-      <div className="m-bp-due-bar">
-        <button
-          type="button"
-          className="m-bp-due-entry tap-scale"
-          onClick={() => {
-            closeAllSheets();
-            setDueOpen(true);
-            void loadDue();
-          }}
-        >
-          <i className="fas fa-file-invoice-dollar" aria-hidden="true" />
-          <span>{i18n.bankAccountingDue}</span>
-          {dueCount > 0 ? <em>{dueCount}</em> : null}
-        </button>
-      </div>
       <div className="m-mt-search">
         <i className="fas fa-magnifying-glass" aria-hidden="true" />
         <input
@@ -425,7 +388,7 @@ export default function BankProcessListPage() {
     </div>
   );
 
-  const overlayOpen = filterOpen || !!actionRow || remarkOpen || resendOpen || dueOpen || formOpen;
+  const overlayOpen = filterOpen || resendOpen || dueOpen || formOpen;
 
   if (s.blocked) return null;
 
@@ -441,6 +404,21 @@ export default function BankProcessListPage() {
       }}
       refreshing={listLoading}
       stickyBar={stickyBar}
+      appBarLeftAction={
+        <button
+          type="button"
+          className="m-appbar-btn m-appbar-btn--inbox tap-scale"
+          onClick={() => {
+            closeAllSheets();
+            setDueOpen(true);
+            void loadDue();
+          }}
+          aria-label={i18n.bankAccountingDue}
+        >
+          <i className="fas fa-file-invoice-dollar" aria-hidden="true" />
+          {dueCount > 0 ? <span className="m-appbar-badge">{dueCount > 9 ? "9+" : dueCount}</span> : null}
+        </button>
+      }
       lang={s.lang}
       onLangChange={s.setLang}
       overlayOpen={overlayOpen}
@@ -517,26 +495,6 @@ export default function BankProcessListPage() {
               if (next.statusFilters) setStatusFilters({ ...DEFAULT_STATUS, ...next.statusFilters });
             }}
           />
-          <BankProcessActionsSheet
-            open={!!actionRow && !remarkOpen && !resendOpen && !formOpen}
-            onClose={() => setActionRow(null)}
-            row={actionRow}
-            i18n={i18n}
-            busy={busy}
-            onApplyStatus={handleApplyStatus}
-            onOpenRemark={() => setRemarkOpen(true)}
-            onOpenResend={() => setResendOpen(true)}
-            onOpenEdit={() => void openEditForm()}
-            onDelete={(row) => void handleDeleteProcess(row)}
-          />
-          <BankProcessRemarkSheet
-            open={remarkOpen}
-            onClose={() => setRemarkOpen(false)}
-            row={actionRow}
-            i18n={i18n}
-            busy={busy}
-            onSave={handleSaveRemark}
-          />
           <BankProcessResendSheet
             open={resendOpen}
             onClose={() => setResendOpen(false)}
@@ -565,6 +523,10 @@ export default function BankProcessListPage() {
             initialForm={formInitial}
             busy={busy}
             onBusy={setBusy}
+            row={actionRow}
+            onApplyStatus={handleApplyStatus}
+            onOpenResend={() => setResendOpen(true)}
+            onDelete={(row) => void handleDeleteProcess(row)}
             onSaved={() => {
               notify(i18n.bankSaveOk);
               void loadList();
@@ -601,10 +563,7 @@ export default function BankProcessListPage() {
                   key={rowKey(row, idx)}
                   row={row}
                   i18n={i18n}
-                  onOpen={() => {
-                    closeAllSheets();
-                    setActionRow(row);
-                  }}
+                  onOpen={() => void openCardEdit(row)}
                 />
               ))}
             </div>
@@ -625,23 +584,24 @@ export default function BankProcessListPage() {
 
 function BankProcessCard({ row, i18n, onOpen }) {
   const status = bankProcessDisplayStatus(row);
-  const supplier = String(row.card_lower || row.supplier || "").trim() || "—";
   const owner = String(row.supplier || row.card_owner || "").trim() || "—";
+  const supplier = String(row.card_lower || row.supplier || "").trim() || "—";
   const meta = [
-    String(row.country || "").trim().toUpperCase() || "—",
-    String(row.contract || "").trim() || "—",
-    String(row.date || row.day_start || "").slice(0, 10) || "—",
-  ].join(" · ");
+    supplier,
+    bankTypeLabel(row),
+    String(row.country || "").trim().toUpperCase(),
+    String(row.contract || "").trim(),
+    String(row.date || row.day_start || "").slice(0, 10),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <button type="button" className="m-mt-card m-bp-card m-bp-card-btn tap-scale" onClick={onOpen}>
       <div className="m-bp-card-top">
-        <div className="m-bp-card-key">
-          {supplier} · {bankTypeLabel(row)}
-        </div>
+        <strong className="m-bp-card-title">{owner}</strong>
         <span className={`m-bp-status ${statusToneClass(status)}`}>{statusLabel(status, i18n)}</span>
       </div>
-      <div className="m-bp-card-title">{owner}</div>
       <div className="m-bp-card-meta">{meta}</div>
       <div className="m-bp-amounts">
         <div className="m-bp-amt">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh.js";
 import { useDirectScrollChrome } from "../../hooks/useDirectScrollChrome.js";
 import { useScrollIdleVisible } from "../../hooks/useScrollIdleVisible.js";
@@ -14,6 +14,7 @@ export default function MobileShell({
   overlay = null,
   stickyBar = null,
   floatingAction = null,
+  appBarLeftAction = null,
   onMainScrollStart,
   i18n,
   me,
@@ -23,14 +24,19 @@ export default function MobileShell({
   onChromeOpen,
   overlayOpen = false,
 }) {
-  const { pathname } = useLocation();
+  const { pathname, key: locationKey } = useLocation();
+  const navigate = useNavigate();
   const navVisible = showBottomNav && !isMobileMoreStackPath(pathname);
+  /** Hub-child pages (opened from More) get a floating Back pill once scrolled. */
+  const isSubpage = isMobileMoreStackPath(pathname) && pathname !== "/more";
   const labels = {
     navHome: "Home",
     navReport: "Report",
     navTransaction: "Transaction",
     navAccount: "Account",
     navMore: "More",
+    backToTop: "Back to top",
+    back: "Back",
     ...(i18n || {}),
   };
   const [notifyOpen, setNotifyOpen] = useState(false);
@@ -39,6 +45,34 @@ export default function MobileShell({
   const mainRef = useRef(null);
   const topChromeRef = useRef(null);
   const [topChromeH, setTopChromeH] = useState(118);
+  /** Back-to-top appears above the FAB once the page is scrolled well past the top. */
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  /** Floating Back pill for hub-child pages — thumbs live near the bottom, not the top-left. */
+  const [showBackFab, setShowBackFab] = useState(false);
+
+  const scrollTop = useCallback(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const goBack = useCallback(() => {
+    if (locationKey === "default") {
+      navigate("/more");
+    } else {
+      navigate(-1);
+    }
+  }, [locationKey, navigate]);
+
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return undefined;
+    const onScroll = () => {
+      const far = el.scrollTop > 240;
+      if (floatingAction) setShowScrollTop(far);
+      setShowBackFab(isSubpage && far);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [floatingAction, isSubpage]);
 
   const refreshPage = useCallback(async () => {
     if (typeof onRefresh === "function") {
@@ -155,6 +189,7 @@ export default function MobileShell({
           onOpenNotifications={openNotifications}
           onRefresh={typeof onRefresh === "function" ? refreshPage : undefined}
           refreshing={gestureRefreshing}
+          leftAction={appBarLeftAction}
         />
 
         {stickyBar ? (
@@ -183,11 +218,28 @@ export default function MobileShell({
         </div>
       </main>
 
+      {isSubpage && showBackFab && !overlayOpen && !notifyOpen && !gestureRefreshing ? (
+        <button type="button" onClick={goBack} className="m-shell-back-fab tap-scale" aria-label={labels.back}>
+          <i className="fas fa-arrow-left" aria-hidden="true" />
+          <span>{labels.back}</span>
+        </button>
+      ) : null}
+
       {floatingAction ? (
         <div
           className={`m-shell-fab-slot ${showFloating ? "m-shell-fab-slot--visible" : "m-shell-fab-slot--hidden"}`}
           aria-hidden={!showFloating}
         >
+          {showScrollTop ? (
+            <button
+              type="button"
+              onClick={scrollTop}
+              className="m-shell-scroll-top tap-scale"
+              aria-label={labels.backToTop || "Back to top"}
+            >
+              <i className="fas fa-arrow-up" aria-hidden="true" />
+            </button>
+          ) : null}
           {floatingAction}
         </div>
       ) : null}

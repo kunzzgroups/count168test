@@ -7,13 +7,14 @@ export default function MobileAppBar({
   onRefresh,
   refreshing = false,
   notificationCount = 0,
+  leftAction = null,
 }) {
   const count = Number(notificationCount) || 0;
 
   return (
     <header className="m-appbar">
       <div className="m-appbar-grid">
-        <span className="m-appbar-spacer" aria-hidden="true" />
+        {leftAction ?? <span className="m-appbar-spacer" aria-hidden="true" />}
 
         <div className="m-appbar-center">
           {typeof onRefresh === "function" ? (

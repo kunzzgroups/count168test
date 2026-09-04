@@ -529,9 +529,10 @@ export function useMobileAccount() {
     [i18n.detailError, notify, scope],
   );
 
-  const openEdit = useCallback(async () => {
-    if (!detail || !guarded(() => {})) return false;
-    const row = await loadDetail(detail);
+  const openEdit = useCallback(async (source) => {
+    const target = source || detail;
+    if (!target || !guarded(() => {})) return false;
+    const row = await loadDetail(target);
     if (!row) return false;
     const ledger = normalizeAccountLedgerScope(row.ledger_scope);
     setModalLedgerScope(ledger);

@@ -72,9 +72,6 @@ export function MaintenanceFilterBar({
       <div className="m-filter-bar-row">
         <i className="far fa-calendar m-filter-bar-icon" aria-hidden="true" />
         <span className="m-filter-bar-dates">{formatRangeLabel(dateFrom, dateTo)}</span>
-        <span className="m-filter-bar-action">
-          <i className="fas fa-filter" aria-hidden="true" />
-        </span>
       </div>
       <div className="m-filter-bar-scope m-filter-bar-scope-row">
         <div className="m-filter-bar-scope-main">
@@ -86,7 +83,6 @@ export function MaintenanceFilterBar({
             groupOnlyMode={groupMode && !groupsAllMode}
           />
         </div>
-        <span className="m-filter-bar-switch">{i18n.switchCompany || "Switch"}</span>
       </div>
     </button>
   );

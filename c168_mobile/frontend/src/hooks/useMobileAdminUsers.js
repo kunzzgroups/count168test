@@ -473,33 +473,34 @@ export function useMobileAdminUsers() {
     useDualTenantPicker,
   ]);
 
-  const openEdit = useCallback(async () => {
-    if (!detail) return false;
+  const openEdit = useCallback(async (source) => {
+    const target = source || detail;
+    if (!target) return false;
     if (!canMutate) {
       notify(mutationsBlocked ? i18n.readOnly : i18n.singleCompanyRequired, "error");
       return false;
     }
-    if (!rowCaps(detail).canEditDelete) return false;
-    setEditingRow(detail);
+    if (!rowCaps(target).canEditDelete) return false;
+    setEditingRow(target);
     setForm({
-      id: detail.id,
-      login_id: String(detail.login_id || ""),
-      name: String(detail.name || ""),
-      email: String(detail.email || ""),
-      role: normRole(detail.role),
+      id: target.id,
+      login_id: String(target.login_id || ""),
+      name: String(target.name || ""),
+      email: String(target.email || ""),
+      role: normRole(target.role),
       password: "",
-      status: normRole(detail.status) || "active",
-      read_only: Number(detail.read_only ?? 1) === 1,
+      status: normRole(target.status) || "active",
+      read_only: Number(target.read_only ?? 1) === 1,
     });
-    setPermSelected(new Set(parseJsonArray(detail.permissions)));
-    if (useDualTenantPicker && !detail.is_owner_shadow) {
+    setPermSelected(new Set(parseJsonArray(target.permissions)));
+    if (useDualTenantPicker && !target.is_owner_shadow) {
       setSelectedTenantGroupIds(
-        new Set(resolveAdminGroupEntityIds(tenantGroupOptions, parseJsonArray(detail.group_codes))),
+        new Set(resolveAdminGroupEntityIds(tenantGroupOptions, parseJsonArray(target.group_codes))),
       );
       const allowedCompanies = new Set(tenantCompanyOptions.map((row) => Number(row.id)));
       setSelectedTenantCompanyIds(
         new Set(
-          parseJsonArray(detail.company_ids)
+          parseJsonArray(target.company_ids)
             .map(Number)
             .filter((id) => allowedCompanies.has(id)),
         ),
@@ -511,11 +512,11 @@ export function useMobileAdminUsers() {
     try {
       const { accounts, processes } = await loadFormOptions();
       const accPartition = partitionAccessRows(
-        parseAccessPermissionRaw(detail.account_permissions),
+        parseAccessPermissionRaw(target.account_permissions),
         accounts,
       );
       const procPartition = partitionAccessRows(
-        parseAccessPermissionRaw(detail.process_permissions),
+        parseAccessPermissionRaw(target.process_permissions),
         processes,
       );
       setSelectedAccountIds(accPartition.selected);

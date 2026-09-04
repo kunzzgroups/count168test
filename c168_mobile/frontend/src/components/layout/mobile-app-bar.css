@@ -31,7 +31,8 @@
   height: 2.75rem;
 }
 
-.m-appbar-btn--notify {
+.m-appbar-btn--notify,
+.m-appbar-btn--inbox {
   position: relative;
 }
 
