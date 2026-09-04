@@ -140,19 +140,16 @@ export function isMobileMoreStackPath(pathname) {
   );
 }
 
-/** First bottom-nav tab besides More — used by the More back button. */
+/** First bottom-nav tab — used by the More back button. More itself lives in
+    the app bar (top-right gear), not in the bottom nav. */
 export function resolveMobileMoreBackPath(me) {
   if (!me) return "/dashboard";
-  const items = mobileNavItems(me).filter((item) => item.to !== "/more");
-  return items[0]?.to || "/dashboard";
+  return mobileNavItems(me)[0]?.to || "/dashboard";
 }
 
 export function mobileNavItems(me) {
   if (String(me?.user_type || "").toLowerCase() === "member") {
-    return [
-      { to: "/member", icon: "fa-chart-line", key: "winLoss" },
-      { to: "/more", icon: "fa-ellipsis", key: "navMore" },
-    ];
+    return [{ to: "/member", icon: "fa-chart-line", key: "winLoss" }];
   }
   const items = [];
   if (canAccessDashboard(me)) {
@@ -164,6 +161,5 @@ export function mobileNavItems(me) {
   if (canAccessAccount(me)) {
     items.push({ to: "/account", icon: "fa-address-book", key: "navAccount" });
   }
-  items.push({ to: "/more", icon: "fa-ellipsis", key: "navMore" });
   return items;
 }

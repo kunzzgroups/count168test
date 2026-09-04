@@ -4,7 +4,6 @@ import MobileSubpageHeader from "../../components/layout/MobileSubpageHeader.jsx
 import ScopeBreadcrumb from "../dashboard/ScopeBreadcrumb.jsx";
 import { useIncrementalList } from "../../hooks/useIncrementalList.js";
 import { useMobileAdminUsers } from "../../hooks/useMobileAdminUsers.js";
-import { formatLastLogin } from "../../lib/mobileUserAdmin.js";
 import { AccountScopeSheet } from "../account/AccountSheets.jsx";
 import { UserFormSheet } from "./AdminUserSheets.jsx";
 import "../account/account.css";
@@ -14,10 +13,14 @@ function Chip({ active, onClick, children }) {
   return (
     <button
       type="button"
-      className={`m-account-chip tap-scale${active ? " is-active" : ""}`}
       onClick={onClick}
+      aria-pressed={active}
+      className={`m-account-chip tap-scale${active ? " is-active" : ""}`}
     >
-      {children}
+      <span className="m-account-chip-dot" aria-hidden="true">
+        <i className="fas fa-check" />
+      </span>
+      <span className="m-account-chip-label">{children}</span>
     </button>
   );
 }
@@ -32,9 +35,6 @@ function UserCard({ row, admin, onOpen }) {
   ]
     .filter(Boolean)
     .join(" · ");
-  const lastLoginText = row.last_login
-    ? `${i18n.lastLogin} ${formatLastLogin(row.last_login).slice(0, 10)}`
-    : "";
 
   return (
     <button
@@ -51,15 +51,7 @@ function UserCard({ row, admin, onOpen }) {
           {code}
           {name && name.toUpperCase() !== code ? <span>{name}</span> : null}
         </strong>
-        <small>
-          {roleText ? <b>{roleText}</b> : null}
-          {roleText && lastLoginText ? (
-            <span className="m-user-card-sep" aria-hidden="true">
-              ·
-            </span>
-          ) : null}
-          {lastLoginText ? <span>{lastLoginText}</span> : null}
-        </small>
+        {roleText ? <small>{roleText}</small> : null}
       </span>
       <i className="fas fa-chevron-right" aria-hidden="true" />
     </button>

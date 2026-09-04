@@ -12,7 +12,7 @@
   display: grid;
   height: 3rem;
   max-width: var(--m-page-max-width);
-  grid-template-columns: 44px 1fr 44px;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   padding-inline: 0.625rem;
 }
@@ -26,9 +26,22 @@
   color: #fff;
 }
 
+.m-appbar-left-group,
+.m-appbar-right-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
 .m-appbar-spacer {
-  width: 2.75rem;
-  height: 2.75rem;
+  min-width: 0.5rem;
+}
+
+.m-appbar-center {
+  display: flex;
+  min-width: 0;
+  align-items: center;
 }
 
 .m-appbar-btn--notify,
@@ -37,6 +50,12 @@
 }
 
 .m-appbar-center {
+  /* Absolutely centered so the logo stays in the true middle even when the
+     left side holds two buttons (page action + bell) */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   min-width: 0;
   align-items: center;
@@ -115,11 +134,6 @@
   }
 
   .m-appbar-btn {
-    width: 2.375rem;
-    height: 2.375rem;
-  }
-
-  .m-appbar-spacer {
     width: 2.375rem;
     height: 2.375rem;
   }

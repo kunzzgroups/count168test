@@ -345,6 +345,22 @@ export function AccountFormSheet({ open, onClose, account, onLinkAccount }) {
         </>
       }
     >
+      <label className={`m-account-status-card${(form.status || "active") === "active" ? " is-active" : ""}`}>
+        <span
+          className={`m-account-status ${(form.status || "active") === "active" ? "active" : "inactive"}`}
+        >
+          {(form.status || "active") === "active" ? i18n.active : i18n.inactive}
+        </span>
+        <input
+          type="checkbox"
+          checked={(form.status || "active") === "active"}
+          disabled={!account.canMutate}
+          onChange={(e) => update("status", e.target.checked ? "active" : "inactive")}
+        />
+        <span className={`m-account-switch ${(form.status || "active") === "active" ? "is-on" : ""}`}>
+          <span />
+        </span>
+      </label>
       <div className="m-account-form-grid">
         <FormField label={`${i18n.accountId} *`}>
           <input

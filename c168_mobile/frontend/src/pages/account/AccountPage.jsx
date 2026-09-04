@@ -14,10 +14,14 @@ function Chip({ active, onClick, children }) {
   return (
     <button
       type="button"
-      className={`m-account-chip tap-scale${active ? " is-active" : ""}`}
       onClick={onClick}
+      aria-pressed={active}
+      className={`m-account-chip tap-scale${active ? " is-active" : ""}`}
     >
-      {children}
+      <span className="m-account-chip-dot" aria-hidden="true">
+        <i className="fas fa-check" />
+      </span>
+      <span className="m-account-chip-label">{children}</span>
     </button>
   );
 }
@@ -26,39 +30,23 @@ function AccountCard({ row, account, onOpen }) {
   const { i18n } = account;
   const code = String(row.account_id || "").toUpperCase();
   const name = String(row.name || "").trim();
-  const lastLoginText = row.last_login
-    ? `${i18n.lastLogin} ${String(row.last_login).slice(0, 10)}`
-    : "";
+  const isInactive = String(row.status || "").toLowerCase() === "inactive";
   return (
     <button
       type="button"
       onClick={() => onOpen(row)}
-      className="m-user-card tap-scale"
+      className={`m-user-card tap-scale${isInactive ? " m-account-tile--inactive" : ""}`}
       aria-label={`${i18n.tapForDetail}: ${code}`}
     >
-      <span className="m-user-card-avatar" aria-hidden="true">
-        {code.slice(0, 2)}
-      </span>
       <span className="m-user-card-copy">
         <strong title={name || undefined}>
           {code}
-          {name && name.toUpperCase() !== code ? <span>{name}</span> : null}
+          {isInactive ? <span className="m-account-inactive-tag">{i18n.inactive}</span> : null}
         </strong>
-        <small>
-          {row.role ? <b>{String(row.role)}</b> : null}
-          {lastLoginText ? (
-            <>
-              {row.role ? (
-                <span className="m-user-card-sep" aria-hidden="true">
-                  ·
-                </span>
-              ) : null}
-              <span>{lastLoginText}</span>
-            </>
-          ) : null}
-        </small>
       </span>
-      <i className="fas fa-chevron-right" aria-hidden="true" />
+      {row.payment_alert ? (
+        <i className="fas fa-bell m-account-tile-bell" aria-hidden="true" title={i18n.paymentAlert} />
+      ) : null}
     </button>
   );
 }
@@ -150,7 +138,12 @@ export default function AccountPage() {
         >
           {i18n.showInactive}
         </Chip>
-        <Chip active={sortOpen} onClick={() => setSortOpen(true)}>
+        {/* Sort chip lights up only for a non-default sort; picking the default
+            (Account · Ascending) in the Sort sheet turns it off again */}
+        <Chip
+          active={account.sortKey !== "account" || account.sortDirection !== "asc"}
+          onClick={() => setSortOpen(true)}
+        >
           <i className="fas fa-arrow-down-wide-short" aria-hidden="true" /> {sortedLabel}
         </Chip>
       </div>
