@@ -123,26 +123,37 @@ export function DateFilterChip({ dash, i18n, lang }) {
   const [cursor, setCursor] = useState(() => parseYmdParts(dash.dateFrom, parseYmdParts(todayYmd(), { year: new Date().getFullYear(), month: new Date().getMonth() })));
   useOverlayLock(open, () => setOpen(false));
 
+  const applyAndClose = (next) => {
+    setDraft(next);
+    apply(next);
+    setOpen(false);
+  };
+
   useEffect(() => {
     if (open) setCursor(parseYmdParts(draft.dateFrom || dash.dateFrom || todayYmd(), parseYmdParts(todayYmd(), { year: new Date().getFullYear(), month: new Date().getMonth() })));
     // Re-anchor the visible month when the sheet opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const maxDay = todayYmd();
   const cells = monthCells(cursor.year, cursor.month);
-  const today = maxDay;
+  const today = todayYmd();
 
+  // Tap 1 picks the range start; tap 2 completes it and instantly applies,
+  // closing the sheet (mockup behaviour — no footer buttons).
   const pickDay = (ymd) => {
-    if (ymd > maxDay) return;
-    setDraft((prev) => {
-      if (!prev.dateFrom || (prev.dateFrom && prev.dateTo)) {
-        return { ...prev, activePreset: "", dateFrom: ymd, dateTo: "" };
-      }
-      let [s, e] = [prev.dateFrom, ymd];
-      if (e < s) [s, e] = [e, s];
-      return { ...prev, activePreset: "", dateFrom: s, dateTo: e };
-    });
+    if (!draft.dateFrom || (draft.dateFrom && draft.dateTo)) {
+      setDraft({ ...draft, activePreset: "", dateFrom: ymd, dateTo: "" });
+      return;
+    }
+    let [s, e] = [draft.dateFrom, ymd];
+    if (e < s) [s, e] = [e, s];
+    applyAndClose({ ...draft, activePreset: "", dateFrom: s, dateTo: e });
+  };
+
+  const usePreset = (key) => {
+    const range = periodPresetRange(key);
+    if (!range) return;
+    applyAndClose({ ...draft, activePreset: key, dateFrom: range.dateFrom, dateTo: range.dateTo });
   };
 
   const shiftMonth = (delta) =>
@@ -150,17 +161,6 @@ export function DateFilterChip({ dash, i18n, lang }) {
       const next = new Date(prev.year, prev.month + delta, 1);
       return { year: next.getFullYear(), month: next.getMonth() };
     });
-
-  const resetWindow = () => {
-    const def = buildDefaultDraft(dash);
-    setDraft((prev) => ({
-      ...prev,
-      dateFrom: def.dateFrom,
-      dateTo: def.dateTo,
-      activePreset: def.activePreset,
-    }));
-    setCursor(parseYmdParts(def.dateFrom, cursor));
-  };
 
   return (
     <>
@@ -173,117 +173,85 @@ export function DateFilterChip({ dash, i18n, lang }) {
       <MiniSheet
         open={open}
         onClose={() => setOpen(false)}
-        title={i18n.dateRange || "Date"}
-        footer={
+        title={
           <>
-            <button
-              type="button"
-              className="m-sheet-footer-btn m-sheet-footer-btn--muted tap-scale"
-              onClick={resetWindow}
-            >
-              {i18n.reset || "Reset"}
-            </button>
-            <button
-              type="button"
-              className="m-sheet-footer-btn m-sheet-footer-btn--muted tap-scale"
-              onClick={() => setOpen(false)}
-            >
-              {i18n.cancel || "Cancel"}
-            </button>
-            <button
-              type="button"
-              className="m-sheet-footer-btn m-sheet-footer-btn--primary tap-scale"
-              onClick={() => {
-                apply(draft);
-                setOpen(false);
-              }}
-            >
-              {i18n.applyFilter}
-            </button>
+            <i className="far fa-calendar m-fchip-title-icon" aria-hidden="true" />
+            {i18n.dateRange || "Date"}
           </>
         }
       >
-        <div className="m-filter-pill-scroll">
-          {PERIOD_PRESET_KEYS.map((key) => (
-            <Pill
-              key={key}
-              active={draft.activePreset === key}
-              onClick={() => {
-                const range = periodPresetRange(key);
-                if (!range) return;
-                setDraft((prev) => ({
-                  ...prev,
-                  activePreset: key,
-                  dateFrom: range.dateFrom,
-                  dateTo: range.dateTo,
-                }));
-                setCursor(parseYmdParts(range.dateFrom, cursor));
-              }}
-            >
-              {dashboardLabel(i18n, key)}
-            </Pill>
-          ))}
-        </div>
-
-        <div className="m-fchip-cal">
-          <div className="m-fchip-cal-head">
-            <button
-              type="button"
-              className="m-fchip-cal-nav tap-scale"
-              onClick={() => shiftMonth(-1)}
-              aria-label="Previous month"
-            >
-              <i className="fas fa-chevron-left" aria-hidden="true" />
-            </button>
-            <span className="m-fchip-cal-title">{monthTitle(cursor.year, cursor.month, dash.lang || lang || "en")}</span>
-            <button
-              type="button"
-              className="m-fchip-cal-nav tap-scale"
-              onClick={() => shiftMonth(1)}
-              aria-label="Next month"
-            >
-              <i className="fas fa-chevron-right" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="m-fchip-cal-grid m-fchip-cal-weekdays">
-            {WEEKDAY_LABELS.map((d) => (
-              <span key={d} className="m-fchip-cal-wd">
-                {d}
-              </span>
+        <div className="m-fchip-datesplit">
+          <aside className="m-fchip-side">
+            {PERIOD_PRESET_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                className={`m-fchip-side-item${draft.activePreset === key ? " is-on" : ""}`}
+                onClick={() => usePreset(key)}
+              >
+                {dashboardLabel(i18n, key)}
+              </button>
             ))}
-          </div>
+          </aside>
 
-          <div className="m-fchip-cal-grid">
-            {cells.map((day, idx) => {
-              if (day == null) return <span key={`pad-${idx}`} />;
-              const ymd = ymdOf(cursor.year, cursor.month, day);
-              const isEdge = ymd === draft.dateFrom || ymd === draft.dateTo;
-              const isInRange =
-                draft.dateFrom && draft.dateTo && ymd > draft.dateFrom && ymd < draft.dateTo;
-              const isToday = ymd === today;
-              const isFuture = ymd > maxDay;
-              return (
-                <button
-                  key={ymd}
-                  type="button"
-                  disabled={isFuture}
-                  className={[
-                    "m-fchip-cal-day",
-                    isEdge ? " is-edge" : "",
-                    isInRange ? " is-inrange" : "",
-                    isToday ? " is-today" : "",
-                    isFuture ? " is-off" : "",
-                  ]
-                    .join("")
-                    .trim()}
-                  onClick={() => pickDay(ymd)}
-                >
-                  {day}
-                  {isToday ? <span className="m-fchip-cal-todaydot" aria-hidden="true" /> : null}
-                </button>
-              );
-            })}
+          <div className="m-fchip-cal">
+            <div className="m-fchip-cal-head">
+              <button
+                type="button"
+                className="m-fchip-cal-nav tap-scale"
+                onClick={() => shiftMonth(-1)}
+                aria-label="Previous month"
+              >
+                <i className="fas fa-chevron-left" aria-hidden="true" />
+              </button>
+              <span className="m-fchip-cal-title">{monthTitle(cursor.year, cursor.month, dash.lang || lang || "en")}</span>
+              <button
+                type="button"
+                className="m-fchip-cal-nav tap-scale"
+                onClick={() => shiftMonth(1)}
+                aria-label="Next month"
+              >
+                <i className="fas fa-chevron-right" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="m-fchip-cal-grid m-fchip-cal-weekdays">
+              {WEEKDAY_LABELS.map((d) => (
+                <span key={d} className="m-fchip-cal-wd">
+                  {d}
+                </span>
+              ))}
+            </div>
+
+            <div className="m-fchip-cal-grid">
+              {cells.map((day, idx) => {
+                if (day == null) return <span key={`pad-${idx}`} />;
+                const ymd = ymdOf(cursor.year, cursor.month, day);
+                const isEdge = ymd === draft.dateFrom || ymd === draft.dateTo;
+                const isInRange =
+                  draft.dateFrom && draft.dateTo && ymd > draft.dateFrom && ymd < draft.dateTo;
+                const isToday = ymd === today;
+                return (
+                  <button
+                    key={ymd}
+                    type="button"
+                    className={[
+                      "m-fchip-cal-day",
+                      isEdge ? " is-edge" : "",
+                      isInRange ? " is-inrange" : "",
+                      isToday ? " is-today" : "",
+                    ]
+                      .join("")
+                      .trim()}
+                    onClick={() => pickDay(ymd)}
+                  >
+                    {day}
+                    {isToday ? <span className="m-fchip-cal-todaydot" aria-hidden="true" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+
           </div>
         </div>
       </MiniSheet>

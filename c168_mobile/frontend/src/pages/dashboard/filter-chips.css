@@ -105,106 +105,8 @@
   display: none;
 }
 
-/* ── Inline month calendar ──────────────────────────────────────────────── */
-
-.m-fchip-cal {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.m-fchip-cal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.m-fchip-cal-title {
-  color: var(--m-color-text);
-  font-size: 0.875rem;
-  font-weight: 800;
-}
-
-.m-fchip-cal-nav {
-  display: grid;
-  width: 1.9rem;
-  height: 1.9rem;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--m-color-surface-muted);
-  color: var(--m-color-text-secondary);
-  font-size: 0.7rem;
-}
-
-.m-fchip-cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0.15rem;
-}
-
-.m-fchip-cal-weekdays {
-  margin-bottom: 0.1rem;
-}
-
-.m-fchip-cal-wd {
-  text-align: center;
-  color: var(--m-color-muted);
-  font-size: 0.625rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.2rem 0;
-}
-
-.m-fchip-cal-day {
-  position: relative;
-  display: grid;
-  min-height: 2.1rem;
-  place-items: center;
-  border-radius: 0.55rem;
-  color: var(--m-color-text);
-  font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.m-fchip-cal-day.is-off {
-  opacity: 0.35;
-}
-
-.m-fchip-cal-day.is-inrange {
-  background: var(--m-color-info-soft);
-  border-radius: 0;
-  color: var(--m-color-text);
-}
-
-.m-fchip-cal-day.is-edge {
-  background: var(--m-grad-brand);
-  border-radius: 0.55rem;
-  color: #fff;
-  font-weight: 800;
-}
-
-.m-fchip-cal-todaydot {
-  position: absolute;
-  bottom: 0.22rem;
-  left: 50%;
-  width: 0.22rem;
-  height: 0.22rem;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: var(--m-color-success);
-}
-
-.m-fchip-cal-day.is-edge .m-fchip-cal-todaydot {
-  background: #fff;
-}
 
 /* ── Scope sheet: active badge + search + two-pane org picker ───────────── */
-
-
-
-
 
 
 .m-fchip-org {
@@ -426,3 +328,215 @@
   font-size: var(--m-text-caption);
   font-weight: 600;
 }
+
+/* ── Date sheet: one cohesive picker — presets (secondary) + calendar (primary) ── */
+
+/* One cohesive ~590px component, viewport-clamped on small screens */
+.m-fchip-panel {
+  width: min(590px, calc(100vw - 12px));
+  margin-inline: auto;
+  border-radius: 1rem 1rem 0 0;
+}
+
+.m-fchip-panel .m-sheet-header {
+  min-height: 64px;
+  border-bottom: 1px solid var(--m-color-ring-soft);
+  padding: 0.75rem 1.25rem;
+}
+
+.m-fchip-panel .m-sheet-title {
+  display: flex;
+  align-items: center;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+}
+
+/* Close stays visually secondary to the title */
+.m-fchip-panel .m-sheet-close {
+  width: 2rem;
+  height: 2rem;
+  background: transparent;
+  color: var(--m-color-muted);
+  font-size: 0.9rem;
+}
+
+.m-fchip-title-icon {
+  margin-right: 0.5rem;
+  color: var(--m-color-muted);
+  font-size: 1rem;
+}
+
+/* LEFT — quick presets (secondary quick navigation) */
+.m-fchip-datesplit {
+  display: grid;
+  grid-template-columns: minmax(118px, 130px) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.m-fchip-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 8px 16px 12px;
+  border-right: 1px solid var(--m-color-ring-soft);
+}
+
+.m-fchip-side-item {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 0.6rem;
+  color: var(--m-color-text-secondary);
+  font-size: 0.84375rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+/* Modern filled selection — compact, clearly active, never louder than the calendar */
+.m-fchip-side-item.is-on {
+  background: var(--m-grad-brand);
+  color: #fff;
+  font-weight: 700;
+}
+
+.m-fchip-side-item:active {
+  background: var(--m-color-surface-muted);
+}
+
+.m-fchip-side-item:focus,
+.m-fchip-side-item:focus-visible,
+.m-fchip-cal-day:focus,
+.m-fchip-cal-day:focus-visible {
+  outline: none;
+}
+
+/* RIGHT — calendar gets the remaining width and internal breathing room */
+.m-fchip-panel .m-sheet-body {
+  padding: 0;
+}
+
+.m-fchip-cal {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 20px 24px 24px;
+}
+
+.m-fchip-cal-head {
+  display: grid;
+  grid-template-columns: 2rem 1fr 2rem;
+  align-items: center;
+  gap: 8px;
+}
+
+.m-fchip-cal-title {
+  text-align: center;
+  color: var(--m-color-text);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.m-fchip-cal-nav {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--m-color-surface-muted);
+  color: var(--m-color-text-secondary);
+  font-size: 0.7rem;
+}
+
+.m-fchip-cal-nav:active {
+  background: var(--m-color-ring);
+}
+
+.m-fchip-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px 0;
+}
+
+.m-fchip-cal-weekdays {
+  margin-bottom: 2px;
+}
+
+.m-fchip-cal-wd {
+  text-align: center;
+  color: var(--m-color-muted);
+  font-size: 0.65625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0;
+}
+
+.m-fchip-cal-day {
+  position: relative;
+  display: grid;
+  height: 42px;
+  place-items: center;
+  color: var(--m-color-text);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.m-fchip-cal-day.is-off {
+  opacity: 0.35;
+}
+
+.m-fchip-cal-day.is-inrange {
+  background: var(--m-color-info-soft);
+  color: var(--m-color-text);
+}
+
+.m-fchip-cal-day.is-edge {
+  background: var(--m-grad-brand);
+  border-radius: 0.65rem;
+  color: #fff;
+  font-weight: 800;
+}
+
+.m-fchip-cal-todaydot {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  width: 0.25rem;
+  height: 0.25rem;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--m-color-success);
+}
+
+.m-fchip-cal-day.is-edge .m-fchip-cal-todaydot {
+  background: #fff;
+}
+
+/* ── Responsive: protect the calendar's width first ─────────────────────── */
+
+@media (max-width: 620px) {
+  .m-fchip-panel {
+    width: calc(100vw - 12px);
+  }
+
+  .m-fchip-side {
+    padding: 16px 8px 16px 12px;
+  }
+
+  .m-fchip-side-item {
+    min-height: 36px;
+    padding: 0 8px;
+  }
+
+  .m-fchip-cal {
+    padding: 16px 14px 20px;
+  }
+
+  .m-fchip-cal-day {
+    height: 38px;
+  }
+}
+
