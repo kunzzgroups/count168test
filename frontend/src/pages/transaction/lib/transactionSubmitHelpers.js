@@ -254,8 +254,14 @@ export function buildRatePayload({
 
   const transferFromCode = rateTransferFromAccount?.account_id || "";
   const transferToCode = rateTransferToAccount?.account_id || "";
-  const transferFromDesc = `Transaction to ${transferToCode} (Rate: ${rateExchangeRateRaw})`;
-  const transferToDesc = `Transaction from ${transferFromCode} (Rate: ${rateExchangeRateRaw})`;
+  // payload 命名与 UI 交叉：rate_transfer_from_account_id 实际存的是 UI"To Account"(transferToId)，
+  // rate_transfer_to_account_id 实际存的是 UI"From Account"(transferFromId)。
+  // transferFromDesc 配的是 rate_transfer_from_description（即 UI To Account 的记录），
+  // 所以要引用对方——UI From Account(transferFromCode)；
+  // transferToDesc 配的是 rate_transfer_to_description（即 UI From Account 的记录），
+  // 所以要引用对方——UI To Account(transferToCode)。与 leg1 的互相指涉逻辑保持一致。
+  const transferFromDesc = `Transaction from ${transferFromCode} (Rate: ${rateExchangeRateRaw})`;
+  const transferToDesc = `Transaction to ${transferToCode} (Rate: ${rateExchangeRateRaw})`;
 
   // "divide" 模式（Rate-Mul 输入 `/1.55`）不能原样送 rate_middleman_rate 给后端——
   // 后端用 money_normalize 校验该字段，遇到带 "/" 的字符串会直接抛异常，所以这里只存除数本身。

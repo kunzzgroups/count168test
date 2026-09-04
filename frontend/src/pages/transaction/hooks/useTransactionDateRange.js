@@ -40,13 +40,13 @@ export function useTransactionDateRange({
     if (loading || forbidden || !filterSnapshot) return;
 
     let cancelled = false;
+    let observer = null;
 
-    (async () => {
-      if (cancelled) return;
+    const tryInit = () => {
+      if (cancelled || txDateRangePickerReadyRef.current) return true;
       ensureMaintenanceDateRangePicker();
-      if (cancelled || txDateRangePickerReadyRef.current) return;
-      if (!window.MaintenanceDateRangePicker?.init) return;
-      if (!document.getElementById("calendar-popup")) return;
+      if (!window.MaintenanceDateRangePicker?.init) return false;
+      if (!document.getElementById("calendar-popup")) return false;
 
       window.MaintenanceDateRangePicker.init({
         onChange: () => {
@@ -73,11 +73,30 @@ export function useTransactionDateRange({
         displayId: "date-range-display",
       });
       txDateRangePickerReadyRef.current = true;
-    })();
+      return true;
+    };
+
+    if (!tryInit()) {
+      /* #calendar-popup can lose the mount race right after login → first SPA route into this
+       * page (AuthenticatedLayout/AnimatedOutlet still resolving) — unlike a hard refresh, which
+       * always commits the whole page in one go. Watch the DOM and retry once it appears instead
+       * of giving up silently (was: permanently broken Capture Date until a manual page reload). */
+      observer = new MutationObserver(() => {
+        if (tryInit() && observer) {
+          observer.disconnect();
+          observer = null;
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
 
     return () => {
       cancelled = true;
       txDateRangePickerReadyRef.current = false;
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
     };
   }, [loading, forbidden, filterSnapshot?.companyId, setDateFrom, setDateTo, setTxDate, setRateDate, todayDmy]);
 
