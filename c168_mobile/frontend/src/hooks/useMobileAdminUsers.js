@@ -8,7 +8,7 @@ import {
   resolveMobileGroupIds,
 } from "../lib/dashboardScope.js";
 import { fetchJson, assertApiOk } from "../lib/fetchJson.js";
-import { readLoginLang, writeLoginLang } from "../lib/loginLang.js";
+import { useSyncedLoginLang, writeLoginLang } from "../lib/loginLang.js";
 import { canUseGroupOnlyMode, filterCompaniesForUserScope } from "../lib/loginScope.js";
 import { accountScopeIsGroupOnly, resolveAccountScopeDraft } from "../lib/mobileAccountScope.js";
 import { isPartnershipAuditReadOnlyLocked } from "../lib/partnershipAuditReadOnly.js";
@@ -75,7 +75,7 @@ async function postUserlist(body, signal) {
 
 export function useMobileAdminUsers() {
   const navigate = useNavigate();
-  const [lang, setLangState] = useState(() => readLoginLang());
+  const [lang, setLangState] = useSyncedLoginLang();
   const i18n = useMemo(() => adminText(lang), [lang]);
   const [me, setMe] = useState(null);
   const [companies, setCompanies] = useState([]);
@@ -110,6 +110,37 @@ export function useMobileAdminUsers() {
   const [saving, setSaving] = useState(false);
   const toastTimer = useRef(null);
   const listSeq = useRef(0);
+
+  /** Dirty check: snapshot the freshly-seeded form; only a real user edit
+      makes close ask "discard unsaved changes?". openCreate/openEdit arm the
+      baseline AFTER their async seeds land (batched into one commit). */
+  const [formBaseline, setFormBaseline] = useState("");
+  const [baselinePending, setBaselinePending] = useState(false);
+  const formSignature = useMemo(
+    () =>
+      JSON.stringify({
+        f: form,
+        p: [...permSelected].sort(),
+        a: [...selectedAccountIds].sort((x, y) => x - y),
+        pr: [...selectedProcessIds].sort((x, y) => x - y),
+        tg: [...selectedTenantGroupIds].sort((x, y) => x - y),
+        tc: [...selectedTenantCompanyIds].sort((x, y) => x - y),
+      }),
+    [
+      form,
+      permSelected,
+      selectedAccountIds,
+      selectedProcessIds,
+      selectedTenantGroupIds,
+      selectedTenantCompanyIds,
+    ],
+  );
+  useEffect(() => {
+    if (!baselinePending) return;
+    setFormBaseline(formSignature);
+    setBaselinePending(false);
+  }, [baselinePending, formSignature]);
+  const isFormDirty = !baselinePending && formBaseline !== formSignature;
 
   const scope = useMemo(
     () => ({ companyId, selectedGroup, groupsAllMode, groupAllMode }),
@@ -453,8 +484,10 @@ export function useMobileAdminUsers() {
       setSelectedProcessIds(new Set(processes.map((p) => p.id)));
       setSuperiorClosedAccountIds(new Set());
       setSuperiorClosedProcessIds(new Set());
+      setBaselinePending(true);
       return true;
     } catch (e) {
+      setBaselinePending(true);
       notify(e?.message || i18n.loadError, "error");
       return false;
     }
@@ -523,8 +556,10 @@ export function useMobileAdminUsers() {
       setSuperiorClosedAccountIds(accPartition.superiorClosed);
       setSelectedProcessIds(procPartition.selected);
       setSuperiorClosedProcessIds(procPartition.superiorClosed);
+      setBaselinePending(true);
       return true;
     } catch (e) {
+      setBaselinePending(true);
       notify(e?.message || i18n.loadError, "error");
       return false;
     }
@@ -738,6 +773,7 @@ export function useMobileAdminUsers() {
     openCreate,
     openEdit,
     saveUser,
+    isFormDirty,
     saving,
     logout,
     notify,

@@ -97,7 +97,6 @@ export default function AdminUsersPage() {
         backTo="/more"
         backAriaLabel={i18n.backToMore}
         title={i18n.users}
-        subtitle={i18n.usersSubtitle}
       />
       <div className="m-account-scope-row">
         <button type="button" className="m-account-scope-btn tap-scale" onClick={() => setScopeOpen(true)}>

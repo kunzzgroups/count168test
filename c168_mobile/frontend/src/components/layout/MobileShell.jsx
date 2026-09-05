@@ -1,13 +1,39 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh.js";
 import { useDirectScrollChrome } from "../../hooks/useDirectScrollChrome.js";
 import { useScrollIdleVisible } from "../../hooks/useScrollIdleVisible.js";
 import { isMobileMoreStackPath } from "../../utils/mobilePermissions.js";
+import {
+  useSyncedLoginLang,
+  writeLoginLang,
+} from "../../lib/loginLang.js";
+import {
+  THEME_UPDATED_EVENT,
+  readLoginTheme,
+  writeLoginTheme,
+} from "../../lib/loginTheme.js";
 import MobileAppBar from "./MobileAppBar.jsx";
 import MobileNotifications, { fetchMobileAnnouncements } from "./MobileNotifications.jsx";
 import PullRefreshIndicator from "./PullRefreshIndicator.jsx";
 import "./mobile-shell.css";
+
+/** Bell badge = announcements not yet seen. Seen ids live in module scope so
+    they survive in-app route changes but reset on every refresh / re-login —
+    the badge reappears, then clears once the panel has been opened. */
+let notifySeenIds = new Set();
+
+function markSeenIds(rows) {
+  let changed = false;
+  rows.forEach((row) => {
+    const id = Number(row?.id);
+    if (!Number.isNaN(id) && !notifySeenIds.has(id)) {
+      notifySeenIds.add(id);
+      changed = true;
+    }
+  });
+  return changed;
+}
 
 export default function MobileShell({
   children,
@@ -42,6 +68,9 @@ export default function MobileShell({
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [notifyLoading, setNotifyLoading] = useState(false);
+  const [seenIds, setSeenIds] = useState(() => notifySeenIds);
+  const [theme, setTheme] = useState(() => readLoginTheme());
+  const [lang, setLang] = useSyncedLoginLang();
   const mainRef = useRef(null);
   const topChromeRef = useRef(null);
   const [topChromeH, setTopChromeH] = useState(118);
@@ -131,9 +160,15 @@ export default function MobileShell({
     paused: forceChrome,
   });
 
+  const markAnnouncementsSeen = useCallback((rows) => {
+    if (!rows?.length) return;
+    if (markSeenIds(rows)) setSeenIds(new Set(notifySeenIds));
+  }, []);
+
   const openNotifications = () => {
     onChromeOpen?.();
     setNotifyOpen(true);
+    markAnnouncementsSeen(announcements);
   };
 
   useEffect(() => {
@@ -154,6 +189,24 @@ export default function MobileShell({
     })();
     return () => ac.abort();
   }, [me]);
+  /** Stay in sync when theme is changed from the Settings page
+      (language sync is handled by useSyncedLoginLang). */
+  useEffect(() => {
+    const onTheme = (e) => setTheme(e?.detail?.theme === "dark" ? "dark" : "light");
+    window.addEventListener(THEME_UPDATED_EVENT, onTheme);
+    return () => window.removeEventListener(THEME_UPDATED_EVENT, onTheme);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(writeLoginTheme(theme === "dark" ? "light" : "dark"));
+  }, [theme]);
+
+  const toggleLang = useCallback(
+    (next) => {
+      setLang(writeLoginLang(next === "zh" ? "zh" : "en"));
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!notifyOpen) return undefined;
@@ -162,7 +215,11 @@ export default function MobileShell({
     (async () => {
       try {
         const rows = await fetchMobileAnnouncements(ac.signal);
-        if (!ac.signal.aborted) setAnnouncements(rows);
+        if (!ac.signal.aborted) {
+          setAnnouncements(rows);
+          // Panel is in view: treat anything that arrives now as seen.
+          markAnnouncementsSeen(rows);
+        }
       } catch {
         /* keep previous */
       } finally {
@@ -170,11 +227,16 @@ export default function MobileShell({
       }
     })();
     return () => ac.abort();
-  }, [notifyOpen]);
+  }, [notifyOpen, markAnnouncementsSeen]);
 
   const contentShift = pullPx > 0.5 ? pullPx : 0;
   const contentTransition = isAnimating && phase !== "pulling" && phase !== "armed";
   const mainPadTop = topChromeH;
+
+  const unreadCount = useMemo(
+    () => announcements.filter((row) => !seenIds.has(Number(row?.id))).length,
+    [announcements, seenIds],
+  );
 
   const mainPadBottom = navVisible
     ? "var(--m-shell-main-pad-bottom-nav)"
@@ -190,11 +252,15 @@ export default function MobileShell({
       >
         <MobileAppBar
           i18n={labels}
-          notificationCount={announcements.length}
+          notificationCount={unreadCount}
           onOpenNotifications={openNotifications}
           onRefresh={typeof onRefresh === "function" ? refreshPage : undefined}
           refreshing={gestureRefreshing}
           leftAction={appBarLeftAction}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          lang={lang}
+          onLangChange={toggleLang}
         />
 
         {stickyBar ? (

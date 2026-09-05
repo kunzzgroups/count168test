@@ -14,7 +14,7 @@ import {
 } from "../lib/c168DomainAccess.js";
 import { normalizeDomainFeeSettingsFromApi } from "../lib/domainHelpers.js";
 import { fetchJson } from "../lib/fetchJson.js";
-import { readLoginLang, writeLoginLang } from "../lib/loginLang.js";
+import { useSyncedLoginLang, writeLoginLang } from "../lib/loginLang.js";
 import { autoRenewText, getAutoRenewText } from "../translateFile/autoRenewTranslate.js";
 import { buildApiUrl } from "../utils/apiUrl.js";
 
@@ -22,7 +22,7 @@ const EMPTY_COUNTS = { pending: 0, approved: 0, rejected: 0, total: 0 };
 
 export function useMobileAutoRenew() {
   const navigate = useNavigate();
-  const [lang, setLangState] = useState(() => readLoginLang());
+  const [lang, setLangState] = useSyncedLoginLang();
   const i18n = useMemo(() => autoRenewText(lang), [lang]);
   const t = useCallback((key, params) => getAutoRenewText(lang, key, params), [lang]);
 

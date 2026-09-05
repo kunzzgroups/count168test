@@ -362,27 +362,30 @@
 /* LEFT — quick presets (secondary quick navigation) */
 .m-fchip-datesplit {
   display: grid;
-  grid-template-columns: minmax(118px, 130px) minmax(0, 1fr);
+  /* Tight preset rail (zh labels are 2-3 chars, EN fits at 13px) leaves the calendar the width */
+  /* Auto rail: sizes to the widest preset, never wraps, calendar takes the rest */
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: stretch;
 }
 
 .m-fchip-side {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 16px 8px 16px 12px;
+  gap: 2px;
+  padding: 14px 5px 14px 9px;
   border-right: 1px solid var(--m-color-ring-soft);
 }
 
 .m-fchip-side-item {
   display: flex;
   align-items: center;
-  min-height: 40px;
-  padding: 0 10px;
+  min-height: 38px;
+  padding: 0 7px;
   border-radius: 0.6rem;
   color: var(--m-color-text-secondary);
-  font-size: 0.84375rem;
+  font-size: 0.8125rem;
   font-weight: 500;
+  white-space: nowrap;
   text-align: left;
 }
 

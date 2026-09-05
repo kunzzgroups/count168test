@@ -30,9 +30,14 @@ export default function MobileAppBar({
   refreshing = false,
   notificationCount = 0,
   leftAction = null,
+  theme = "light",
+  onToggleTheme,
+  lang = "en",
+  onLangChange,
 }) {
   const navigate = useNavigate();
   const count = Number(notificationCount) || 0;
+  const isDark = theme === "dark";
 
   const bellButton = (
     <button
@@ -90,14 +95,76 @@ export default function MobileAppBar({
     <header className="m-appbar">
       <div className="m-appbar-grid">
         <div className="m-appbar-left-group">
-          {logo}
           {bellButton}
+          {logo}
         </div>
 
         <span className="m-appbar-spacer" aria-hidden="true" />
 
         <div className="m-appbar-right-group">
           {leftAction}
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            className="m-appbar-btn m-appbar-btn--theme tap-scale"
+            aria-label={i18n?.appearance || "Appearance"}
+            aria-pressed={isDark}
+            title={i18n?.appearance || "Appearance"}
+          >
+            {isDark ? (
+              /* Classic sun: solid core + 8 straight rays (FA fa-sun reads as a gear) */
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2" />
+                <path d="M12 20v2" />
+                <path d="m4.93 4.93 1.41 1.41" />
+                <path d="m17.66 17.66 1.41 1.41" />
+                <path d="M2 12h2" />
+                <path d="M20 12h2" />
+                <path d="m6.34 17.66-1.41 1.41" />
+                <path d="m19.07 4.93-1.41 1.41" />
+              </svg>
+            ) : (
+              <i className="fas fa-moon text-[16px]" aria-hidden="true" />
+            )}
+          </button>
+          <div
+            className="m-appbar-langseg"
+            role="group"
+            aria-label={i18n?.language || "Language"}
+          >
+            <span
+              className="m-appbar-langseg-thumb"
+              aria-hidden="true"
+              data-pos={lang === "zh" ? "right" : "left"}
+            />
+            <button
+              type="button"
+              aria-pressed={lang === "en"}
+              className={lang === "en" ? "is-active" : ""}
+              onClick={() => onLangChange?.("en")}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              aria-pressed={lang === "zh"}
+              className={lang === "zh" ? "is-active" : ""}
+              onClick={() => onLangChange?.("zh")}
+            >
+              中
+            </button>
+          </div>
+          <span className="m-appbar-divider" aria-hidden="true" />
           <button
             type="button"
             onClick={() => navigate("/more")}

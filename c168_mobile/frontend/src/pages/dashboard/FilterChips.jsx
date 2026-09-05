@@ -62,7 +62,7 @@ function monthTitle(year, month, lang) {
   return new Date(year, month, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
 }
 
-function MiniSheet({ open, onClose, title, children, footer, flush = false }) {
+export function MiniSheet({ open, onClose, title, children, footer, flush = false }) {
   useOverlayLock(open, onClose);
   // Portal to <body>: the chips live inside the sticky bar, whose overflow and
   // pull-refresh transform would otherwise hijack the fixed overlay's position

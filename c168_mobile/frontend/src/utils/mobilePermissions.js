@@ -84,33 +84,9 @@ export function canAccessLimitedMaintenance(me) {
   return Boolean(me?.company_has_gambling || me?.company_has_bank);
 }
 
-/** Transaction Maintenance page (mirrors desktop canAccessTransactionFormulaMaintenance). */
-export function canAccessTransactionMaintenance(me) {
-  return canAccessFullMaintenance(me) || canAccessLimitedMaintenance(me);
-}
-
 /** Payment Maintenance page — full Maintenance permission only (desktop-aligned). */
 export function canAccessPaymentMaintenance(me) {
   return canAccessFullMaintenance(me);
-}
-
-/**
- * Bankprocess Maintenance (audit/delete bank-process-sourced txs).
- * Desktop: full maintenance + company_has_bank.
- */
-export function canAccessBankprocessMaintenance(me) {
-  if (!canAccessFullMaintenance(me)) return false;
-  return Boolean(me?.company_has_bank);
-}
-
-/** Maintenance hub / More entry visibility. */
-export function canAccessMaintenance(me) {
-  return canAccessTransactionMaintenance(me);
-}
-
-/** Bank Process list — desktop sidebar "process" permission. */
-export function canAccessBankProcess(me) {
-  return canAccessPermission(me, "process");
 }
 
 /** First mobile route after login — aligned with desktop sidebar order where possible. */

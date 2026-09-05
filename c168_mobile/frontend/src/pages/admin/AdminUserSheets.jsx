@@ -437,7 +437,8 @@ export function UserFormSheet({ open, onClose, admin }) {
   ]);
 
   const requestClose = () => {
-    if (window.confirm(i18n.discardConfirm)) onClose();
+    // Untouched form: close straight away — no "discard unsaved changes?" nag.
+    if (!admin.isFormDirty || window.confirm(i18n.discardConfirm)) onClose();
   };
 
   const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));

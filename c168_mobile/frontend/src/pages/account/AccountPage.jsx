@@ -2,10 +2,10 @@ import { useCallback, useMemo, useState } from "react";
 import MobileShell from "../../components/layout/MobileShell.jsx";
 import ScopeBreadcrumb from "../dashboard/ScopeBreadcrumb.jsx";
 import { useMobileAccount } from "../../hooks/useMobileAccount.js";
+import { getRoleClass } from "../../lib/transactionPaymentLogic.js";
 import {
   AccountFormSheet,
   AccountScopeSheet,
-  CurrencySettingSheet,
   LinkAccountSheet,
 } from "./AccountSheets.jsx";
 import "./account.css";
@@ -31,11 +31,14 @@ function AccountCard({ row, account, onOpen }) {
   const code = String(row.account_id || "").toUpperCase();
   const name = String(row.name || "").trim();
   const isInactive = String(row.status || "").toLowerCase() === "inactive";
+  const roleClass = getRoleClass(row.role);
   return (
     <button
       type="button"
       onClick={() => onOpen(row)}
-      className={`m-user-card tap-scale${isInactive ? " m-account-tile--inactive" : ""}`}
+      className={`m-user-card m-account-role tap-scale${roleClass ? ` ${roleClass}` : ""}${
+        isInactive ? " m-account-tile--inactive" : ""
+      }`}
       aria-label={`${i18n.tapForDetail}: ${code}`}
     >
       <span className="m-user-card-copy">
@@ -57,7 +60,6 @@ export default function AccountPage() {
   const [scopeOpen, setScopeOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
-  const [currencyOpen, setCurrencyOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
 
   const companyCode = String(account.selectedCompany?.company_id || "").toUpperCase();
@@ -76,7 +78,7 @@ export default function AccountPage() {
       ? companyCode
       : groupId;
   const sidebarGroup = account.companyId ? groupId : "";
-  const overlayOpen = scopeOpen || formOpen || linkOpen || currencyOpen || sortOpen;
+  const overlayOpen = scopeOpen || formOpen || linkOpen || sortOpen;
 
   const openCardEdit = useCallback(
     async (row) => {
@@ -110,17 +112,6 @@ export default function AccountPage() {
             groupOnlyMode={!account.companyId && Boolean(groupId)}
           />
           <i className="fas fa-sliders" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="m-account-settings-btn tap-scale"
-          disabled={!account.canMutate}
-          onClick={async () => {
-            if (await account.openCurrency()) setCurrencyOpen(true);
-          }}
-          aria-label={i18n.currencySetting}
-        >
-          <i className="fas fa-gear" aria-hidden="true" />
         </button>
       </div>
       <label className="m-account-search">
@@ -193,11 +184,6 @@ export default function AccountPage() {
             }}
           />
           <LinkAccountSheet open={linkOpen} onClose={() => setLinkOpen(false)} account={account} />
-          <CurrencySettingSheet
-            open={currencyOpen}
-            onClose={() => setCurrencyOpen(false)}
-            account={account}
-          />
           <SortSheet open={sortOpen} onClose={() => setSortOpen(false)} account={account} />
         </>
       }

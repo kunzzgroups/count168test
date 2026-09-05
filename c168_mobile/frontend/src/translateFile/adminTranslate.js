@@ -3,8 +3,7 @@ import { DASHBOARD_I18N } from "./dashboardTranslate.js";
 export const ADMIN_I18N = {
   en: {
     ...DASHBOARD_I18N.en,
-    users: "User Management",
-    usersSubtitle: "Users, roles and permissions",
+    users: "Admin",
     backToMore: "Back to More",
     searchUsers: "Search Login ID, name or email",
     showInactive: "Inactive",
@@ -84,8 +83,7 @@ export const ADMIN_I18N = {
   },
   zh: {
     ...DASHBOARD_I18N.zh,
-    users: "用户管理",
-    usersSubtitle: "用户、角色与权限",
+    users: "管理",
     backToMore: "返回更多",
     searchUsers: "搜索 Login ID、名称或邮箱",
     showInactive: "非活跃",
