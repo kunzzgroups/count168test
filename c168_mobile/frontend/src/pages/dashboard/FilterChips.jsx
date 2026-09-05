@@ -170,6 +170,7 @@ export function DateFilterChip({ dash, i18n, lang }) {
       </button>
 
       <MiniSheet
+        flush
         open={open}
         onClose={() => setOpen(false)}
         title={
